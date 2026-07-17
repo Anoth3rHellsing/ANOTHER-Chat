@@ -349,6 +349,27 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
 
+  // Check if user is muted in this server
+  if (channelCheck.serverId) {
+    const { pool } = await import("@workspace/db");
+    const muteClient = await pool.connect();
+    try {
+      const muteResult = await muteClient.query(
+        `SELECT expires_at, reason FROM server_mutes WHERE server_id=$1 AND user_id=$2 AND expires_at > NOW()`,
+        [channelCheck.serverId, userId]
+      );
+      if (muteResult.rows.length > 0) {
+        const row = muteResult.rows[0];
+        const expiresAt = new Date(row.expires_at);
+        const expiresStr = expiresAt.toLocaleString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        res.status(403).json({ error: `Estás silenciado hasta ${expiresStr}${row.reason ? ` — ${row.reason}` : ''}`, muted: true, expiresAt: row.expires_at });
+        return;
+      }
+    } finally {
+      muteClient.release();
+    }
+  }
+
   const hasAttachments = Array.isArray(attachmentIds) && attachmentIds.length > 0;
   if ((content == null || typeof content !== "string" || content.trim().length === 0) && !hasAttachments) {
     res.status(400).json({ error: "El mensaje debe tener contenido o adjuntos" }); return;
@@ -430,6 +451,43 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
 
   const { broadcast } = await import("../lib/websocket");
   broadcast(`channel:${channelId}`, { type: "message:new", data: responseMsg });
+
+  // @mention detection — notify mentioned users via WS
+  if (safeContent) {
+    const mentionMatches = safeContent.match(/@(\w+)/g);
+    if (mentionMatches && channelCheck.serverId) {
+      const usernames = [...new Set(mentionMatches.map(m => m.slice(1).toLowerCase()))];
+      try {
+        const { pool } = await import("@workspace/db");
+        const mentionClient = await pool.connect();
+        try {
+          for (const username of usernames) {
+            const userRes = await mentionClient.query(
+              `SELECT u.id FROM users u JOIN server_members sm ON sm.user_id=u.id WHERE u.username=$1 AND sm.server_id=$2`,
+              [username, channelCheck.serverId]
+            );
+            if (userRes.rows[0]) {
+              const mentionedId = userRes.rows[0].id;
+              if (mentionedId !== userId) {
+                broadcast(`user:${mentionedId}`, {
+                  type: "mention:new",
+                  data: {
+                    messageId: responseMsg.id,
+                    channelId,
+                    serverId: channelCheck.serverId,
+                    authorName: responseMsg.author?.displayName ?? "Usuario",
+                    preview: safeContent.slice(0, 80),
+                  }
+                });
+              }
+            }
+          }
+        } finally {
+          mentionClient.release();
+        }
+      } catch { /* mention delivery is best-effort */ }
+    }
+  }
 
   res.status(201).json(responseMsg);
 });

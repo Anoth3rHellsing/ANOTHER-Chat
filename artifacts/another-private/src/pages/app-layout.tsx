@@ -33,8 +33,14 @@ import {
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
   FileText, ExternalLink, Download, MessageSquare, Play,
   Cog, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff,
-  PhoneIncoming
+  PhoneIncoming,
+  Search, ChevronLeft, Flag, Bell
 } from 'lucide-react';
+import { SearchModal } from '@/components/search-modal';
+import { FriendsPanel } from '@/components/friends-panel';
+import { ReportModal } from '@/components/report-modal';
+import { MentionList, useMentionAutocomplete } from '@/components/mention-autocomplete';
+import { DmGroupModal } from '@/components/dm-group-modal';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -261,6 +267,24 @@ export default function AppLayout() {
   // Dismissed link previews (by message id)
   const [dismissedPreviews, setDismissedPreviews] = useState<Set<number>>(new Set());
 
+  // Mobile layout depth: 0=server list, 1=channel/DM list, 2=chat
+  const [mobilePanelDepth, setMobilePanelDepth] = useState(0);
+  // Search modal
+  const [showSearch, setShowSearch] = useState(false);
+  // Report modal
+  const [reportTarget, setReportTarget] = useState<{ messageId: number; authorName: string } | null>(null);
+  // Mention autocomplete
+  const [mentionCursorPos, setMentionCursorPos] = useState(0);
+  const [selectedMentionIdx, setSelectedMentionIdx] = useState(0);
+  const msgInputRef = useRef<HTMLInputElement>(null);
+  // Friends / DM group view toggle in DM panel
+  const [dmSubView, setDmSubView] = useState<'messages' | 'friends'>('messages');
+  // DM group modal
+  const [showDmGroupModal, setShowDmGroupModal] = useState(false);
+  const [dmFriends, setDmFriends] = useState<any[]>([]);
+  // Mute status (shows banner when muted in active server)
+  const [muteStatus, setMuteStatus] = useState<{ expiresAt: string; reason?: string } | null>(null);
+
   const openProfileCard = (userId: number, e: React.MouseEvent) => {
     if (userId === user?.id) {
       setIsProfileOpen(true);
@@ -292,6 +316,8 @@ export default function AppLayout() {
   const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
   
   const allChannelIds = useMemo(() => channels?.map(c => c.id) ?? [], [channels]);
+  const mentionMembers = useMemo(() => (members ?? []).map((m: any) => m.user).filter(Boolean), [members]);
+  const { suggestions: mentionSuggestions, insertMention } = useMentionAutocomplete(messageInput, mentionCursorPos, mentionMembers);
   const { typingUsers, sendTypingStart, sendTypingStop, unreadCounts, clearUnread } = useChatWebSocket(activeChannelId, allChannelIds);
   const { dmTypingUsers, sendDmTypingStart, sendDmTypingStop } = useDmWebSocket(activeDmUserId);
 
@@ -335,6 +361,35 @@ export default function AppLayout() {
         onSuccess: () => refetchDmConversations(),
       });
     }
+  }, [activeDmUserId]);
+
+  // Mute status — poll when server changes
+  useEffect(() => {
+    if (!activeServerId) { setMuteStatus(null); return; }
+    const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+    fetch(`${BASE}/api/servers/${activeServerId}/mute-status`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setMuteStatus(d?.muted ? { expiresAt: d.expiresAt, reason: d.reason } : null))
+      .catch(() => setMuteStatus(null));
+  }, [activeServerId]);
+
+  // Fetch friends list when DM group modal opens
+  useEffect(() => {
+    if (!showDmGroupModal) return;
+    const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+    fetch(`${BASE}/api/friends`, { credentials: 'include' })
+      .then(r => r.json()).then(d => setDmFriends(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [showDmGroupModal]);
+
+  // Mobile panel auto-advance
+  useEffect(() => {
+    if (activeServerId !== null) setMobilePanelDepth(d => Math.max(d, 1));
+  }, [activeServerId]);
+  useEffect(() => {
+    if (activeChannelId !== null) setMobilePanelDepth(2);
+  }, [activeChannelId]);
+  useEffect(() => {
+    if (activeDmUserId !== null) setMobilePanelDepth(2);
   }, [activeDmUserId]);
 
   const openDm = useCallback((targetUserId: number) => {
@@ -573,7 +628,7 @@ export default function AppLayout() {
     <div className="h-screen w-full bg-background flex overflow-hidden font-sans">
       
       {/* 1. SERVER LIST COLUMN */}
-      <div className="w-[72px] bg-card border-r border-white/5 flex flex-col items-center py-4 gap-3 flex-shrink-0 z-20">
+      <div className={`${mobilePanelDepth === 0 ? 'flex w-full h-full' : 'hidden'} md:flex md:w-[72px] bg-card border-r border-white/5 flex-col items-center py-4 gap-3 md:flex-shrink-0 z-20`}>
         <div
           className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary cursor-pointer hover:rounded-xl transition-all"
           onClick={() => { setActiveView('servers'); setLocation('/app'); }}
@@ -584,7 +639,7 @@ export default function AppLayout() {
         {/* DM button with unread badge */}
         <div className="relative group">
           <button
-            onClick={() => setActiveView('dms')}
+            onClick={() => { setActiveView('dms'); setMobilePanelDepth(1); }}
             className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all flex items-center justify-center border ${activeView === 'dms' ? 'rounded-[16px] bg-indigo-500/20 text-indigo-400 border-indigo-500/40' : 'bg-secondary text-muted-foreground hover:bg-indigo-500/15 hover:text-indigo-400 border-white/5'}`}
             title="Mensajes directos"
           >
@@ -635,13 +690,32 @@ export default function AppLayout() {
       </div>
 
       {/* 2. LEFT COLUMN — Channels or DM conversations */}
-      <div className="w-60 bg-card/50 border-r border-white/5 flex flex-col flex-shrink-0">
+      <div className={`${mobilePanelDepth === 1 ? 'flex w-full h-full' : 'hidden'} md:flex md:w-60 bg-card/50 border-r border-white/5 flex-col md:flex-shrink-0`}>
         {activeView === 'dms' ? (
           <>
             {/* DM header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card flex-shrink-0">
+              <button className="md:hidden p-1 mr-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(0)}>
+                <ChevronLeft className="w-5 h-5" />
+              </button>
               <MessageSquare className="w-4 h-4 text-indigo-400 mr-2" />
               <h2 className="font-bold text-foreground truncate flex-1">Mensajes directos</h2>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => setDmSubView(v => v === 'friends' ? 'messages' : 'friends')}
+                  className={`p-1.5 rounded-md transition-colors ${dmSubView === 'friends' ? 'text-indigo-400 bg-indigo-400/10' : 'text-muted-foreground hover:text-white hover:bg-white/5'}`}
+                  title="Amigos"
+                >
+                  <Bell className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setShowDmGroupModal(true)}
+                  className="p-1.5 rounded-md text-muted-foreground hover:text-white hover:bg-white/5 transition-colors"
+                  title="Nuevo grupo"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* DM conversation list */}
@@ -869,12 +943,22 @@ export default function AppLayout() {
       </div>
 
       {/* 3. CHAT / DM AREA */}
-      <div className="flex-1 flex flex-col bg-background min-w-0 relative">
+      <div className={`${mobilePanelDepth >= 2 ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-background min-w-0 relative`}>
+        {/* ── Friends panel ─────────────────────────────────────────────── */}
+        {activeView === 'dms' && dmSubView === 'friends' && (
+          <FriendsPanel
+            onOpenDm={uid => { setActiveDmUserId(uid); setDmSubView('messages'); setMobilePanelDepth(2); }}
+          />
+        )}
+
         {/* ── DM chat pane ─────────────────────────────────────────────── */}
-        {activeView === 'dms' && activeDmUserId && activeDmConvo && (
+        {activeView === 'dms' && dmSubView === 'messages' && activeDmUserId && activeDmConvo && (
           <>
             {/* DM header */}
-            <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10 gap-3">
+            <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10 gap-3 flex-shrink-0">
+              <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded flex-shrink-0" onClick={() => setMobilePanelDepth(1)}>
+                <ChevronLeft className="w-5 h-5" />
+              </button>
               <div className="relative flex-shrink-0">
                 <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
                   {(activeDmConvo as any).otherUser?.avatarUrl
@@ -1021,7 +1105,7 @@ export default function AppLayout() {
         )}
 
         {/* DM mode — no conversation selected */}
-        {activeView === 'dms' && !activeDmUserId && (
+        {activeView === 'dms' && dmSubView === 'messages' && !activeDmUserId && (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
             <MessageSquare className="w-16 h-16 opacity-20" />
             <p>Selecciona una conversación o haz clic en "Mensaje directo" en el perfil de alguien.</p>
@@ -1062,21 +1146,42 @@ export default function AppLayout() {
           <ClipsView serverId={activeServerId} currentUserId={user.id} />
         ) : activeView === 'servers' && activeChannel ? (
           <>
+            {/* Mute status banner */}
+            {muteStatus && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 border-b border-orange-500/20 text-sm flex-shrink-0">
+                <span>🔇</span>
+                <span className="text-orange-300">Estás silenciado hasta {new Date(muteStatus.expiresAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                {muteStatus.reason && <span className="text-muted-foreground">— {muteStatus.reason}</span>}
+              </div>
+            )}
+
             {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
               <div className="flex items-center gap-2 text-foreground font-medium">
+                <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)}>
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
                 <Hash className="w-5 h-5 text-muted-foreground" />
                 {activeChannel.name}
                 {(activeChannel as any).restrictedRoles?.length > 0 && (
                   <span className="text-xs text-primary/60 font-mono">🔒 restringido</span>
                 )}
               </div>
-              <button 
-                onClick={() => setShowMembers(!showMembers)}
-                className={`p-1.5 rounded-md transition-colors ${showMembers ? 'bg-white/10 text-white' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
-              >
-                <UsersIcon className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowSearch(true)}
+                  className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/5 rounded-md transition-colors"
+                  title="Buscar mensajes"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => setShowMembers(!showMembers)}
+                  className={`p-1.5 rounded-md transition-colors ${showMembers ? 'bg-white/10 text-white' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
+                >
+                  <UsersIcon className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Messages */}
@@ -1186,6 +1291,18 @@ export default function AppLayout() {
                                 </button>
                               </>
                             )}
+                            {!isOwn && (
+                              <>
+                                <div className="w-[1px] h-4 bg-white/10" />
+                                <button
+                                  onClick={() => setReportTarget({ messageId: msg.id, authorName: (msgAny.author?.displayName ?? 'Usuario') })}
+                                  className="p-1.5 text-muted-foreground hover:bg-orange-400/20 hover:text-orange-400 transition-colors"
+                                  title="Reportar mensaje"
+                                >
+                                  <Flag className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1291,7 +1408,22 @@ export default function AppLayout() {
                 </div>
               )}
 
-              {/* Input form */}
+              {/* Mention autocomplete */}
+              {mentionSuggestions.length > 0 && (
+                <MentionList
+                  suggestions={mentionSuggestions}
+                  selectedIndex={selectedMentionIdx}
+                  onSelect={m => {
+                    const r = insertMention(m, messageInput, mentionCursorPos);
+                    setMessageInput(r.newValue);
+                    setMentionCursorPos(r.newCursor);
+                    setSelectedMentionIdx(0);
+                    msgInputRef.current?.focus();
+                  }}
+                />
+              )}
+
+            {/* Input form */}
               <form
                 onSubmit={handleSendMessage}
                 className={`relative flex items-center bg-card border border-white/10 ${(replyingTo || pendingFiles.length > 0) ? 'rounded-b-xl rounded-t-none border-t-0' : 'rounded-xl'}`}
@@ -1316,12 +1448,20 @@ export default function AppLayout() {
                 </button>
 
                 <input 
+                  ref={msgInputRef}
                   type="text"
                   value={messageInput}
-                  onChange={handleMessageChange}
+                  onChange={e => { handleMessageChange(e); setMentionCursorPos(e.target.selectionStart ?? 0); setSelectedMentionIdx(0); }}
+                  onSelect={e => setMentionCursorPos((e.target as HTMLInputElement).selectionStart ?? 0)}
                   placeholder={`Escribir en #${activeChannel.name}...`}
                   className="flex-1 bg-transparent py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
                   onKeyDown={e => {
+                    if (mentionSuggestions.length > 0) {
+                      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedMentionIdx(i => Math.min(i + 1, mentionSuggestions.length - 1)); return; }
+                      if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedMentionIdx(i => Math.max(i - 1, 0)); return; }
+                      if (e.key === 'Enter') { e.preventDefault(); const m = mentionSuggestions[selectedMentionIdx]; if (m) { const r = insertMention(m, messageInput, mentionCursorPos); setMessageInput(r.newValue); setMentionCursorPos(r.newCursor); setSelectedMentionIdx(0); } return; }
+                      if (e.key === 'Escape') { setMentionCursorPos(-1); return; }
+                    }
                     if (e.key === 'Escape' && replyingTo) setReplyingTo(null);
                   }}
                 />
@@ -1635,6 +1775,45 @@ export default function AppLayout() {
             queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(activeServerId) });
             setIsCreateChannelOpen(false);
           }}
+        />
+      )}
+
+      {/* DM Group modal */}
+      {showDmGroupModal && (
+        <DmGroupModal
+          isOpen={showDmGroupModal}
+          onClose={() => setShowDmGroupModal(false)}
+          currentUserId={user.id}
+          friends={dmFriends}
+          onCreated={() => {
+            setShowDmGroupModal(false);
+          }}
+        />
+      )}
+
+      {/* Search modal */}
+      {showSearch && (
+        <SearchModal
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          serverId={activeView === 'servers' ? activeServerId : null}
+          channelId={activeChannelId}
+          dmUserId={activeView === 'dms' ? activeDmUserId : null}
+          onJumpToMessage={(cid, mid) => {
+            setShowSearch(false);
+            const el = messageRefs.current.get(mid);
+            if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('ring', 'ring-primary/40'); setTimeout(() => el.classList.remove('ring', 'ring-primary/40'), 2000); }
+          }}
+        />
+      )}
+
+      {/* Report modal */}
+      {reportTarget && (
+        <ReportModal
+          messageId={reportTarget.messageId}
+          serverId={activeServerId}
+          authorName={reportTarget.authorName}
+          onClose={() => setReportTarget(null)}
         />
       )}
     </div>

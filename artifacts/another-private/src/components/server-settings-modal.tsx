@@ -43,7 +43,7 @@ const PRESET_COLORS = [
   '#3b82f6', '#06b6d4', '#a855f7', '#64748b',
 ];
 
-type Tab = 'roles' | 'channels' | 'members' | 'apariencia' | 'invitaciones' | 'peligro';
+type Tab = 'roles' | 'channels' | 'members' | 'apariencia' | 'invitaciones' | 'mutes' | 'word_filters' | 'reports' | 'audit' | 'peligro';
 
 export function ServerSettingsModal({
   isOpen,
@@ -64,6 +64,100 @@ export function ServerSettingsModal({
   const [activeTab, setActiveTab] = useState<Tab>('roles');
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // Moderation state
+  const [mutes, setMutes] = useState<any[]>([]);
+  const [wordFilters, setWordFilters] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+  const [auditLog, setAuditLog] = useState<any[]>([]);
+  const [newWord, setNewWord] = useState('');
+  const [muteTargetUsername, setMuteTargetUsername] = useState('');
+  const [muteDuration, setMuteDuration] = useState('60');
+  const [muteReason, setMuteReason] = useState('');
+  const [mutingUser, setMutingUser] = useState(false);
+
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+
+  useEffect(() => {
+    if (!isOpen || !serverId) return;
+    if (activeTab === 'mutes') {
+      fetch(`${BASE}/api/servers/${serverId}/mutes`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setMutes(Array.isArray(d) ? d : [])).catch(() => {});
+    }
+    if (activeTab === 'word_filters') {
+      fetch(`${BASE}/api/servers/${serverId}/word-filters`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setWordFilters(Array.isArray(d) ? d : [])).catch(() => {});
+    }
+    if (activeTab === 'reports') {
+      fetch(`${BASE}/api/servers/${serverId}/reports`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setReports(Array.isArray(d) ? d : [])).catch(() => {});
+    }
+    if (activeTab === 'audit') {
+      fetch(`${BASE}/api/servers/${serverId}/audit-log`, { credentials: 'include' })
+        .then(r => r.json()).then(d => setAuditLog(Array.isArray(d) ? d : [])).catch(() => {});
+    }
+  }, [activeTab, isOpen, serverId]);
+
+  const handleMuteUser = async () => {
+    if (!muteTargetUsername.trim()) return;
+    setMutingUser(true);
+    try {
+      const userRes = await fetch(`${BASE}/api/users/by-username/${encodeURIComponent(muteTargetUsername.trim())}`, { credentials: 'include' });
+      // Fallback: search by username through members list
+      const member = members.find(m => m.user.username.toLowerCase() === muteTargetUsername.trim().toLowerCase());
+      if (!member) { toast({ title: 'Usuario no encontrado en el servidor', variant: 'destructive' }); setMutingUser(false); return; }
+      const res = await fetch(`${BASE}/api/servers/${serverId}/mutes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ userId: member.userId, durationMinutes: parseInt(muteDuration, 10), reason: muteReason || null }),
+      });
+      if (res.ok) {
+        toast({ title: `${member.user.displayName} silenciado por ${muteDuration} minutos` });
+        setMuteTargetUsername(''); setMuteReason('');
+        fetch(`${BASE}/api/servers/${serverId}/mutes`, { credentials: 'include' })
+          .then(r => r.json()).then(d => setMutes(Array.isArray(d) ? d : [])).catch(() => {});
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast({ title: d.error ?? 'Error', variant: 'destructive' });
+      }
+    } catch { toast({ title: 'Error de red', variant: 'destructive' }); }
+    setMutingUser(false);
+  };
+
+  const handleUnmute = async (muteId: number) => {
+    await fetch(`${BASE}/api/servers/${serverId}/mutes/${muteId}`, { method: 'DELETE', credentials: 'include' });
+    setMutes(prev => prev.filter(m => m.id !== muteId));
+    toast({ title: 'Silencio eliminado' });
+  };
+
+  const handleAddWord = async () => {
+    if (!newWord.trim()) return;
+    const res = await fetch(`${BASE}/api/servers/${serverId}/word-filters`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ word: newWord.trim() }),
+    });
+    if (res.ok) {
+      const w = await res.json();
+      if (!w.duplicate) setWordFilters(prev => [...prev, w]);
+      setNewWord('');
+      toast({ title: `"${newWord.trim()}" añadido al filtro` });
+    }
+  };
+
+  const handleRemoveWord = async (filterId: number) => {
+    await fetch(`${BASE}/api/servers/${serverId}/word-filters/${filterId}`, { method: 'DELETE', credentials: 'include' });
+    setWordFilters(prev => prev.filter(f => f.id !== filterId));
+  };
+
+  const handleResolveReport = async (reportId: number, action: 'dismiss' | 'delete_message') => {
+    await fetch(`${BASE}/api/reports/${reportId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ action }),
+    });
+    setReports(prev => prev.filter(r => r.id !== reportId));
+    toast({ title: action === 'dismiss' ? 'Reporte descartado' : 'Mensaje eliminado' });
+  };
 
   const { data: roles = [] } = useListServerRoles(serverId, { query: { enabled: isOpen && !!serverId } as any });
   const { data: channels = [] } = useListChannels(serverId, { query: { enabled: isOpen && !!serverId } as any });
@@ -279,6 +373,7 @@ export function ServerSettingsModal({
     members: 'Miembros',
     apariencia: 'Apariencia',
     invitaciones: 'Invitaciones',
+    ...(canManage ? { mutes: '🔇 Silenciados', word_filters: '🚫 Filtros', reports: '⚑ Reportes', audit: '📋 Registro' } : {}),
     ...(isOwner && !isGeneral ? { peligro: '⚠ Peligro' } : {}),
   } as Record<Tab, string>;
 
@@ -666,6 +761,127 @@ export function ServerSettingsModal({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ── MUTES TAB ─────────────────────────────── */}
+          {activeTab === 'mutes' && canManage && (
+            <div className="space-y-6">
+              {/* Add mute form */}
+              <div className="border border-white/10 rounded-xl p-5 bg-secondary/30 space-y-4">
+                <h3 className="text-sm font-semibold text-foreground font-mono uppercase tracking-wider">Silenciar usuario</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <input value={muteTargetUsername} onChange={e => setMuteTargetUsername(e.target.value)} placeholder="Nombre de usuario" className="bg-background border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 col-span-2" />
+                  <select value={muteDuration} onChange={e => setMuteDuration(e.target.value)} className="bg-background border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none">
+                    <option value="5">5 minutos</option>
+                    <option value="30">30 minutos</option>
+                    <option value="60">1 hora</option>
+                    <option value="360">6 horas</option>
+                    <option value="1440">1 día</option>
+                    <option value="10080">1 semana</option>
+                  </select>
+                  <input value={muteReason} onChange={e => setMuteReason(e.target.value)} placeholder="Motivo (opcional)" className="bg-background border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none" />
+                </div>
+                <button onClick={handleMuteUser} disabled={!muteTargetUsername.trim() || mutingUser} className="bg-orange-500 hover:bg-orange-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-40">
+                  {mutingUser ? 'Silenciando…' : 'Silenciar'}
+                </button>
+              </div>
+              {/* Active mutes */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Silenciados activos ({mutes.length})</h3>
+                {mutes.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4 font-mono">Sin usuarios silenciados.</p> :
+                  mutes.map(m => (
+                    <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/5 bg-white/5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{m.user.displayName}</p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          Hasta: {new Date(m.expiresAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}
+                          {m.reason && ` — ${m.reason}`}
+                        </p>
+                      </div>
+                      <button onClick={() => handleUnmute(m.id)} className="px-3 py-1.5 text-xs text-orange-400 hover:bg-orange-400/10 rounded-lg transition-colors border border-orange-400/20">Quitar</button>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
+
+          {/* ── WORD FILTERS TAB ──────────────────────── */}
+          {activeTab === 'word_filters' && canManage && (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Las palabras filtradas son censuradas automáticamente con *** en los mensajes del servidor.</p>
+                <div className="flex gap-2">
+                  <input value={newWord} onChange={e => setNewWord(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddWord()} placeholder="Añadir palabra o frase…" className="flex-1 bg-secondary border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50" />
+                  <button onClick={handleAddWord} disabled={!newWord.trim()} className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-40">Añadir</button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Palabras filtradas ({wordFilters.length})</h3>
+                {wordFilters.length === 0 ? <p className="text-sm text-muted-foreground text-center py-4 font-mono">Sin filtros activos.</p> :
+                  <div className="flex flex-wrap gap-2">
+                    {wordFilters.map(f => (
+                      <div key={f.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-sm">
+                        <span className="text-foreground font-mono">{f.word}</span>
+                        <button onClick={() => handleRemoveWord(f.id)} className="text-muted-foreground hover:text-red-400 transition-colors ml-1 text-xs">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                }
+              </div>
+            </div>
+          )}
+
+          {/* ── REPORTS TAB ───────────────────────────── */}
+          {activeTab === 'reports' && canManage && (
+            <div className="space-y-4">
+              <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Reportes pendientes ({reports.length})</h3>
+              {reports.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8 font-mono">Sin reportes pendientes.</p> :
+                reports.map(r => (
+                  <div key={r.id} className="border border-white/10 rounded-xl p-4 space-y-3 bg-white/5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Mensaje de <span className="text-primary">{r.messageAuthor.displayName}</span></p>
+                        <p className="text-xs text-muted-foreground font-mono">Reportado por: {r.reporter.username}</p>
+                        <p className="text-xs text-muted-foreground mt-1 italic">"{r.reason}"</p>
+                      </div>
+                      <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full ${r.status === 'pending' ? 'bg-orange-400/10 text-orange-400' : 'bg-green-400/10 text-green-400'}`}>{r.status}</span>
+                    </div>
+                    {r.status === 'pending' && (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleResolveReport(r.id, 'dismiss')} className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-white/10 hover:border-white/20 rounded-lg transition-colors">Descartar</button>
+                        <button onClick={() => handleResolveReport(r.id, 'delete_message')} className="px-3 py-1.5 text-xs text-red-400 hover:bg-red-400/10 border border-red-400/20 rounded-lg transition-colors">Eliminar mensaje</button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              }
+            </div>
+          )}
+
+          {/* ── AUDIT LOG TAB ─────────────────────────── */}
+          {activeTab === 'audit' && canManage && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Registro de moderación ({auditLog.length})</h3>
+              {auditLog.length === 0 ? <p className="text-sm text-muted-foreground text-center py-8 font-mono">Sin entradas de registro.</p> :
+                <div className="space-y-2">
+                  {auditLog.map(entry => (
+                    <div key={entry.id} className="flex items-start gap-3 px-4 py-3 rounded-xl border border-white/5 bg-white/[0.03]">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-xs font-mono font-bold text-primary uppercase">{entry.action.replace(/_/g, ' ')}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">{new Date(entry.createdAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {entry.actor ? <span className="text-foreground">{entry.actor.displayName}</span> : 'Sistema'}
+                          {entry.target ? <> → <span className="text-foreground">{entry.target.displayName}</span></> : null}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              }
             </div>
           )}
 

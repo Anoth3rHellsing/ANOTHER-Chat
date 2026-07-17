@@ -11,7 +11,8 @@ type WSEvent =
   | { type: "typing:stop", data: { userId: number, channelId: number } }
   | { type: "user:status", data: { userId: number, status: any } }
   | { type: "voice:member_join", data: { channelId: number, member: any } }
-  | { type: "voice:member_leave", data: { channelId: number, userId: number } };
+  | { type: "voice:member_leave", data: { channelId: number, userId: number } }
+  | { type: "mention:new", data: { messageId: number, channelId: number, serverId: number, authorName: string, preview: string } };
 
 /** Returns true when a React Query key belongs to the messages list for a given channel. */
 function isChannelMessagesKey(queryKey: readonly unknown[], channelId: number): boolean {
@@ -22,16 +23,12 @@ function isChannelMessagesKey(queryKey: readonly unknown[], channelId: number): 
 }
 
 /**
- * useChatWebSocket — manages one WS connection for a channel.
- * 
- * @param channelId       The primary active channel (for typing, message updates).
- * @param allChannelIds   All channels to subscribe to for unread notifications.
- *                        When a message:new arrives for a channel other than channelId,
- *                        the unreadCounts map is updated.
+ * useChatWebSocket — manages one WS connection for a channel with exponential-backoff reconnect.
  */
 export function useChatWebSocket(
   channelId?: number | null,
   allChannelIds?: number[],
+  onMention?: (data: { messageId: number, channelId: number, serverId: number, authorName: string, preview: string }) => void,
 ) {
   const queryClient = useQueryClient();
   const ws = useRef<WebSocket | null>(null);
@@ -46,144 +43,180 @@ export function useChatWebSocket(
     });
   }, []);
 
+  const reconnectAttempt = useRef(0);
+  const reconnectTimer = useRef<NodeJS.Timeout | null>(null);
+  const shouldReconnect = useRef(true);
+  const onMentionRef = useRef(onMention);
+  useEffect(() => { onMentionRef.current = onMention; }, [onMention]);
+
   useEffect(() => {
+    shouldReconnect.current = true;
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     const wsUrl = `${protocol}//${host}${baseUrl}/ws`;
 
-    ws.current = new WebSocket(wsUrl);
-
-    ws.current.onopen = () => {
+    const subscribe = (socket: WebSocket) => {
       if (channelId) {
-        ws.current?.send(JSON.stringify({ type: "subscribe", channel: `channel:${channelId}` }));
+        socket.send(JSON.stringify({ type: "subscribe", channel: `channel:${channelId}` }));
       }
-      // Subscribe to all other channels for notification purposes
       if (allChannelIds) {
         for (const cid of allChannelIds) {
           if (cid !== channelId) {
-            ws.current?.send(JSON.stringify({ type: "subscribe", channel: `channel:${cid}` }));
+            socket.send(JSON.stringify({ type: "subscribe", channel: `channel:${cid}` }));
           }
         }
       }
     };
 
-    ws.current.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as WSEvent;
+    const connect = () => {
+      if (!shouldReconnect.current) return;
 
-        switch (payload.type) {
-          case 'message:new':
-            if (channelId && channelId === payload.data.channelId) {
-              queryClient.setQueriesData(
-                { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
-                (old: any) => {
-                  if (!old) return [payload.data];
-                  if (old.some((m: any) => m.id === payload.data.id)) return old;
-                  return [...old, payload.data];
-                }
-              );
-            } else if (payload.data.channelId && payload.data.channelId !== channelId) {
-              // Message in a non-active channel — increment unread
-              setUnreadCounts(prev => {
-                const next = new Map(prev);
-                const current = next.get(payload.data.channelId) ?? 0;
-                next.set(payload.data.channelId, current + 1);
-                return next;
+      const socket = new WebSocket(wsUrl);
+      ws.current = socket;
+
+      socket.onopen = () => {
+        reconnectAttempt.current = 0;
+        subscribe(socket);
+      };
+
+      socket.onclose = (e) => {
+        if (!shouldReconnect.current) return;
+        if (e.code === 1000 || e.code === 1001) return; // intentional
+        const delay = Math.min(500 * 2 ** reconnectAttempt.current + Math.random() * 300, 30_000);
+        reconnectAttempt.current++;
+        reconnectTimer.current = setTimeout(connect, delay);
+      };
+
+      socket.onerror = () => socket.close();
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as WSEvent;
+
+          switch (payload.type) {
+            case 'message:new':
+              if (channelId && channelId === payload.data.channelId) {
+                queryClient.setQueriesData(
+                  { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
+                  (old: any) => {
+                    if (!old) return [payload.data];
+                    if (old.some((m: any) => m.id === payload.data.id)) return old;
+                    return [...old, payload.data];
+                  }
+                );
+              } else if (payload.data.channelId && payload.data.channelId !== channelId) {
+                setUnreadCounts(prev => {
+                  const next = new Map(prev);
+                  const current = next.get(payload.data.channelId) ?? 0;
+                  next.set(payload.data.channelId, current + 1);
+                  return next;
+                });
+              }
+              break;
+
+            case 'message:edit':
+              if (channelId && channelId === payload.data.channelId) {
+                queryClient.setQueriesData(
+                  { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
+                  (old: any) => {
+                    if (!old) return old;
+                    return old.map((m: any) => m.id === payload.data.id ? payload.data : m);
+                  }
+                );
+              }
+              break;
+
+            case 'message:delete':
+              if (channelId && channelId === payload.data.channelId) {
+                queryClient.setQueriesData(
+                  { predicate: (q) => isChannelMessagesKey(q.queryKey, payload.data.channelId) },
+                  (old: any) => {
+                    if (!old) return old;
+                    return old.map((m: any) =>
+                      m.id === payload.data.id ? { ...m, deletedAt: new Date().toISOString() } : m
+                    );
+                  }
+                );
+              }
+              break;
+
+            case 'message_reaction_update':
+              if (channelId) {
+                queryClient.setQueriesData(
+                  { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
+                  (old: any) => {
+                    if (!old) return old;
+                    return old.map((m: any) =>
+                      m.id === payload.data.messageId
+                        ? { ...m, reactions: payload.data.reactions }
+                        : m
+                    );
+                  }
+                );
+              }
+              break;
+
+            case 'typing:start':
+              if (channelId === payload.data.channelId) {
+                setTypingUsers(prev => {
+                  const next = new Set(prev);
+                  next.add(payload.data.userId);
+                  return next;
+                });
+              }
+              break;
+
+            case 'typing:stop':
+              if (channelId === payload.data.channelId) {
+                setTypingUsers(prev => {
+                  const next = new Set(prev);
+                  next.delete(payload.data.userId);
+                  return next;
+                });
+              }
+              break;
+
+            case 'voice:member_join':
+              if (payload.data?.channelId) {
+                queryClient.invalidateQueries({ queryKey: getGetVoiceMembersQueryKey(payload.data.channelId) });
+              }
+              break;
+
+            case 'voice:member_leave':
+              if (payload.data?.channelId) {
+                queryClient.invalidateQueries({ queryKey: getGetVoiceMembersQueryKey(payload.data.channelId) });
+              }
+              break;
+
+            case 'user:status':
+              queryClient.invalidateQueries({
+                predicate: (query) =>
+                  typeof query.queryKey[0] === 'string' &&
+                  (query.queryKey[0] as string).startsWith('/api/servers') &&
+                  (query.queryKey[0] as string).endsWith('/members')
               });
-            }
-            break;
+              break;
 
-          case 'message:edit':
-            if (channelId && channelId === payload.data.channelId) {
-              queryClient.setQueriesData(
-                { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
-                (old: any) => {
-                  if (!old) return old;
-                  return old.map((m: any) => m.id === payload.data.id ? payload.data : m);
-                }
-              );
-            }
-            break;
-
-          case 'message:delete':
-            if (channelId && channelId === payload.data.channelId) {
-              queryClient.setQueriesData(
-                { predicate: (q) => isChannelMessagesKey(q.queryKey, payload.data.channelId) },
-                (old: any) => {
-                  if (!old) return old;
-                  return old.map((m: any) =>
-                    m.id === payload.data.id ? { ...m, deletedAt: new Date().toISOString() } : m
-                  );
-                }
-              );
-            }
-            break;
-
-          case 'message_reaction_update':
-            if (channelId) {
-              queryClient.setQueriesData(
-                { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
-                (old: any) => {
-                  if (!old) return old;
-                  return old.map((m: any) =>
-                    m.id === payload.data.messageId
-                      ? { ...m, reactions: payload.data.reactions }
-                      : m
-                  );
-                }
-              );
-            }
-            break;
-
-          case 'typing:start':
-            if (channelId === payload.data.channelId) {
-              setTypingUsers(prev => {
-                const next = new Set(prev);
-                next.add(payload.data.userId);
-                return next;
-              });
-            }
-            break;
-
-          case 'typing:stop':
-            if (channelId === payload.data.channelId) {
-              setTypingUsers(prev => {
-                const next = new Set(prev);
-                next.delete(payload.data.userId);
-                return next;
-              });
-            }
-            break;
-
-          case 'voice:member_join':
-            if (payload.data?.channelId) {
-              queryClient.invalidateQueries({ queryKey: getGetVoiceMembersQueryKey(payload.data.channelId) });
-            }
-            break;
-
-          case 'voice:member_leave':
-            if (payload.data?.channelId) {
-              queryClient.invalidateQueries({ queryKey: getGetVoiceMembersQueryKey(payload.data.channelId) });
-            }
-            break;
-
-          case 'user:status':
-            queryClient.invalidateQueries({
-              predicate: (query) =>
-                typeof query.queryKey[0] === 'string' &&
-                (query.queryKey[0] as string).startsWith('/api/servers') &&
-                (query.queryKey[0] as string).endsWith('/members')
-            });
-            break;
+            case 'mention:new':
+              if (onMentionRef.current) {
+                onMentionRef.current(payload.data);
+              }
+              break;
+          }
+        } catch (err) {
+          console.error("WS parse error", err);
         }
-      } catch (err) {
-        console.error("WS parse error", err);
-      }
+      };
     };
 
+    connect();
+
     return () => {
-      ws.current?.close();
+      shouldReconnect.current = false;
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      ws.current?.close(1000, 'unmount');
       setTypingUsers(new Set());
     };
   }, [channelId, allChannelIds?.join(','), queryClient]);

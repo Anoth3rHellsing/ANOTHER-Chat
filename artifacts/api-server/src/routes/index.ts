@@ -11,6 +11,10 @@ import rolesRouter from "./roles";
 import voiceRouter from "./voice";
 import storiesRouter from "./stories";
 import clipsRouter from "./clips";
+import friendsRouter from "./friends";
+import searchRouter from "./search";
+import dmGroupsRouter from "./dm-groups";
+import moderationRouter from "./moderation";
 
 const router: IRouter = Router();
 
@@ -26,5 +30,9 @@ router.use(rolesRouter);
 router.use(voiceRouter);
 router.use(storiesRouter);
 router.use(clipsRouter);
+router.use(friendsRouter);
+router.use(searchRouter);
+router.use(dmGroupsRouter);
+router.use(moderationRouter);
 
 export default router;

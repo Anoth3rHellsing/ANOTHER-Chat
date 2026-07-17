@@ -1,10 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { safeCloseAudioContext } from '@/lib/settings-utils';
+import { safeCloseAudioContext, videoConstraintsFromQuality, type VideoQuality } from '@/lib/settings-utils';
 import { playVoiceJoinSound, playVoiceLeaveSound } from '@/lib/voice-sounds';
 
-const STUN_SERVERS = [
+const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  // Open Relay TURN server — no registration required
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turns:openrelay.metered.ca:443',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
 
 export interface VoiceMember {
@@ -19,6 +29,7 @@ export interface AudioVideoSettings {
   audioInputId?: string;
   audioOutputId?: string;
   volume?: number;
+  videoQuality?: VideoQuality;
 }
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connected';
@@ -211,7 +222,7 @@ export function useWebRTC(options: {
       return peerConnections.current.get(peerId)!;
     }
 
-    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peerConnections.current.set(peerId, pc);
 
     if (localStreamRef.current) {
@@ -486,7 +497,8 @@ export function useWebRTC(options: {
       setIsCameraOn(false);
     } else {
       try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const videoConstraints = videoConstraintsFromQuality(settings.videoQuality ?? 'medium');
+        const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
         const videoTrack = videoStream.getVideoTracks()[0];
         if (localStreamRef.current) {
           localStreamRef.current.addTrack(videoTrack);

@@ -73,7 +73,7 @@ router.get("/users/:userId", requireAuth, async (req, res): Promise<void> => {
 // PATCH /users/me
 router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const { displayName, bio, status, socialLinks } = req.body;
+  const { displayName, bio, status, socialLinks, customStatus, statusEmoji } = req.body;
 
   const updates: Record<string, unknown> = {};
   if (displayName !== undefined) updates.displayName = displayName;
@@ -85,7 +85,10 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
     updates.socialLinks = JSON.stringify(socialLinks);
   }
 
-  if (Object.keys(updates).length === 0) {
+  // Raw SQL for custom_status and status_emoji (not in drizzle schema)
+  let rawUpdateNeeded = customStatus !== undefined || statusEmoji !== undefined;
+
+  if (Object.keys(updates).length === 0 && !rawUpdateNeeded) {
     res.status(400).json({ error: "No hay cambios para aplicar" });
     return;
   }
@@ -96,13 +99,26 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
     .where(eq(usersTable.id, userId))
     .returning();
 
-  // Broadcast status change via WebSocket
-  if (updates.status) {
-    const { broadcastAll } = await import("../lib/websocket");
-    broadcastAll({ type: "user:status", data: { userId, status: updates.status } });
+  if (rawUpdateNeeded) {
+    const { pool } = await import("@workspace/db");
+    const client = await pool.connect();
+    try {
+      const setParts: string[] = [];
+      const vals: any[] = [];
+      if (customStatus !== undefined) { setParts.push(`custom_status=${vals.length + 1}`); vals.push(customStatus || null); }
+      if (statusEmoji !== undefined) { setParts.push(`status_emoji=${vals.length + 1}`); vals.push(statusEmoji || null); }
+      vals.push(userId);
+      await client.query(`UPDATE users SET ${setParts.join(', ')} WHERE id=${vals.length}`, vals);
+    } finally { client.release(); }
   }
 
-  res.json(serializeUser(updated));
+  // Broadcast status change via WebSocket
+  if (updates.status || rawUpdateNeeded) {
+    const { broadcastAll } = await import("../lib/websocket");
+    broadcastAll({ type: "user:status", data: { userId, status: updated.status, customStatus: customStatus ?? undefined, statusEmoji: statusEmoji ?? undefined } });
+  }
+
+  res.json({ ...serializeUser(updated), customStatus: customStatus ?? undefined, statusEmoji: statusEmoji ?? undefined });
 });
 
 // POST /users/me/avatar

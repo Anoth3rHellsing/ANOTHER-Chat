@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, Mic, Activity } from 'lucide-react';
+import { X, Volume2, Mic, Activity, Video } from 'lucide-react';
 import { type AudioVideoSettings, loadSettings, saveSettings, safeCloseAudioContext } from '@/lib/settings-utils';
 
 const SECTIONS = [
   { id: 'voice', label: 'Voz y audio', icon: Volume2 },
+  { id: 'video', label: 'Calidad de vídeo', icon: Video },
 ] as const;
 
 type SectionId = typeof SECTIONS[number]['id'];
@@ -169,6 +170,9 @@ export function SettingsModal({ isOpen, onClose, settings, onSettingsChange }: S
                     onStopTest={stopMicTest}
                   />
                 )}
+                {activeSection === 'video' && (
+                  <VideoQualitySection settings={settings} update={update} />
+                )}
               </div>
             </div>
           </motion.div>
@@ -290,6 +294,51 @@ function VoiceAudioSection({
       <div className="rounded-lg bg-secondary/50 border border-white/5 px-4 py-3">
         <p className="text-xs text-muted-foreground font-mono">
           Estas configuraciones se aplican a las llamadas de voz y video. Podés cambiarlas en cualquier momento durante una llamada desde el panel de ajustes.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function VideoQualitySection({ settings, update }: { settings: AudioVideoSettings; update: (p: Partial<AudioVideoSettings>) => void }) {
+  const qualities = [
+    { value: 'low',    label: 'Baja',  desc: '320×240 — 15fps. Mejor para conexiones lentas.' },
+    { value: 'medium', label: 'Media', desc: '640×480 — 24fps. Recomendado para la mayoría.' },
+    { value: 'high',   label: 'Alta',  desc: '1280×720 — 30fps. HD. Requiere buena conexión.' },
+  ] as const;
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground uppercase tracking-wider">
+          <Video className="w-3.5 h-3.5" />
+          Calidad de cámara en llamadas
+        </label>
+        <div className="space-y-2">
+          {qualities.map(q => (
+            <button
+              key={q.value}
+              onClick={() => update({ videoQuality: q.value })}
+              className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border transition-all text-left ${
+                (settings.videoQuality ?? 'medium') === q.value
+                  ? 'border-primary/50 bg-primary/10 text-foreground'
+                  : 'border-white/10 bg-secondary hover:border-white/20 text-muted-foreground'
+              }`}
+            >
+              <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${(settings.videoQuality ?? 'medium') === q.value ? 'border-primary' : 'border-muted-foreground/40'}`}>
+                {(settings.videoQuality ?? 'medium') === q.value && <div className="w-2 h-2 rounded-full bg-primary" />}
+              </div>
+              <div>
+                <p className="text-sm font-medium">{q.label}</p>
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">{q.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-lg bg-secondary/50 border border-white/5 px-4 py-3">
+        <p className="text-xs text-muted-foreground font-mono">
+          La calidad se aplica cuando activás la cámara en una llamada de voz. La calidad alta puede aumentar el consumo de ancho de banda.
         </p>
       </div>
     </div>
