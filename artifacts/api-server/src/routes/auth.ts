@@ -6,6 +6,10 @@ import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
+function parseLinks(raw: string | null | undefined): Array<{ platform: string; url: string; label?: string }> {
+  try { return JSON.parse(raw ?? "[]") as Array<{ platform: string; url: string; label?: string }>; } catch { return []; }
+}
+
 // POST /auth/login
 router.post("/auth/login", async (req, res): Promise<void> => {
   const { username, password } = req.body;
@@ -61,6 +65,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       status: "online",
       role: user.role,
       createdAt: user.createdAt,
+      socialLinks: parseLinks(user.socialLinks),
     });
   });
 });
@@ -157,6 +162,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       status: "online",
       role: newUser.role,
       createdAt: newUser.createdAt,
+      socialLinks: [],
     });
   });
 });
@@ -201,6 +207,7 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     status: user.status,
     role: user.role,
     createdAt: user.createdAt,
+    socialLinks: parseLinks(user.socialLinks),
   });
 });
 

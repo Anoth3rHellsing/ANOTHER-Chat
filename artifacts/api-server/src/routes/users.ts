@@ -31,6 +31,31 @@ const upload = multer({
   },
 });
 
+/** Parse the socialLinks JSON stored as text */
+function parseSocialLinks(raw: string): Array<{ platform: string; url: string; label?: string }> {
+  try {
+    return JSON.parse(raw) as Array<{ platform: string; url: string; label?: string }>;
+  } catch {
+    return [];
+  }
+}
+
+/** Serialize a user row to the public profile shape */
+function serializeUser(user: typeof usersTable.$inferSelect) {
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    bio: user.bio,
+    avatarUrl: user.avatarUrl,
+    bannerUrl: user.bannerUrl,
+    status: user.status,
+    role: user.role,
+    createdAt: user.createdAt,
+    socialLinks: parseSocialLinks(user.socialLinks),
+  };
+}
+
 // GET /users/:userId
 router.get("/users/:userId", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
@@ -42,29 +67,22 @@ router.get("/users/:userId", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    bio: user.bio,
-    avatarUrl: user.avatarUrl,
-    bannerUrl: user.bannerUrl,
-    status: user.status,
-    role: user.role,
-    createdAt: user.createdAt,
-  });
+  res.json(serializeUser(user));
 });
 
 // PATCH /users/me
 router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const { displayName, bio, status } = req.body;
+  const { displayName, bio, status, socialLinks } = req.body;
 
   const updates: Record<string, unknown> = {};
   if (displayName !== undefined) updates.displayName = displayName;
   if (bio !== undefined) updates.bio = bio;
   if (status !== undefined && ["online", "away", "dnd", "offline"].includes(status)) {
     updates.status = status;
+  }
+  if (socialLinks !== undefined && Array.isArray(socialLinks)) {
+    updates.socialLinks = JSON.stringify(socialLinks);
   }
 
   if (Object.keys(updates).length === 0) {
@@ -84,17 +102,7 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
     broadcastAll({ type: "user:status", data: { userId, status: updates.status } });
   }
 
-  res.json({
-    id: updated.id,
-    username: updated.username,
-    displayName: updated.displayName,
-    bio: updated.bio,
-    avatarUrl: updated.avatarUrl,
-    bannerUrl: updated.bannerUrl,
-    status: updated.status,
-    role: updated.role,
-    createdAt: updated.createdAt,
-  });
+  res.json(serializeUser(updated));
 });
 
 // POST /users/me/avatar

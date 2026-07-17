@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ProfileUpdateStatus } from './profileUpdateStatus';
+import type { SocialLink } from './socialLink';
 
 export interface ProfileUpdate {
   /**
@@ -16,4 +17,5 @@ export interface ProfileUpdate {
   /** @maxLength 200 */
   bio?: string;
   status?: ProfileUpdateStatus;
+  socialLinks?: SocialLink[];
 }

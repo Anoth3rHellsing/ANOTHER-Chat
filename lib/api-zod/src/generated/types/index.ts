@@ -31,6 +31,8 @@ export * from './serverMember';
 export * from './serverMemberRole';
 export * from './serverRole';
 export * from './serverRoleInput';
+export * from './socialLink';
+export * from './socialLinkPlatform';
 export * from './user';
 export * from './userProfile';
 export * from './userProfileRole';

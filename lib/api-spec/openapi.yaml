@@ -753,6 +753,18 @@ components:
       required:
         - status
 
+    SocialLink:
+      type: object
+      required: [platform, url]
+      properties:
+        platform:
+          type: string
+          enum: [instagram, twitter, youtube, twitch, github, custom]
+        url:
+          type: string
+        label:
+          type: string
+
     User:
       type: object
       required: [id, username, displayName, status, role, createdAt]
@@ -778,6 +790,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        socialLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SocialLink"
 
     UserProfile:
       type: object
@@ -804,6 +820,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        socialLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SocialLink"
 
     AdminUser:
       type: object
@@ -1076,6 +1096,10 @@ components:
         status:
           type: string
           enum: [online, away, dnd, offline]
+        socialLinks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SocialLink"
 
     MemberRoleUpdate:
       type: object

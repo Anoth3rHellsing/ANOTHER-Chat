@@ -33,7 +33,12 @@ export const LoginResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 
 
@@ -65,7 +70,12 @@ export const RegisterResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 
 
@@ -87,7 +97,12 @@ export const GetCurrentUserResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 
 
@@ -184,7 +199,12 @@ export const JoinServerResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 })
 
@@ -230,7 +250,12 @@ export const GetServerMembersResponseItem = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 })
 export const GetServerMembersResponse = zod.array(GetServerMembersResponseItem)
@@ -272,7 +297,12 @@ export const UpdateMemberRoleResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 })
 
@@ -494,7 +524,12 @@ export const ListMessagesResponseItem = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
@@ -532,7 +567,12 @@ export const SendMessageResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 })
 
@@ -570,7 +610,12 @@ export const EditMessageResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 })
 
@@ -602,7 +647,12 @@ export const GetUserProfileResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 
 
@@ -618,7 +668,12 @@ export const updateMyProfileBodyBioMax = 200;
 export const UpdateMyProfileBody = zod.object({
   "displayName": zod.string().min(1).max(updateMyProfileBodyDisplayNameMax).optional(),
   "bio": zod.string().max(updateMyProfileBodyBioMax).optional(),
-  "status": zod.enum(['online', 'away', 'dnd', 'offline']).optional()
+  "status": zod.enum(['online', 'away', 'dnd', 'offline']).optional(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 
 export const UpdateMyProfileResponse = zod.object({
@@ -630,7 +685,12 @@ export const UpdateMyProfileResponse = zod.object({
   "bannerUrl": zod.string().nullish(),
   "status": zod.enum(['online', 'away', 'dnd', 'offline']),
   "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
 })
 
 

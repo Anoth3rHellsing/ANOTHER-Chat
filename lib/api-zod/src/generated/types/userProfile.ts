@@ -5,6 +5,7 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
+import type { SocialLink } from './socialLink';
 import type { UserProfileRole } from './userProfileRole';
 import type { UserProfileStatus } from './userProfileStatus';
 
@@ -21,4 +22,5 @@ export interface UserProfile {
   status: UserProfileStatus;
   role: UserProfileRole;
   createdAt: Date;
+  socialLinks?: SocialLink[];
 }

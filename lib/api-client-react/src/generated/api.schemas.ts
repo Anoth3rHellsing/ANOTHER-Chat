@@ -9,6 +9,24 @@ export interface HealthStatus {
   status: string;
 }
 
+export type SocialLinkPlatform = typeof SocialLinkPlatform[keyof typeof SocialLinkPlatform];
+
+
+export const SocialLinkPlatform = {
+  instagram: 'instagram',
+  twitter: 'twitter',
+  youtube: 'youtube',
+  twitch: 'twitch',
+  github: 'github',
+  custom: 'custom',
+} as const;
+
+export interface SocialLink {
+  platform: SocialLinkPlatform;
+  url: string;
+  label?: string;
+}
+
 export type UserStatus = typeof UserStatus[keyof typeof UserStatus];
 
 
@@ -40,6 +58,7 @@ export interface User {
   status: UserStatus;
   role: UserRole;
   createdAt: string;
+  socialLinks?: SocialLink[];
 }
 
 export type UserProfileStatus = typeof UserProfileStatus[keyof typeof UserProfileStatus];
@@ -73,6 +92,7 @@ export interface UserProfile {
   status: UserProfileStatus;
   role: UserProfileRole;
   createdAt: string;
+  socialLinks?: SocialLink[];
 }
 
 export interface AdminUser {
@@ -263,6 +283,7 @@ export interface ProfileUpdate {
   /** @maxLength 200 */
   bio?: string;
   status?: ProfileUpdateStatus;
+  socialLinks?: SocialLink[];
 }
 
 export type MemberRoleUpdateRole = typeof MemberRoleUpdateRole[keyof typeof MemberRoleUpdateRole];

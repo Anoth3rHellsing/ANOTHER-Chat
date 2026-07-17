@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,6 +13,7 @@ export const usersTable = pgTable("users", {
   status: text("status").notNull().default("offline"), // online | away | dnd | offline
   role: text("role").notNull().default("member"), // admin | member
   banned: boolean("banned").notNull().default(false),
+  socialLinks: text("social_links").notNull().default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { ProfileModal } from '@/components/profile-modal';
 import { ServerSettingsModal } from '@/components/server-settings-modal';
+import { UserProfileCard } from '@/components/user-profile-card';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -34,6 +35,18 @@ export default function AppLayout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [showMembers, setShowMembers] = useState(true);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedAnchorRect, setSelectedAnchorRect] = useState<DOMRect | null>(null);
+
+  const openProfileCard = (userId: number, e: React.MouseEvent) => {
+    // Don't open card for self — open profile editor instead
+    if (userId === user?.id) {
+      setIsProfileOpen(true);
+      return;
+    }
+    setSelectedUserId(userId);
+    setSelectedAnchorRect((e.currentTarget as HTMLElement).getBoundingClientRect());
+  };
 
   // Derive active items
   useEffect(() => {
@@ -328,7 +341,7 @@ export default function AppLayout() {
                 return (
                   <div key={msg.id} className={`group flex gap-4 ${isFirst ? 'mt-6' : 'mt-1'}`}>
                     {isFirst ? (
-                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer">
+                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all" onClick={e => openProfileCard(msg.userId, e)}>
                         {msg.author.avatarUrl ? <img src={msg.author.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                     ) : (
@@ -340,7 +353,7 @@ export default function AppLayout() {
                     <div className="flex-1 min-w-0">
                       {isFirst && (
                         <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-                          <span className="font-medium text-foreground hover:underline cursor-pointer">{msg.author.displayName}</span>
+                          <span className="font-medium text-foreground hover:underline cursor-pointer" onClick={e => openProfileCard(msg.userId, e)}>{msg.author.displayName}</span>
                           <span className="text-xs text-muted-foreground font-mono">{format(new Date(msg.createdAt), "dd/MM/yyyy HH:mm")}</span>
                         </div>
                       )}
@@ -439,7 +452,7 @@ export default function AppLayout() {
                 <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Conectados — {groupedMembers.online.length}</h3>
                 <div className="space-y-1">
                   {groupedMembers.online.map(member => (
-                    <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer group">
+                    <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer group" onClick={e => openProfileCard(member.userId, e)}>
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
                           {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
@@ -479,7 +492,7 @@ export default function AppLayout() {
                 <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Desconectados — {groupedMembers.offline.length}</h3>
                 <div className="space-y-1">
                   {groupedMembers.offline.map(member => (
-                    <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-white/5 cursor-pointer transition-opacity">
+                    <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-white/5 cursor-pointer transition-opacity" onClick={e => openProfileCard(member.userId, e)}>
                       <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                         {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover grayscale" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                       </div>
@@ -510,6 +523,16 @@ export default function AppLayout() {
 
           </div>
         </div>
+      )}
+
+      {/* Profile Card popup */}
+      {selectedUserId !== null && (
+        <UserProfileCard
+          userId={selectedUserId}
+          currentUserId={user.id}
+          anchorRect={selectedAnchorRect}
+          onClose={() => { setSelectedUserId(null); setSelectedAnchorRect(null); }}
+        />
       )}
 
       {/* Profile Modal */}
