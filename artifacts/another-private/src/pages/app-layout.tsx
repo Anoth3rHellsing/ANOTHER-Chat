@@ -5,7 +5,7 @@ import {
   useGetServerMembers, useListChannels, useCreateChannel, 
   useListMessages, useSendMessage, useEditMessage, useDeleteMessage,
   useUpdateMyProfile, getGetCurrentUserQueryKey,
-  getListMessagesQueryKey, getListChannelsQueryKey, getListServersQueryKey
+  getListChannelsQueryKey, getListServersQueryKey
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
@@ -87,13 +87,26 @@ export default function AppLayout() {
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageInput.trim() || !activeChannelId) return;
-    
+    const channelId = activeChannelId;
+
     sendMessage.mutate(
-      { channelId: activeChannelId, data: { content: messageInput.trim() } },
-      { onSuccess: () => {
-        setMessageInput('');
-        sendTypingStop();
-      }}
+      { channelId, data: { content: messageInput.trim() } },
+      {
+        onSuccess: (newMessage) => {
+          // Optimistically insert the message for the sender immediately.
+          // The WebSocket echo will arrive shortly and the dedup check prevents doubles.
+          queryClient.setQueriesData(
+            { predicate: (q) => q.queryKey[0] === `/api/channels/${channelId}/messages` },
+            (old: any) => {
+              if (!old) return [newMessage];
+              if (old.some((m: any) => m.id === (newMessage as any).id)) return old;
+              return [...old, newMessage];
+            }
+          );
+          setMessageInput('');
+          sendTypingStop();
+        }
+      }
     );
   };
 

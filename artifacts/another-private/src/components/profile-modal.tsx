@@ -135,9 +135,8 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
               </button>
             </div>
 
-            {/* Avatar & Content */}
-            <div className="px-6 pb-6 relative flex-1 overflow-y-auto">
-              {/* Avatar positioning */}
+            {/* Avatar — sits OUTSIDE the overflow-y-auto so it can visually overlap the banner */}
+            <div className="px-6 pt-0 relative z-10">
               <div className="relative -mt-10 mb-4 inline-block group">
                 <div className="w-20 h-20 rounded-full border-4 border-card bg-secondary flex items-center justify-center overflow-hidden relative">
                   {avatarUrl ? (
@@ -150,11 +149,14 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
                   </div>
                 </div>
                 <input type="file" ref={fileInputAvatar} accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0], 'avatar')} />
-                
+
                 {/* Status indicator on avatar */}
                 <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-4 border-card ${statusOptions.find(s => s.value === status)?.color}`} />
               </div>
+            </div>
 
+            {/* Scrollable form content */}
+            <div className="px-6 pb-6 relative flex-1 overflow-y-auto">
               <div className="space-y-5">
                 <div className="space-y-1">
                   <label className="text-xs font-mono text-muted-foreground uppercase">Nombre de visualización</label>
