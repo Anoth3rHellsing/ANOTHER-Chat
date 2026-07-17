@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "A.N.O.T.H.E.R. Private"
+version = "1.0.0"
+id = "artifacts/another-private"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19327
+
+[services.development]
+run = "pnpm --filter @workspace/another-private run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/another-private", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/another-private/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19327"
+BASE_PATH = "/"

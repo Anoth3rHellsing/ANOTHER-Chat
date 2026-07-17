@@ -1,0 +1,3 @@
+- [Codegen barrel fix](codegen-barrel-fix.md) — orval overwrites lib/api-zod/src/index.ts on each run; fix via post-codegen script
+- [WebSocket proxy path](ws-proxy-path.md) — /ws must be in artifact.toml paths array or proxy silently drops WS connections
+- [AES-256 message encryption](message-encryption.md) — messages encrypted before DB insert; IV stored per-row; MESSAGE_ENCRYPTION_KEY env var
