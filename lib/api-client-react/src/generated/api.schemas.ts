@@ -5,6 +5,15 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
+export interface VoiceMember {
+  userId: number;
+  username: string;
+  displayName: string;
+  /** @nullable */
+  avatarUrl?: string | null;
+  status: string;
+}
+
 export interface HealthStatus {
   status: string;
 }

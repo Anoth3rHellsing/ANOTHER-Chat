@@ -54,7 +54,8 @@ import type {
   UploadServerBannerBody,
   UploadServerIconBody,
   User,
-  UserProfile
+  UserProfile,
+  VoiceMember
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -3400,6 +3401,225 @@ export const useUnbanUser = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUnbanUserMutationOptions(options));
+    }
+
+export const getGetVoiceMembersUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/voice`
+}
+
+/**
+ * @summary Get current voice channel members
+ */
+export const getVoiceMembers = async (channelId: number, options?: RequestInit): Promise<VoiceMember[]> => {
+
+  return customFetch<VoiceMember[]>(getGetVoiceMembersUrl(channelId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVoiceMembersQueryKey = (channelId: number,) => {
+    return [
+    `/api/channels/${channelId}/voice`
+    ] as const;
+    }
+
+
+export const getGetVoiceMembersQueryOptions = <TData = Awaited<ReturnType<typeof getVoiceMembers>>, TError = ErrorType<unknown>>(channelId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVoiceMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVoiceMembersQueryKey(channelId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVoiceMembers>>> = ({ signal }) => getVoiceMembers(channelId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVoiceMembers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVoiceMembersQueryResult = NonNullable<Awaited<ReturnType<typeof getVoiceMembers>>>
+export type GetVoiceMembersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get current voice channel members
+ */
+
+export function useGetVoiceMembers<TData = Awaited<ReturnType<typeof getVoiceMembers>>, TError = ErrorType<unknown>>(
+ channelId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVoiceMembers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVoiceMembersQueryOptions(channelId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getJoinVoiceChannelUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/voice/join`
+}
+
+/**
+ * @summary Join a voice channel
+ */
+export const joinVoiceChannel = async (channelId: number, options?: RequestInit): Promise<VoiceMember[]> => {
+
+  return customFetch<VoiceMember[]>(getJoinVoiceChannelUrl(channelId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getJoinVoiceChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinVoiceChannel>>, TError,{channelId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinVoiceChannel>>, TError,{channelId: number}, TContext> => {
+
+const mutationKey = ['joinVoiceChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinVoiceChannel>>, {channelId: number}> = (props) => {
+          const {channelId} = props ?? {};
+
+          return  joinVoiceChannel(channelId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinVoiceChannelMutationResult = NonNullable<Awaited<ReturnType<typeof joinVoiceChannel>>>
+
+    export type JoinVoiceChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Join a voice channel
+ */
+export const useJoinVoiceChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinVoiceChannel>>, TError,{channelId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinVoiceChannel>>,
+        TError,
+        {channelId: number},
+        TContext
+      > => {
+      return useMutation(getJoinVoiceChannelMutationOptions(options));
+    }
+
+export const getLeaveVoiceChannelUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/voice/leave`
+}
+
+/**
+ * @summary Leave a voice channel
+ */
+export const leaveVoiceChannel = async (channelId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getLeaveVoiceChannelUrl(channelId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLeaveVoiceChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveVoiceChannel>>, TError,{channelId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof leaveVoiceChannel>>, TError,{channelId: number}, TContext> => {
+
+const mutationKey = ['leaveVoiceChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof leaveVoiceChannel>>, {channelId: number}> = (props) => {
+          const {channelId} = props ?? {};
+
+          return  leaveVoiceChannel(channelId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LeaveVoiceChannelMutationResult = NonNullable<Awaited<ReturnType<typeof leaveVoiceChannel>>>
+
+    export type LeaveVoiceChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Leave a voice channel
+ */
+export const useLeaveVoiceChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveVoiceChannel>>, TError,{channelId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof leaveVoiceChannel>>,
+        TError,
+        {channelId: number},
+        TContext
+      > => {
+      return useMutation(getLeaveVoiceChannelMutationOptions(options));
     }
 
 export const getListDmConversationsUrl = () => {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { getGetVoiceMembersQueryKey } from '@workspace/api-client-react';
 
 type WSEvent = 
   | { type: "message:new", data: any }
@@ -8,7 +9,9 @@ type WSEvent =
   | { type: "message_reaction_update", data: { messageId: number, reactions: any[] } }
   | { type: "typing:start", data: { userId: number, channelId: number } }
   | { type: "typing:stop", data: { userId: number, channelId: number } }
-  | { type: "user:status", data: { userId: number, status: any } };
+  | { type: "user:status", data: { userId: number, status: any } }
+  | { type: "voice:member_join", data: { channelId: number, member: any } }
+  | { type: "voice:member_leave", data: { channelId: number, userId: number } };
 
 /** Returns true when a React Query key belongs to the messages list for a given channel. */
 function isChannelMessagesKey(queryKey: readonly unknown[], channelId: number): boolean {
@@ -114,6 +117,18 @@ export function useChatWebSocket(channelId?: number | null) {
                 next.delete(payload.data.userId);
                 return next;
               });
+            }
+            break;
+
+          case 'voice:member_join':
+            if (payload.data?.channelId) {
+              queryClient.invalidateQueries({ queryKey: getGetVoiceMembersQueryKey(payload.data.channelId) });
+            }
+            break;
+
+          case 'voice:member_leave':
+            if (payload.data?.channelId) {
+              queryClient.invalidateQueries({ queryKey: getGetVoiceMembersQueryKey(payload.data.channelId) });
             }
             break;
 

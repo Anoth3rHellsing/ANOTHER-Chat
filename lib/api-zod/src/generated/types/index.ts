@@ -58,3 +58,4 @@ export * from './userProfileRole';
 export * from './userProfileStatus';
 export * from './userRole';
 export * from './userStatus';
+export * from './voiceMember';

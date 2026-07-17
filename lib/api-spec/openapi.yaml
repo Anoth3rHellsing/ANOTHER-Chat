@@ -962,6 +962,63 @@ paths:
         "204":
           description: User unbanned
 
+  /channels/{channelId}/voice:
+    get:
+      operationId: getVoiceMembers
+      tags: [channels]
+      summary: Get current voice channel members
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Voice members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VoiceMember"
+
+  /channels/{channelId}/voice/join:
+    post:
+      operationId: joinVoiceChannel
+      tags: [channels]
+      summary: Join a voice channel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Voice members after joining
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VoiceMember"
+
+  /channels/{channelId}/voice/leave:
+    post:
+      operationId: leaveVoiceChannel
+      tags: [channels]
+      summary: Leave a voice channel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Left voice channel
+
   /dms:
     get:
       operationId: listDmConversations
@@ -1070,6 +1127,21 @@ paths:
 
 components:
   schemas:
+    VoiceMember:
+      type: object
+      required: [userId, username, displayName, status]
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        status:
+          type: string
+
     HealthStatus:
       type: object
       properties:

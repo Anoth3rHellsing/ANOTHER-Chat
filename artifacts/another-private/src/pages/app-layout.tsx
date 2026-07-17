@@ -14,9 +14,13 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { useDmWebSocket } from '@/hooks/use-dm-websocket';
+import { useWebRTC } from '@/hooks/use-webrtc';
 import { ProfileModal } from '@/components/profile-modal';
+import { SettingsModal, loadSettings, saveSettings } from '@/components/settings-modal';
+import type { AudioVideoSettings } from '@/components/settings-modal';
 import { ServerSettingsModal } from '@/components/server-settings-modal';
 import { UserProfileCard } from '@/components/user-profile-card';
+import { VoiceChannelRow } from '@/components/voice-channel-row';
 import { CreateChannelModal } from '@/components/create-channel-modal';
 import { CreateServerModal } from '@/components/create-server-modal';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
@@ -25,7 +29,9 @@ import {
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
-  FileText, ExternalLink, Download, MessageSquare
+  FileText, ExternalLink, Download, MessageSquare,
+  Cog, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff,
+  PhoneIncoming
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -221,6 +227,8 @@ export default function AppLayout() {
   const dmTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [audioVideoSettings, setAudioVideoSettings] = useState<AudioVideoSettings>(loadSettings);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
@@ -282,6 +290,12 @@ export default function AppLayout() {
   
   const { typingUsers, sendTypingStart, sendTypingStop } = useChatWebSocket(activeChannelId);
   const { dmTypingUsers, sendDmTypingStart, sendDmTypingStop } = useDmWebSocket(activeDmUserId);
+
+  // WebRTC — voice channels + DM calls
+  const webrtc = useWebRTC({
+    currentUserId: user?.id ?? 0,
+    settings: audioVideoSettings,
+  });
 
   // DM data
   const { data: dmConversations, refetch: refetchDmConversations } = useListDmConversations({ query: { enabled: !!user } as any });
@@ -656,6 +670,25 @@ export default function AppLayout() {
               })}
             </div>
 
+            {/* Voice status bar (DM mode) */}
+            {webrtc.isInVoiceChannel && (
+              <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
+                <Volume2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-green-400 font-medium truncate">
+                    {channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.name ?? 'Voz'}
+                  </p>
+                  <p className="text-[10px] text-green-500/60 font-mono">Conectado</p>
+                </div>
+                <button onClick={() => webrtc.toggleMute()} className={`p-1 rounded transition-colors ${webrtc.isMuted ? 'text-red-400 bg-red-500/20' : 'text-green-400 hover:bg-green-500/20'}`} title={webrtc.isMuted ? 'Activar micrófono' : 'Silenciar'}>
+                  {webrtc.isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                </button>
+                <button onClick={() => webrtc.leaveVoiceChannel()} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors" title="Desconectar">
+                  <PhoneOff className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* User Info Area */}
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
               <button onClick={() => setIsProfileOpen(true)} className="relative group">
@@ -668,8 +701,11 @@ export default function AppLayout() {
                 <p className="text-sm font-medium text-foreground truncate leading-tight">{user.displayName}</p>
                 <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
               </div>
-              <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors">
+              <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Perfil">
                 <Settings className="w-4 h-4" />
+              </button>
+              <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Ajustes">
+                <Cog className="w-4 h-4" />
               </button>
             </div>
           </>
@@ -706,7 +742,28 @@ export default function AppLayout() {
               </div>
               
               {channels?.map(channel => {
-                const ChannelIcon = CHANNEL_TYPE_ICON[(channel as any).channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
+                const channelType = (channel as any).channelType ?? 'text';
+                if (channelType === 'voice') {
+                  return (
+                    <VoiceChannelRow
+                      key={channel.id}
+                      channel={channel}
+                      isActive={activeChannelId === channel.id}
+                      isJoined={webrtc.activeVoiceChannelId === channel.id}
+                      onClick={() => {
+                        if (webrtc.activeVoiceChannelId === channel.id) {
+                          // Already in this channel — clicking again shows it as active
+                          setActiveChannelId(channel.id);
+                        } else {
+                          setActiveChannelId(channel.id);
+                          const currentMembers: any[] = [];
+                          webrtc.joinVoiceChannel(channel.id, currentMembers);
+                        }
+                      }}
+                    />
+                  );
+                }
+                const ChannelIcon = CHANNEL_TYPE_ICON[channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
                 const vc = (channel as any).visualConfig ?? {};
                 const hasVisual = vc.kind && vc.value;
                 return (
@@ -732,6 +789,25 @@ export default function AppLayout() {
               })}
             </div>
 
+            {/* Voice status bar (server mode) */}
+            {webrtc.isInVoiceChannel && (
+              <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
+                <Volume2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-green-400 font-medium truncate">
+                    {channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.name ?? 'Voz'}
+                  </p>
+                  <p className="text-[10px] text-green-500/60 font-mono">Conectado</p>
+                </div>
+                <button onClick={() => webrtc.toggleMute()} className={`p-1 rounded transition-colors ${webrtc.isMuted ? 'text-red-400 bg-red-500/20' : 'text-green-400 hover:bg-green-500/20'}`} title={webrtc.isMuted ? 'Activar micrófono' : 'Silenciar'}>
+                  {webrtc.isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                </button>
+                <button onClick={() => webrtc.leaveVoiceChannel()} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors" title="Desconectar">
+                  <PhoneOff className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* User Info Area */}
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
               <button onClick={() => setIsProfileOpen(true)} className="relative group">
@@ -745,8 +821,11 @@ export default function AppLayout() {
                 <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors">
+                <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Perfil">
                   <Settings className="w-4 h-4" />
+                </button>
+                <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Ajustes">
+                  <Cog className="w-4 h-4" />
                 </button>
                 {user.role === 'admin' && (
                   <button onClick={() => setLocation('/app/admin')} className="p-1.5 text-primary hover:text-primary rounded-md hover:bg-primary/20 transition-colors" title="Panel de Admin">
@@ -776,10 +855,34 @@ export default function AppLayout() {
               </div>
               <span className="font-semibold text-foreground">{(activeDmConvo as any).otherUser?.displayName}</span>
               <span className="text-xs text-muted-foreground font-mono">@{(activeDmConvo as any).otherUser?.username}</span>
+              <div className="ml-auto flex items-center gap-1">
+                {webrtc.callState === 'idle' && !webrtc.isInVoiceChannel && (
+                  <button
+                    onClick={() => webrtc.callUser(
+                      (activeDmConvo as any).otherUser?.id,
+                      user.displayName,
+                      user.avatarUrl,
+                    )}
+                    className="p-2 text-muted-foreground hover:text-green-400 hover:bg-green-500/10 rounded-lg transition-colors"
+                    title="Llamar"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </button>
+                )}
+                {(webrtc.callState === 'calling' || webrtc.callState === 'connected') && webrtc.dmCallUserId === (activeDmConvo as any).otherUser?.id && (
+                  <button
+                    onClick={() => webrtc.endCall()}
+                    className="p-2 text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors"
+                    title="Colgar"
+                  >
+                    <PhoneOff className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* DM messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            <div className="flex-1 overflow-y-auto p-4 space-y-0">
               {(dmMessages as any[] ?? []).map((msg: any, idx: number) => {
                 const list = dmMessages as any[] ?? [];
                 const isFirst = idx === 0 || list[idx - 1].senderId !== msg.senderId || new Date(msg.createdAt).getTime() - new Date(list[idx - 1].createdAt).getTime() > 300000;
@@ -787,7 +890,7 @@ export default function AppLayout() {
                 return (
                   <div
                     key={msg.id}
-                    className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-6 pt-1' : 'mt-0.5'}`}
+                    className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-3 pt-0.5' : 'mt-0.5'}`}
                   >
                     {isFirst ? (
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all mt-0.5"
@@ -814,7 +917,7 @@ export default function AppLayout() {
                         </div>
                       )}
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed min-w-0">
+                        <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-normal min-w-0">
                           {msg.deletedAt
                             ? <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             : msg.content}
@@ -944,7 +1047,7 @@ export default function AppLayout() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            <div className="flex-1 overflow-y-auto p-4 space-y-0">
               {messages?.map((msg, idx) => {
                 const isFirst = idx === 0 || messages[idx - 1].userId !== msg.userId || new Date(msg.createdAt).getTime() - new Date(messages[idx - 1].createdAt).getTime() > 300000;
                 const isOwn = msg.userId === user.id;
@@ -954,7 +1057,7 @@ export default function AppLayout() {
                   <div
                     key={msg.id}
                     ref={el => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
-                    className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-6 pt-1' : 'mt-0.5'}`}
+                    className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-3 pt-0.5' : 'mt-0.5'}`}
                   >
                     {isFirst ? (
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5" onClick={e => openProfileCard(msg.userId, e)}>
@@ -1290,8 +1393,168 @@ export default function AppLayout() {
         </div>
       )}
 
+      {/* ── Incoming DM call toast ───────────────────────────────────────── */}
+      {webrtc.incomingCall && (
+        <div className="fixed bottom-24 left-4 z-50 bg-card border border-white/10 rounded-2xl shadow-2xl p-4 w-72 animate-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0">
+              {webrtc.incomingCall.callerAvatar
+                ? <img src={webrtc.incomingCall.callerAvatar} className="w-full h-full object-cover" alt="" />
+                : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{webrtc.incomingCall.callerName}</p>
+              <p className="text-xs text-muted-foreground font-mono animate-pulse">Llamada entrante...</p>
+            </div>
+            <PhoneIncoming className="w-5 h-5 text-green-400 animate-pulse flex-shrink-0" />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => webrtc.acceptCall()}
+              className="flex-1 flex items-center justify-center gap-2 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-sm font-medium transition-colors"
+            >
+              <Phone className="w-4 h-4" />
+              Aceptar
+            </button>
+            <button
+              onClick={() => webrtc.rejectCall()}
+              className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl text-sm font-medium transition-colors"
+            >
+              <PhoneOff className="w-4 h-4" />
+              Rechazar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Calling toast (outgoing) ──────────────────────────────────────── */}
+      {webrtc.callState === 'calling' && (
+        <div className="fixed bottom-24 left-4 z-50 bg-card border border-white/10 rounded-2xl shadow-2xl p-4 w-64">
+          <div className="flex items-center gap-3">
+            <Phone className="w-5 h-5 text-green-400 animate-pulse flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground">Llamando...</p>
+              <p className="text-xs text-muted-foreground font-mono">Esperando respuesta</p>
+            </div>
+            <button
+              onClick={() => webrtc.endCall()}
+              className="p-1.5 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
+            >
+              <PhoneOff className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── In-call overlay (voice/video) ────────────────────────────────── */}
+      {(webrtc.callState === 'connected' || (webrtc.isInVoiceChannel && webrtc.remoteStreams.size > 0)) && (
+        <div className="fixed inset-0 z-40 bg-black/95 flex flex-col">
+          {/* Video grid */}
+          <div className="flex-1 p-4 overflow-hidden">
+            {/* Screen share — takes priority */}
+            {webrtc.isScreenSharing && webrtc.localStream && (
+              <div className="w-full h-2/3 mb-4 rounded-2xl overflow-hidden bg-secondary border border-white/10 relative">
+                <video
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-full object-contain"
+                  ref={el => { if (el) el.srcObject = webrtc.localStream; }}
+                />
+                <div className="absolute bottom-2 left-3 text-xs text-white/70 font-mono bg-black/50 px-2 py-1 rounded-md">
+                  📺 {user.displayName} — pantalla compartida
+                </div>
+              </div>
+            )}
+
+            {/* Remote streams grid */}
+            <div className={`grid gap-3 h-full ${webrtc.remoteStreams.size === 0 ? 'grid-cols-1' : webrtc.remoteStreams.size <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+              {/* Local self-view (small) */}
+              <div className={`rounded-2xl overflow-hidden bg-secondary border relative ${webrtc.activeSpeakerId === user.id ? 'border-green-400 shadow-[0_0_12px_rgba(74,222,128,0.4)]' : 'border-white/10'}`}>
+                {webrtc.localStream ? (
+                  <video
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    ref={el => { if (el) el.srcObject = webrtc.localStream; }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-full bg-secondary overflow-hidden">
+                      {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-8 h-8 m-4 text-muted-foreground" />}
+                    </div>
+                  </div>
+                )}
+                <div className="absolute bottom-2 left-3 text-xs text-white/80 font-mono bg-black/60 px-2 py-0.5 rounded-md flex items-center gap-1">
+                  {webrtc.isMuted && <MicOff className="w-3 h-3 text-red-400" />}
+                  {user.displayName} (vos)
+                </div>
+              </div>
+
+              {/* Remote peers */}
+              {Array.from(webrtc.remoteStreams.entries()).map(([peerId, stream]) => {
+                const peerMember = webrtc.voiceMembers.find(m => m.userId === peerId);
+                const isActive = webrtc.activeSpeakerId === peerId;
+                return (
+                  <div key={peerId} className={`rounded-2xl overflow-hidden bg-secondary border relative ${isActive ? 'border-green-400 shadow-[0_0_12px_rgba(74,222,128,0.4)]' : 'border-white/10'}`}>
+                    <video
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-cover"
+                      ref={el => { if (el) el.srcObject = stream; }}
+                    />
+                    <div className="absolute bottom-2 left-3 text-xs text-white/80 font-mono bg-black/60 px-2 py-0.5 rounded-md">
+                      {peerMember?.displayName ?? `Usuario ${peerId}`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Control bar */}
+          <div className="h-20 border-t border-white/10 flex items-center justify-center gap-4 bg-card/80 backdrop-blur-md">
+            <button
+              onClick={() => webrtc.toggleMute()}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isMuted ? 'bg-red-500 text-white' : 'bg-secondary text-foreground hover:bg-white/10'}`}
+              title={webrtc.isMuted ? 'Activar micrófono' : 'Silenciar'}
+            >
+              {webrtc.isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={() => webrtc.toggleCamera()}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isCameraOn ? 'bg-secondary text-foreground hover:bg-white/10' : 'bg-secondary text-muted-foreground hover:bg-white/10'}`}
+              title={webrtc.isCameraOn ? 'Apagar cámara' : 'Encender cámara'}
+            >
+              {webrtc.isCameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={() => webrtc.toggleScreenShare()}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isScreenSharing ? 'bg-primary text-white' : 'bg-secondary text-foreground hover:bg-white/10'}`}
+              title={webrtc.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
+            >
+              {webrtc.isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
+              className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+              title="Colgar"
+            >
+              <PhoneOff className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       <ProfileModal user={user} isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={audioVideoSettings}
+        onSettingsChange={setAudioVideoSettings}
+      />
       {isServerSettingsOpen && activeServer && (
         <ServerSettingsModal
           isOpen={isServerSettingsOpen}

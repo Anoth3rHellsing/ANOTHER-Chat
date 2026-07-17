@@ -8,6 +8,7 @@ import dmsRouter from "./dms";
 import usersRouter from "./users";
 import adminRouter from "./admin";
 import rolesRouter from "./roles";
+import voiceRouter from "./voice";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(dmsRouter);
 router.use(usersRouter);
 router.use(adminRouter);
 router.use(rolesRouter);
+router.use(voiceRouter);
 
 export default router;

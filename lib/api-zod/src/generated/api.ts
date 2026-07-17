@@ -1031,6 +1031,50 @@ export const UnbanUserResponse = zod.void()
 
 
 /**
+ * @summary Get current voice channel members
+ */
+export const GetVoiceMembersParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const GetVoiceMembersResponseItem = zod.object({
+  "userId": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "status": zod.string()
+})
+export const GetVoiceMembersResponse = zod.array(GetVoiceMembersResponseItem)
+
+
+/**
+ * @summary Join a voice channel
+ */
+export const JoinVoiceChannelParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const JoinVoiceChannelResponseItem = zod.object({
+  "userId": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullish(),
+  "status": zod.string()
+})
+export const JoinVoiceChannelResponse = zod.array(JoinVoiceChannelResponseItem)
+
+
+/**
+ * @summary Leave a voice channel
+ */
+export const LeaveVoiceChannelParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const LeaveVoiceChannelResponse = zod.void()
+
+
+/**
  * @summary List all DM conversations for the current user (ordered by most recent activity)
  */
 export const ListDmConversationsResponseItem = zod.object({

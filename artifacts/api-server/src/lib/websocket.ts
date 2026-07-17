@@ -16,6 +16,37 @@ interface AuthedWebSocket extends WebSocket {
 
 let wss: WebSocketServer | null = null;
 
+// ── In-memory voice channel state ──────────────────────────────────────────
+// channelId → Set<userId>
+const voiceChannelMembersMap = new Map<number, Set<number>>();
+
+export function joinVoiceChannel(channelId: number, userId: number): void {
+  if (!voiceChannelMembersMap.has(channelId)) {
+    voiceChannelMembersMap.set(channelId, new Set());
+  }
+  voiceChannelMembersMap.get(channelId)!.add(userId);
+}
+
+export function leaveVoiceChannel(channelId: number, userId: number): void {
+  const members = voiceChannelMembersMap.get(channelId);
+  if (members) {
+    members.delete(userId);
+    if (members.size === 0) voiceChannelMembersMap.delete(channelId);
+  }
+}
+
+export function getVoiceChannelMembers(channelId: number): Set<number> {
+  return voiceChannelMembersMap.get(channelId) ?? new Set();
+}
+
+export function getAllVoiceChannelsForUser(userId: number): number[] {
+  const result: number[] = [];
+  voiceChannelMembersMap.forEach((members, channelId) => {
+    if (members.has(userId)) result.push(channelId);
+  });
+  return result;
+}
+
 export function initWebSocket(server: HttpServer): void {
   wss = new WebSocketServer({ server, path: "/ws" });
 
@@ -141,6 +172,102 @@ export function initWebSocket(server: HttpServer): void {
           case "ping":
             client.send(JSON.stringify({ type: "pong" }));
             break;
+
+          // ── WebRTC voice signaling (relayed point-to-point) ─────────────
+          case "voice:offer":
+            if (client.userId && msg.targetUserId && msg.sdp) {
+              broadcastToUser(msg.targetUserId, {
+                type: "voice:offer",
+                data: { fromUserId: client.userId, sdp: msg.sdp },
+              });
+            }
+            break;
+
+          case "voice:answer":
+            if (client.userId && msg.targetUserId && msg.sdp) {
+              broadcastToUser(msg.targetUserId, {
+                type: "voice:answer",
+                data: { fromUserId: client.userId, sdp: msg.sdp },
+              });
+            }
+            break;
+
+          case "voice:ice-candidate":
+            if (client.userId && msg.targetUserId && msg.candidate) {
+              broadcastToUser(msg.targetUserId, {
+                type: "voice:ice-candidate",
+                data: { fromUserId: client.userId, candidate: msg.candidate },
+              });
+            }
+            break;
+
+          // ── DM call signaling ────────────────────────────────────────────
+          case "dm:call-invite":
+            if (client.userId && msg.recipientId) {
+              broadcastToUser(msg.recipientId, {
+                type: "dm:call-invite",
+                data: {
+                  callerId: client.userId,
+                  callerName: msg.callerName ?? "Usuario",
+                  callerAvatar: msg.callerAvatar ?? null,
+                },
+              });
+            }
+            break;
+
+          case "dm:call-answer":
+            if (client.userId && msg.callerId) {
+              broadcastToUser(msg.callerId, {
+                type: "dm:call-accepted",
+                data: { acceptorId: client.userId },
+              });
+            }
+            break;
+
+          case "dm:call-offer":
+            if (client.userId && msg.targetUserId && msg.sdp) {
+              broadcastToUser(msg.targetUserId, {
+                type: "dm:call-offer",
+                data: { fromUserId: client.userId, sdp: msg.sdp },
+              });
+            }
+            break;
+
+          case "dm:call-sdp-answer":
+            if (client.userId && msg.targetUserId && msg.sdp) {
+              broadcastToUser(msg.targetUserId, {
+                type: "dm:call-sdp-answer",
+                data: { fromUserId: client.userId, sdp: msg.sdp },
+              });
+            }
+            break;
+
+          case "dm:call-ice-candidate":
+            if (client.userId && msg.targetUserId && msg.candidate) {
+              broadcastToUser(msg.targetUserId, {
+                type: "dm:call-ice-candidate",
+                data: { fromUserId: client.userId, candidate: msg.candidate },
+              });
+            }
+            break;
+
+          case "dm:call-reject":
+            if (client.userId && msg.callerId) {
+              broadcastToUser(msg.callerId, {
+                type: "dm:call-reject",
+                data: { fromUserId: client.userId },
+              });
+            }
+            break;
+
+          case "dm:call-end":
+            if (client.userId && msg.targetUserId) {
+              broadcastToUser(msg.targetUserId, {
+                type: "dm:call-end",
+                data: { fromUserId: client.userId },
+              });
+            }
+            break;
         }
       } catch (err) {
         logger.warn({ err }, "Failed to parse WebSocket message");
@@ -148,6 +275,17 @@ export function initWebSocket(server: HttpServer): void {
     });
 
     client.on("close", () => {
+      // Auto-leave any voice channels this client was in
+      if (client.userId) {
+        const channels = getAllVoiceChannelsForUser(client.userId);
+        for (const channelId of channels) {
+          leaveVoiceChannel(channelId, client.userId);
+          broadcast(`channel:${channelId}`, {
+            type: "voice:member_leave",
+            data: { channelId, userId: client.userId },
+          });
+        }
+      }
       logger.debug({ userId: client.userId }, "WebSocket client disconnected");
     });
 
