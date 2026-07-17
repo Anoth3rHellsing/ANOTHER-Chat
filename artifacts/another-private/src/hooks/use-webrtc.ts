@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { safeCloseAudioContext } from '@/lib/settings-utils';
 
 const STUN_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -288,9 +289,8 @@ export function useWebRTC(options: {
   }, [settings.audioInputId]);
 
   const startSpeakingDetection = (stream: MediaStream) => {
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
+    safeCloseAudioContext(audioContextRef.current);
+    audioContextRef.current = null;
     try {
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
@@ -317,7 +317,8 @@ export function useWebRTC(options: {
     localStreamRef.current = null;
     setLocalStream(null);
     if (speakingIntervalRef.current) clearInterval(speakingIntervalRef.current);
-    if (audioContextRef.current) audioContextRef.current.close();
+    safeCloseAudioContext(audioContextRef.current);
+    audioContextRef.current = null;
   }, []);
 
   // ── DM call offer ──────────────────────────────────────────────────────────

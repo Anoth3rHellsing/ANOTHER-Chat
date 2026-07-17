@@ -1,26 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, Mic, Speaker, Activity } from 'lucide-react';
-
-export interface AudioVideoSettings {
-  audioInputId: string;
-  audioOutputId: string;
-  volume: number;
-}
-
-const SETTINGS_KEY = 'anp_settings';
-
-export function loadSettings(): AudioVideoSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { audioInputId: '', audioOutputId: '', volume: 1, ...JSON.parse(raw) };
-  } catch {}
-  return { audioInputId: '', audioOutputId: '', volume: 1 };
-}
-
-export function saveSettings(s: AudioVideoSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-}
+import { X, Volume2, Mic, Activity } from 'lucide-react';
+import { type AudioVideoSettings, loadSettings, saveSettings, safeCloseAudioContext } from '@/lib/settings-utils';
 
 const SECTIONS = [
   { id: 'voice', label: 'Voz y audio', icon: Volume2 },
@@ -97,8 +78,8 @@ export function SettingsModal({ isOpen, onClose, settings, onSettingsChange }: S
   const stopMicTest = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     testStreamRef.current?.getTracks().forEach(t => t.stop());
-    audioCtxRef.current?.close();
     testStreamRef.current = null;
+    safeCloseAudioContext(audioCtxRef.current);
     audioCtxRef.current = null;
     analyserRef.current = null;
     setIsTesting(false);
@@ -268,7 +249,7 @@ function VoiceAudioSection({
       {/* Audio output */}
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground uppercase tracking-wider">
-          <Speaker className="w-3.5 h-3.5" />
+          <Volume2 className="w-3.5 h-3.5" />
           Dispositivo de salida de audio
         </label>
         <select
