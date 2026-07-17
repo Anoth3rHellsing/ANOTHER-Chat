@@ -6,11 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ChannelInput {
+export interface ServerRoleInput {
   /**
      * @minLength 1
-     * @maxLength 100
+     * @maxLength 50
      */
   name: string;
-  restrictedRoles?: number[];
+  color?: string;
+  permissions?: number;
 }

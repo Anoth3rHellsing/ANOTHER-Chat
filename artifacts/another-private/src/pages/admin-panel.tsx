@@ -15,9 +15,9 @@ export default function AdminPanel() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'stats' | 'invites' | 'users'>('stats');
 
-  const { data: stats, isLoading: statsLoading } = useGetAdminStats({ query: { enabled: activeTab === 'stats' } });
-  const { data: invites, refetch: refetchInvites, isLoading: invitesLoading } = useListInvites({ query: { enabled: activeTab === 'invites' } });
-  const { data: users, refetch: refetchUsers, isLoading: usersLoading } = useListAllUsers({ query: { enabled: activeTab === 'users' } });
+  const { data: stats, isLoading: statsLoading } = useGetAdminStats({ query: { enabled: activeTab === 'stats' } as any });
+  const { data: invites, refetch: refetchInvites, isLoading: invitesLoading } = useListInvites({ query: { enabled: activeTab === 'invites' } as any });
+  const { data: users, refetch: refetchUsers, isLoading: usersLoading } = useListAllUsers({ query: { enabled: activeTab === 'users' } as any });
 
   const generateInvite = useGenerateInvite();
   const revokeInvite = useRevokeInvite();

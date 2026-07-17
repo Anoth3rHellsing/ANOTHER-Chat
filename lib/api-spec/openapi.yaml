@@ -22,6 +22,8 @@ tags:
     description: User profiles
   - name: admin
     description: Admin management
+  - name: roles
+    description: Server role management
 paths:
   /healthz:
     get:
@@ -229,7 +231,7 @@ paths:
     patch:
       operationId: updateMemberRole
       tags: [servers]
-      summary: Update a member's role
+      summary: Update a member's server role (owner/admin/member)
       parameters:
         - name: serverId
           in: path
@@ -255,11 +257,151 @@ paths:
               schema:
                 $ref: "#/components/schemas/ServerMember"
 
+  /servers/{serverId}/roles:
+    get:
+      operationId: listServerRoles
+      tags: [roles]
+      summary: List custom roles for a server
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Roles list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServerRole"
+    post:
+      operationId: createServerRole
+      tags: [roles]
+      summary: Create a custom role in a server
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerRoleInput"
+      responses:
+        "201":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerRole"
+
+  /servers/{serverId}/roles/{roleId}:
+    patch:
+      operationId: updateServerRole
+      tags: [roles]
+      summary: Update a custom role
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerRoleInput"
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerRole"
+    delete:
+      operationId: deleteServerRole
+      tags: [roles]
+      summary: Delete a custom role
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Role deleted
+
+  /servers/{serverId}/members/{userId}/roles/{roleId}:
+    post:
+      operationId: assignMemberRole
+      tags: [roles]
+      summary: Assign a custom role to a member
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Role assigned
+    delete:
+      operationId: removeMemberRole
+      tags: [roles]
+      summary: Remove a custom role from a member
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Role removed
+
   /servers/{serverId}/channels:
     get:
       operationId: listChannels
       tags: [channels]
-      summary: List channels in a server
+      summary: List channels in a server (filtered by caller's roles)
       parameters:
         - name: serverId
           in: path
@@ -300,6 +442,29 @@ paths:
                 $ref: "#/components/schemas/Channel"
 
   /channels/{channelId}:
+    patch:
+      operationId: updateChannel
+      tags: [channels]
+      summary: Update channel name or role restrictions
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelUpdate"
+      responses:
+        "200":
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
     delete:
       operationId: deleteChannel
       tags: [channels]
@@ -680,9 +845,30 @@ components:
           type: string
           format: date-time
 
+    ServerRole:
+      type: object
+      required: [id, serverId, name, color, permissions, position, createdAt]
+      properties:
+        id:
+          type: integer
+        serverId:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+        permissions:
+          type: integer
+          description: "Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages"
+        position:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
     ServerMember:
       type: object
-      required: [id, serverId, userId, role, joinedAt, user]
+      required: [id, serverId, userId, role, roles, joinedAt, user]
       properties:
         id:
           type: integer
@@ -693,6 +879,10 @@ components:
         role:
           type: string
           enum: [owner, admin, member]
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServerRole"
         joinedAt:
           type: string
           format: date-time
@@ -701,7 +891,7 @@ components:
 
     Channel:
       type: object
-      required: [id, serverId, name, createdAt]
+      required: [id, serverId, name, restrictedRoles, createdAt]
       properties:
         id:
           type: integer
@@ -709,6 +899,11 @@ components:
           type: integer
         name:
           type: string
+        restrictedRoles:
+          type: array
+          items:
+            type: integer
+          description: Role IDs that can access this channel. Empty = unrestricted.
         createdAt:
           type: string
           format: date-time
@@ -812,6 +1007,19 @@ components:
           minLength: 1
           maxLength: 100
 
+    ServerRoleInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        color:
+          type: string
+        permissions:
+          type: integer
+
     ChannelInput:
       type: object
       required: [name]
@@ -820,6 +1028,22 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        restrictedRoles:
+          type: array
+          items:
+            type: integer
+
+    ChannelUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        restrictedRoles:
+          type: array
+          items:
+            type: integer
 
     MessageInput:
       type: object

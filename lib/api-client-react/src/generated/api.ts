@@ -24,6 +24,7 @@ import type {
   AdminUser,
   Channel,
   ChannelInput,
+  ChannelUpdate,
   HealthStatus,
   InviteCode,
   InviteInput,
@@ -38,6 +39,8 @@ import type {
   Server,
   ServerInput,
   ServerMember,
+  ServerRole,
+  ServerRoleInput,
   User,
   UserProfile
 } from './api.schemas';
@@ -961,7 +964,7 @@ export const getUpdateMemberRoleUrl = (serverId: number,
 }
 
 /**
- * @summary Update a member's role
+ * @summary Update a member's server role (owner/admin/member)
  */
 export const updateMemberRole = async (serverId: number,
     userId: number,
@@ -1012,7 +1015,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateMemberRoleMutationError = ErrorType<unknown>
 
     /**
- * @summary Update a member's role
+ * @summary Update a member's server role (owner/admin/member)
  */
 export const useUpdateMemberRole = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMemberRole>>, TError,{serverId: number;userId: number;data: BodyType<MemberRoleUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1025,6 +1028,452 @@ export const useUpdateMemberRole = <TError = ErrorType<unknown>,
       return useMutation(getUpdateMemberRoleMutationOptions(options));
     }
 
+export const getListServerRolesUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/roles`
+}
+
+/**
+ * @summary List custom roles for a server
+ */
+export const listServerRoles = async (serverId: number, options?: RequestInit): Promise<ServerRole[]> => {
+
+  return customFetch<ServerRole[]>(getListServerRolesUrl(serverId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListServerRolesQueryKey = (serverId: number,) => {
+    return [
+    `/api/servers/${serverId}/roles`
+    ] as const;
+    }
+
+
+export const getListServerRolesQueryOptions = <TData = Awaited<ReturnType<typeof listServerRoles>>, TError = ErrorType<unknown>>(serverId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listServerRoles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListServerRolesQueryKey(serverId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listServerRoles>>> = ({ signal }) => listServerRoles(serverId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: serverId !== null && serverId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listServerRoles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListServerRolesQueryResult = NonNullable<Awaited<ReturnType<typeof listServerRoles>>>
+export type ListServerRolesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List custom roles for a server
+ */
+
+export function useListServerRoles<TData = Awaited<ReturnType<typeof listServerRoles>>, TError = ErrorType<unknown>>(
+ serverId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listServerRoles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListServerRolesQueryOptions(serverId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateServerRoleUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/roles`
+}
+
+/**
+ * @summary Create a custom role in a server
+ */
+export const createServerRole = async (serverId: number,
+    serverRoleInput: ServerRoleInput, options?: RequestInit): Promise<ServerRole> => {
+
+  return customFetch<ServerRole>(getCreateServerRoleUrl(serverId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(serverRoleInput)
+  }
+);}
+
+
+
+
+
+export const getCreateServerRoleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createServerRole>>, TError,{serverId: number;data: BodyType<ServerRoleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createServerRole>>, TError,{serverId: number;data: BodyType<ServerRoleInput>}, TContext> => {
+
+const mutationKey = ['createServerRole'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createServerRole>>, {serverId: number;data: BodyType<ServerRoleInput>}> = (props) => {
+          const {serverId,data} = props ?? {};
+
+          return  createServerRole(serverId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateServerRoleMutationResult = NonNullable<Awaited<ReturnType<typeof createServerRole>>>
+    export type CreateServerRoleMutationBody = BodyType<ServerRoleInput>
+    export type CreateServerRoleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a custom role in a server
+ */
+export const useCreateServerRole = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createServerRole>>, TError,{serverId: number;data: BodyType<ServerRoleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createServerRole>>,
+        TError,
+        {serverId: number;data: BodyType<ServerRoleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateServerRoleMutationOptions(options));
+    }
+
+export const getUpdateServerRoleUrl = (serverId: number,
+    roleId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/roles/${roleId}`
+}
+
+/**
+ * @summary Update a custom role
+ */
+export const updateServerRole = async (serverId: number,
+    roleId: number,
+    serverRoleInput: ServerRoleInput, options?: RequestInit): Promise<ServerRole> => {
+
+  return customFetch<ServerRole>(getUpdateServerRoleUrl(serverId,roleId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(serverRoleInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateServerRoleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateServerRole>>, TError,{serverId: number;roleId: number;data: BodyType<ServerRoleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateServerRole>>, TError,{serverId: number;roleId: number;data: BodyType<ServerRoleInput>}, TContext> => {
+
+const mutationKey = ['updateServerRole'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateServerRole>>, {serverId: number;roleId: number;data: BodyType<ServerRoleInput>}> = (props) => {
+          const {serverId,roleId,data} = props ?? {};
+
+          return  updateServerRole(serverId,roleId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateServerRoleMutationResult = NonNullable<Awaited<ReturnType<typeof updateServerRole>>>
+    export type UpdateServerRoleMutationBody = BodyType<ServerRoleInput>
+    export type UpdateServerRoleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a custom role
+ */
+export const useUpdateServerRole = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateServerRole>>, TError,{serverId: number;roleId: number;data: BodyType<ServerRoleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateServerRole>>,
+        TError,
+        {serverId: number;roleId: number;data: BodyType<ServerRoleInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateServerRoleMutationOptions(options));
+    }
+
+export const getDeleteServerRoleUrl = (serverId: number,
+    roleId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/roles/${roleId}`
+}
+
+/**
+ * @summary Delete a custom role
+ */
+export const deleteServerRole = async (serverId: number,
+    roleId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteServerRoleUrl(serverId,roleId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteServerRoleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteServerRole>>, TError,{serverId: number;roleId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteServerRole>>, TError,{serverId: number;roleId: number}, TContext> => {
+
+const mutationKey = ['deleteServerRole'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteServerRole>>, {serverId: number;roleId: number}> = (props) => {
+          const {serverId,roleId} = props ?? {};
+
+          return  deleteServerRole(serverId,roleId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteServerRoleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteServerRole>>>
+
+    export type DeleteServerRoleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a custom role
+ */
+export const useDeleteServerRole = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteServerRole>>, TError,{serverId: number;roleId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteServerRole>>,
+        TError,
+        {serverId: number;roleId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteServerRoleMutationOptions(options));
+    }
+
+export const getAssignMemberRoleUrl = (serverId: number,
+    userId: number,
+    roleId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/members/${userId}/roles/${roleId}`
+}
+
+/**
+ * @summary Assign a custom role to a member
+ */
+export const assignMemberRole = async (serverId: number,
+    userId: number,
+    roleId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getAssignMemberRoleUrl(serverId,userId,roleId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAssignMemberRoleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignMemberRole>>, TError,{serverId: number;userId: number;roleId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignMemberRole>>, TError,{serverId: number;userId: number;roleId: number}, TContext> => {
+
+const mutationKey = ['assignMemberRole'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignMemberRole>>, {serverId: number;userId: number;roleId: number}> = (props) => {
+          const {serverId,userId,roleId} = props ?? {};
+
+          return  assignMemberRole(serverId,userId,roleId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignMemberRoleMutationResult = NonNullable<Awaited<ReturnType<typeof assignMemberRole>>>
+
+    export type AssignMemberRoleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Assign a custom role to a member
+ */
+export const useAssignMemberRole = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignMemberRole>>, TError,{serverId: number;userId: number;roleId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignMemberRole>>,
+        TError,
+        {serverId: number;userId: number;roleId: number},
+        TContext
+      > => {
+      return useMutation(getAssignMemberRoleMutationOptions(options));
+    }
+
+export const getRemoveMemberRoleUrl = (serverId: number,
+    userId: number,
+    roleId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/members/${userId}/roles/${roleId}`
+}
+
+/**
+ * @summary Remove a custom role from a member
+ */
+export const removeMemberRole = async (serverId: number,
+    userId: number,
+    roleId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRemoveMemberRoleUrl(serverId,userId,roleId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveMemberRoleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeMemberRole>>, TError,{serverId: number;userId: number;roleId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeMemberRole>>, TError,{serverId: number;userId: number;roleId: number}, TContext> => {
+
+const mutationKey = ['removeMemberRole'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeMemberRole>>, {serverId: number;userId: number;roleId: number}> = (props) => {
+          const {serverId,userId,roleId} = props ?? {};
+
+          return  removeMemberRole(serverId,userId,roleId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveMemberRoleMutationResult = NonNullable<Awaited<ReturnType<typeof removeMemberRole>>>
+
+    export type RemoveMemberRoleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a custom role from a member
+ */
+export const useRemoveMemberRole = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeMemberRole>>, TError,{serverId: number;userId: number;roleId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeMemberRole>>,
+        TError,
+        {serverId: number;userId: number;roleId: number},
+        TContext
+      > => {
+      return useMutation(getRemoveMemberRoleMutationOptions(options));
+    }
+
 export const getListChannelsUrl = (serverId: number,) => {
 
 
@@ -1034,7 +1483,7 @@ export const getListChannelsUrl = (serverId: number,) => {
 }
 
 /**
- * @summary List channels in a server
+ * @summary List channels in a server (filtered by caller's roles)
  */
 export const listChannels = async (serverId: number, options?: RequestInit): Promise<Channel[]> => {
 
@@ -1081,7 +1530,7 @@ export type ListChannelsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List channels in a server
+ * @summary List channels in a server (filtered by caller's roles)
  */
 
 export function useListChannels<TData = Awaited<ReturnType<typeof listChannels>>, TError = ErrorType<unknown>>(
@@ -1172,6 +1621,78 @@ export const useCreateChannel = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateChannelMutationOptions(options));
+    }
+
+export const getUpdateChannelUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}`
+}
+
+/**
+ * @summary Update channel name or role restrictions
+ */
+export const updateChannel = async (channelId: number,
+    channelUpdate: ChannelUpdate, options?: RequestInit): Promise<Channel> => {
+
+  return customFetch<Channel>(getUpdateChannelUrl(channelId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(channelUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateChannelMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannel>>, TError,{channelId: number;data: BodyType<ChannelUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChannel>>, TError,{channelId: number;data: BodyType<ChannelUpdate>}, TContext> => {
+
+const mutationKey = ['updateChannel'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChannel>>, {channelId: number;data: BodyType<ChannelUpdate>}> = (props) => {
+          const {channelId,data} = props ?? {};
+
+          return  updateChannel(channelId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChannelMutationResult = NonNullable<Awaited<ReturnType<typeof updateChannel>>>
+    export type UpdateChannelMutationBody = BodyType<ChannelUpdate>
+    export type UpdateChannelMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update channel name or role restrictions
+ */
+export const useUpdateChannel = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannel>>, TError,{channelId: number;data: BodyType<ChannelUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChannel>>,
+        TError,
+        {channelId: number;data: BodyType<ChannelUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateChannelMutationOptions(options));
     }
 
 export const getDeleteChannelUrl = (channelId: number,) => {

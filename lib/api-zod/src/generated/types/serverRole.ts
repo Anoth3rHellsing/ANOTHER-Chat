@@ -6,11 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface Channel {
+export interface ServerRole {
   id: number;
   serverId: number;
   name: string;
-  /** Role IDs that can access this channel. Empty = unrestricted. */
-  restrictedRoles: number[];
+  color: string;
+  /** Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages */
+  permissions: number;
+  position: number;
   createdAt: Date;
 }

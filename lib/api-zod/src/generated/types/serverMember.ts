@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ServerMemberRole } from './serverMemberRole';
+import type { ServerRole } from './serverRole';
 import type { UserProfile } from './userProfile';
 
 export interface ServerMember {
@@ -13,6 +14,7 @@ export interface ServerMember {
   serverId: number;
   userId: number;
   role: ServerMemberRole;
+  roles: ServerRole[];
   joinedAt: Date;
   user: UserProfile;
 }

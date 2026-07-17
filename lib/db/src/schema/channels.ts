@@ -6,6 +6,9 @@ export const channelsTable = pgTable("channels", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id").notNull(),
   name: text("name").notNull(),
+  // JSON-encoded array of server_role IDs that can access this channel.
+  // Empty array ("[]") means everyone can see it.
+  restrictedRoles: text("restricted_roles").notNull().default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

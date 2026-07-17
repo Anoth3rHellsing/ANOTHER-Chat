@@ -6,11 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ChannelInput {
+export interface ChannelUpdate {
   /**
      * @minLength 1
      * @maxLength 100
      */
-  name: string;
+  name?: string;
   restrictedRoles?: number[];
 }

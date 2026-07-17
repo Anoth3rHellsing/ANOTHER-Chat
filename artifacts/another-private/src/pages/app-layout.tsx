@@ -5,15 +5,17 @@ import {
   useGetServerMembers, useListChannels, useCreateChannel, 
   useListMessages, useSendMessage, useEditMessage, useDeleteMessage,
   useUpdateMyProfile, getGetCurrentUserQueryKey,
-  getListChannelsQueryKey, getListServersQueryKey
+  getListChannelsQueryKey, getListServersQueryKey, getGetServerMembersQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { ProfileModal } from '@/components/profile-modal';
+import { ServerSettingsModal } from '@/components/server-settings-modal';
+import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
-  Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X
+  Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,6 +32,7 @@ export default function AppLayout() {
   const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [showMembers, setShowMembers] = useState(true);
 
   // Derive active items
@@ -39,11 +42,10 @@ export default function AppLayout() {
     }
   }, [servers, activeServerId]);
 
-  const { data: channels } = useListChannels(activeServerId as number, { query: { enabled: !!activeServerId } });
+  const { data: channels } = useListChannels(activeServerId as number, { query: { enabled: !!activeServerId } as any });
   
   useEffect(() => {
     if (channels && channels.length > 0 && activeServerId) {
-      // If we switch servers, or just loaded channels and no active channel
       const validChannel = channels.find(c => c.id === activeChannelId);
       if (!validChannel) {
         setActiveChannelId(channels[0].id);
@@ -55,8 +57,8 @@ export default function AppLayout() {
     }
   }, [channels, activeServerId, activeChannelId]);
 
-  const { data: members } = useGetServerMembers(activeServerId as number, { query: { enabled: !!activeServerId } });
-  const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } });
+  const { data: members } = useGetServerMembers(activeServerId as number, { query: { enabled: !!activeServerId } as any });
+  const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
   
   const { typingUsers, sendTypingStart, sendTypingStop } = useChatWebSocket(activeChannelId);
 
@@ -93,8 +95,6 @@ export default function AppLayout() {
       { channelId, data: { content: messageInput.trim() } },
       {
         onSuccess: (newMessage) => {
-          // Optimistically insert the message for the sender immediately.
-          // The WebSocket echo will arrive shortly and the dedup check prevents doubles.
           queryClient.setQueriesData(
             { predicate: (q) => q.queryKey[0] === `/api/channels/${channelId}/messages` },
             (old: any) => {
@@ -147,7 +147,6 @@ export default function AppLayout() {
   };
 
   // Redirect to login when auth check completes and there's no user.
-  // Must be a useEffect — calling setLocation during render violates React rules.
   useEffect(() => {
     if (!userLoading && !user) {
       setLocation('/');
@@ -156,6 +155,24 @@ export default function AppLayout() {
 
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
+
+  // Current user's membership in the active server
+  const currentMembership = useMemo(() => {
+    if (!members || !user) return null;
+    return members.find(m => m.userId === user.id) ?? null;
+  }, [members, user]);
+
+  // Effective permissions (bitmask) for the current user
+  const myPermissions = useMemo(() => {
+    if (!currentMembership) return 0;
+    return getEffectivePermissions(currentMembership.role, currentMembership.roles ?? []);
+  }, [currentMembership]);
+
+  const canManageServer = user?.role === 'admin' ||
+    currentMembership?.role === 'owner' ||
+    currentMembership?.role === 'admin';
+
+  const canCreateChannel = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
 
   // Group members — declared before any early returns to satisfy hooks rules.
   const groupedMembers = useMemo(() => {
@@ -220,13 +237,22 @@ export default function AppLayout() {
       {/* 2. CHANNEL LIST COLUMN */}
       <div className="w-60 bg-card/50 border-r border-white/5 flex flex-col flex-shrink-0">
         <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
-          <h2 className="font-bold text-foreground truncate">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
+          <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
+          {activeServer && canManageServer && (
+            <button
+              onClick={() => setIsServerSettingsOpen(true)}
+              className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+              title="Configuración del servidor"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+          )}
         </div>
         
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <div className="flex items-center justify-between px-2 mb-1 group">
             <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
-            {activeServer && (
+            {activeServer && canCreateChannel && (
               <button onClick={handleCreateChannel} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                 <Plus className="w-4 h-4" />
               </button>
@@ -239,8 +265,12 @@ export default function AppLayout() {
               onClick={() => setActiveChannelId(channel.id)}
               className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${activeChannelId === channel.id ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
             >
-              <Hash className="w-4 h-4 opacity-50" />
+              <Hash className="w-4 h-4 opacity-50 flex-shrink-0" />
               <span className="truncate">{channel.name}</span>
+              {/* Lock indicator for restricted channels */}
+              {(channel as any).restrictedRoles?.length > 0 && (
+                <span className="ml-auto text-[10px] text-primary/60 font-mono flex-shrink-0">🔒</span>
+              )}
             </button>
           ))}
         </div>
@@ -278,6 +308,9 @@ export default function AppLayout() {
               <div className="flex items-center gap-2 text-foreground font-medium">
                 <Hash className="w-5 h-5 text-muted-foreground" />
                 {activeChannel.name}
+                {(activeChannel as any).restrictedRoles?.length > 0 && (
+                  <span className="text-xs text-primary/60 font-mono">🔒 restringido</span>
+                )}
               </div>
               <button 
                 onClick={() => setShowMembers(!showMembers)}
@@ -306,7 +339,7 @@ export default function AppLayout() {
                     
                     <div className="flex-1 min-w-0">
                       {isFirst && (
-                        <div className="flex items-baseline gap-2 mb-1">
+                        <div className="flex items-baseline gap-2 mb-1 flex-wrap">
                           <span className="font-medium text-foreground hover:underline cursor-pointer">{msg.author.displayName}</span>
                           <span className="text-xs text-muted-foreground font-mono">{format(new Date(msg.createdAt), "dd/MM/yyyy HH:mm")}</span>
                         </div>
@@ -337,15 +370,21 @@ export default function AppLayout() {
                           </div>
                         )}
 
-                        {isOwn && !msg.deletedAt && editingMessageId !== msg.id && (
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden">
-                            <button onClick={() => { setEditingMessageId(msg.id); setEditInput(msg.content); }} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-white transition-colors" title="Editar">
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <div className="w-[1px] h-4 bg-white/10" />
-                            <button onClick={() => deleteMessage.mutate({ channelId: activeChannelId, messageId: msg.id })} className="p-1.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors" title="Eliminar">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                        {!msg.deletedAt && editingMessageId !== msg.id && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
+                            {isOwn && (
+                              <button onClick={() => { setEditingMessageId(msg.id); setEditInput(msg.content); }} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-white transition-colors" title="Editar">
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {(isOwn || hasPerm(myPermissions, PERM.MANAGE_MESSAGES) || canManageServer) && (
+                              <>
+                                {isOwn && <div className="w-[1px] h-4 bg-white/10" />}
+                                <button onClick={() => activeChannelId && deleteMessage.mutate({ channelId: activeChannelId, messageId: msg.id })} className="p-1.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors" title="Eliminar">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -401,14 +440,33 @@ export default function AppLayout() {
                 <div className="space-y-1">
                   {groupedMembers.online.map(member => (
                     <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer group">
-                      <div className="relative">
+                      <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
                           {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                         </div>
                         <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(member.user.status)}`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${member.role === 'admin' || member.role === 'owner' ? 'text-primary' : 'text-foreground/90'}`}>{member.user.displayName}</p>
+                        <p className={`text-sm font-medium truncate ${member.role === 'admin' || member.role === 'owner' ? 'text-primary' : 'text-foreground/90'}`}>
+                          {member.user.displayName}
+                        </p>
+                        {/* Role badges */}
+                        {member.roles && member.roles.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {member.roles.slice(0, 2).map((role: any) => (
+                              <span
+                                key={role.id}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded-full text-[10px] font-medium leading-4"
+                                style={{ backgroundColor: role.color + '22', color: role.color, border: `1px solid ${role.color}44` }}
+                              >
+                                {role.name}
+                              </span>
+                            ))}
+                            {member.roles.length > 2 && (
+                              <span className="text-[10px] text-muted-foreground">+{member.roles.length - 2}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -422,10 +480,28 @@ export default function AppLayout() {
                 <div className="space-y-1">
                   {groupedMembers.offline.map(member => (
                     <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-white/5 cursor-pointer transition-opacity">
-                      <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
+                      <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                         {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover grayscale" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                       </div>
-                      <p className="text-sm font-medium truncate text-foreground">{member.user.displayName}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate text-foreground">{member.user.displayName}</p>
+                        {member.roles && member.roles.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {member.roles.slice(0, 1).map((role: any) => (
+                              <span
+                                key={role.id}
+                                className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium leading-4"
+                                style={{ backgroundColor: role.color + '22', color: role.color, border: `1px solid ${role.color}44` }}
+                              >
+                                {role.name}
+                              </span>
+                            ))}
+                            {member.roles.length > 1 && (
+                              <span className="text-[10px] text-muted-foreground">+{member.roles.length - 1}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -442,6 +518,19 @@ export default function AppLayout() {
           isOpen={isProfileOpen} 
           onClose={() => setIsProfileOpen(false)} 
           user={user} 
+        />
+      )}
+
+      {/* Server Settings Modal */}
+      {activeServer && activeServerId && (
+        <ServerSettingsModal
+          isOpen={isServerSettingsOpen}
+          onClose={() => setIsServerSettingsOpen(false)}
+          serverId={activeServerId}
+          serverName={activeServer.name}
+          members={members ?? []}
+          currentUserId={user.id}
+          currentUserMembershipRole={currentMembership?.role ?? 'member'}
         />
       )}
     </div>

@@ -97,6 +97,17 @@ export interface Server {
   createdAt: string;
 }
 
+export interface ServerRole {
+  id: number;
+  serverId: number;
+  name: string;
+  color: string;
+  /** Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages */
+  permissions: number;
+  position: number;
+  createdAt: string;
+}
+
 export type ServerMemberRole = typeof ServerMemberRole[keyof typeof ServerMemberRole];
 
 
@@ -111,6 +122,7 @@ export interface ServerMember {
   serverId: number;
   userId: number;
   role: ServerMemberRole;
+  roles: ServerRole[];
   joinedAt: string;
   user: UserProfile;
 }
@@ -119,6 +131,8 @@ export interface Channel {
   id: number;
   serverId: number;
   name: string;
+  /** Role IDs that can access this channel. Empty = unrestricted. */
+  restrictedRoles: number[];
   createdAt: string;
 }
 
@@ -186,12 +200,32 @@ export interface ServerInput {
   name: string;
 }
 
+export interface ServerRoleInput {
+  /**
+     * @minLength 1
+     * @maxLength 50
+     */
+  name: string;
+  color?: string;
+  permissions?: number;
+}
+
 export interface ChannelInput {
   /**
      * @minLength 1
      * @maxLength 100
      */
   name: string;
+  restrictedRoles?: number[];
+}
+
+export interface ChannelUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name?: string;
+  restrictedRoles?: number[];
 }
 
 export interface MessageInput {

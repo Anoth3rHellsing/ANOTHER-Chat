@@ -165,6 +165,15 @@ export const JoinServerResponse = zod.object({
   "serverId": zod.number(),
   "userId": zod.number(),
   "role": zod.enum(['owner', 'admin', 'member']),
+  "roles": zod.array(zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
   "joinedAt": zod.coerce.date(),
   "user": zod.object({
   "id": zod.number(),
@@ -202,6 +211,15 @@ export const GetServerMembersResponseItem = zod.object({
   "serverId": zod.number(),
   "userId": zod.number(),
   "role": zod.enum(['owner', 'admin', 'member']),
+  "roles": zod.array(zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
   "joinedAt": zod.coerce.date(),
   "user": zod.object({
   "id": zod.number(),
@@ -219,7 +237,7 @@ export const GetServerMembersResponse = zod.array(GetServerMembersResponseItem)
 
 
 /**
- * @summary Update a member's role
+ * @summary Update a member's server role (owner/admin/member)
  */
 export const UpdateMemberRoleParams = zod.object({
   "serverId": zod.coerce.number(),
@@ -235,6 +253,15 @@ export const UpdateMemberRoleResponse = zod.object({
   "serverId": zod.number(),
   "userId": zod.number(),
   "role": zod.enum(['owner', 'admin', 'member']),
+  "roles": zod.array(zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
   "joinedAt": zod.coerce.date(),
   "user": zod.object({
   "id": zod.number(),
@@ -251,7 +278,118 @@ export const UpdateMemberRoleResponse = zod.object({
 
 
 /**
- * @summary List channels in a server
+ * @summary List custom roles for a server
+ */
+export const ListServerRolesParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const ListServerRolesResponseItem = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const ListServerRolesResponse = zod.array(ListServerRolesResponseItem)
+
+
+/**
+ * @summary Create a custom role in a server
+ */
+export const CreateServerRoleParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const createServerRoleBodyNameMax = 50;
+
+
+
+export const CreateServerRoleBody = zod.object({
+  "name": zod.string().min(1).max(createServerRoleBodyNameMax),
+  "color": zod.string().optional(),
+  "permissions": zod.number().optional()
+})
+
+export const CreateServerRoleResponse = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update a custom role
+ */
+export const UpdateServerRoleParams = zod.object({
+  "serverId": zod.coerce.number(),
+  "roleId": zod.coerce.number()
+})
+
+export const updateServerRoleBodyNameMax = 50;
+
+
+
+export const UpdateServerRoleBody = zod.object({
+  "name": zod.string().min(1).max(updateServerRoleBodyNameMax),
+  "color": zod.string().optional(),
+  "permissions": zod.number().optional()
+})
+
+export const UpdateServerRoleResponse = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "color": zod.string(),
+  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a custom role
+ */
+export const DeleteServerRoleParams = zod.object({
+  "serverId": zod.coerce.number(),
+  "roleId": zod.coerce.number()
+})
+
+export const DeleteServerRoleResponse = zod.void()
+
+
+/**
+ * @summary Assign a custom role to a member
+ */
+export const AssignMemberRoleParams = zod.object({
+  "serverId": zod.coerce.number(),
+  "userId": zod.coerce.number(),
+  "roleId": zod.coerce.number()
+})
+
+export const AssignMemberRoleResponse = zod.unknown()
+
+
+/**
+ * @summary Remove a custom role from a member
+ */
+export const RemoveMemberRoleParams = zod.object({
+  "serverId": zod.coerce.number(),
+  "userId": zod.coerce.number(),
+  "roleId": zod.coerce.number()
+})
+
+export const RemoveMemberRoleResponse = zod.void()
+
+
+/**
+ * @summary List channels in a server (filtered by caller's roles)
  */
 export const ListChannelsParams = zod.object({
   "serverId": zod.coerce.number()
@@ -261,6 +399,7 @@ export const ListChannelsResponseItem = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
+  "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "createdAt": zod.coerce.date()
 })
 export const ListChannelsResponse = zod.array(ListChannelsResponseItem)
@@ -278,13 +417,40 @@ export const createChannelBodyNameMax = 100;
 
 
 export const CreateChannelBody = zod.object({
-  "name": zod.string().min(1).max(createChannelBodyNameMax)
+  "name": zod.string().min(1).max(createChannelBodyNameMax),
+  "restrictedRoles": zod.array(zod.number()).optional()
 })
 
 export const CreateChannelResponse = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
+  "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update channel name or role restrictions
+ */
+export const UpdateChannelParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const updateChannelBodyNameMax = 100;
+
+
+
+export const UpdateChannelBody = zod.object({
+  "name": zod.string().min(1).max(updateChannelBodyNameMax).optional(),
+  "restrictedRoles": zod.array(zod.number()).optional()
+})
+
+export const UpdateChannelResponse = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "createdAt": zod.coerce.date()
 })
 

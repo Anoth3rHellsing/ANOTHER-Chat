@@ -1,9 +1,35 @@
 import { Router, type IRouter } from "express";
 import { eq, and, count } from "drizzle-orm";
-import { db, serversTable, serverMembersTable, usersTable } from "@workspace/db";
+import {
+  db,
+  serversTable,
+  serverMembersTable,
+  serverRolesTable,
+  serverMemberRolesTable,
+  usersTable,
+} from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { getMemberPermissions, PERM, hasPerm } from "../lib/permissions";
 
 const router: IRouter = Router();
+
+/** Fetch the custom roles assigned to a specific member row */
+async function getMemberCustomRoles(memberId: number) {
+  const rows = await db
+    .select({
+      id: serverRolesTable.id,
+      serverId: serverRolesTable.serverId,
+      name: serverRolesTable.name,
+      color: serverRolesTable.color,
+      permissions: serverRolesTable.permissions,
+      position: serverRolesTable.position,
+      createdAt: serverRolesTable.createdAt,
+    })
+    .from(serverMemberRolesTable)
+    .innerJoin(serverRolesTable, eq(serverMemberRolesTable.roleId, serverRolesTable.id))
+    .where(eq(serverMemberRolesTable.memberId, memberId));
+  return rows;
+}
 
 // GET /servers
 router.get("/servers", requireAuth, async (req, res): Promise<void> => {
@@ -21,17 +47,6 @@ router.get("/servers", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const servers = await db
-    .select()
-    .from(serversTable)
-    .where(
-      serverIds.length === 1
-        ? eq(serversTable.id, serverIds[0])
-        : // manual IN using orList
-          undefined as any
-    );
-
-  // Fallback: get all servers user is member of
   const serversList = await Promise.all(
     serverIds.map(async (id) => {
       const [server] = await db
@@ -72,7 +87,6 @@ router.post("/servers", requireAuth, async (req, res): Promise<void> => {
     .values({ name, ownerId: userId })
     .returning();
 
-  // Add owner as member with owner role
   await db.insert(serverMembersTable).values({
     serverId: server.id,
     userId,
@@ -133,6 +147,7 @@ router.delete("/servers/:serverId", requireAuth, async (req, res): Promise<void>
   }
 
   await db.delete(serverMembersTable).where(eq(serverMembersTable.serverId, serverId));
+  await db.delete(serverRolesTable).where(eq(serverRolesTable.serverId, serverId));
   await db.delete(serversTable).where(eq(serversTable.id, serverId));
 
   res.sendStatus(204);
@@ -150,32 +165,25 @@ router.post("/servers/:serverId/join", requireAuth, async (req, res): Promise<vo
     return;
   }
 
-  // Check already member
   const [existing] = await db
     .select()
     .from(serverMembersTable)
-    .where(
-      and(eq(serverMembersTable.serverId, serverId), eq(serverMembersTable.userId, userId))
-    );
+    .where(and(eq(serverMembersTable.serverId, serverId), eq(serverMembersTable.userId, userId)));
 
   if (existing) {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    const roles = await getMemberCustomRoles(existing.id);
     res.json({
       id: existing.id,
       serverId: existing.serverId,
       userId: existing.userId,
       role: existing.role,
+      roles,
       joinedAt: existing.joinedAt,
       user: {
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        bio: user.bio,
-        avatarUrl: user.avatarUrl,
-        bannerUrl: user.bannerUrl,
-        status: user.status,
-        role: user.role,
-        createdAt: user.createdAt,
+        id: user.id, username: user.username, displayName: user.displayName,
+        bio: user.bio, avatarUrl: user.avatarUrl, bannerUrl: user.bannerUrl,
+        status: user.status, role: user.role, createdAt: user.createdAt,
       },
     });
     return;
@@ -193,17 +201,12 @@ router.post("/servers/:serverId/join", requireAuth, async (req, res): Promise<vo
     serverId: member.serverId,
     userId: member.userId,
     role: member.role,
+    roles: [],
     joinedAt: member.joinedAt,
     user: {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      bio: user.bio,
-      avatarUrl: user.avatarUrl,
-      bannerUrl: user.bannerUrl,
-      status: user.status,
-      role: user.role,
-      createdAt: user.createdAt,
+      id: user.id, username: user.username, displayName: user.displayName,
+      bio: user.bio, avatarUrl: user.avatarUrl, bannerUrl: user.bannerUrl,
+      status: user.status, role: user.role, createdAt: user.createdAt,
     },
   });
 });
@@ -216,9 +219,7 @@ router.post("/servers/:serverId/leave", requireAuth, async (req, res): Promise<v
 
   await db
     .delete(serverMembersTable)
-    .where(
-      and(eq(serverMembersTable.serverId, serverId), eq(serverMembersTable.userId, userId))
-    );
+    .where(and(eq(serverMembersTable.serverId, serverId), eq(serverMembersTable.userId, userId)));
 
   res.sendStatus(204);
 });
@@ -239,11 +240,13 @@ router.get("/servers/:serverId/members", requireAuth, async (req, res): Promise<
         .select()
         .from(usersTable)
         .where(eq(usersTable.id, member.userId));
+      const roles = await getMemberCustomRoles(member.id);
       return {
         id: member.id,
         serverId: member.serverId,
         userId: member.userId,
         role: member.role,
+        roles,
         joinedAt: member.joinedAt,
         user: user
           ? {
@@ -282,7 +285,6 @@ router.patch(
       return;
     }
 
-    // Only owner or global admin can change roles
     const [server] = await db.select().from(serversTable).where(eq(serversTable.id, serverId));
     if (!server) {
       res.status(404).json({ error: "Servidor no encontrado" });
@@ -311,12 +313,14 @@ router.patch(
     }
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, targetUserId));
+    const roles = await getMemberCustomRoles(updatedMember.id);
 
     res.json({
       id: updatedMember.id,
       serverId: updatedMember.serverId,
       userId: updatedMember.userId,
       role: updatedMember.role,
+      roles,
       joinedAt: updatedMember.joinedAt,
       user: user
         ? {

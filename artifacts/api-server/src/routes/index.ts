@@ -5,6 +5,7 @@ import serversRouter from "./servers";
 import channelsRouter from "./channels";
 import usersRouter from "./users";
 import adminRouter from "./admin";
+import rolesRouter from "./roles";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(serversRouter);
 router.use(channelsRouter);
 router.use(usersRouter);
 router.use(adminRouter);
+router.use(rolesRouter);
 
 export default router;

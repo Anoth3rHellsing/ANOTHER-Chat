@@ -2,10 +2,14 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import type { Server as HttpServer } from "http";
 import type { SessionData } from "express-session";
+import { eq } from "drizzle-orm";
+import { db, channelsTable } from "@workspace/db";
+import { canAccessChannel } from "./permissions";
 import { logger } from "./logger";
 
 interface AuthedWebSocket extends WebSocket {
   userId?: number;
+  userRole?: string;
   subscriptions: Set<string>;
   isAlive: boolean;
 }
@@ -47,6 +51,7 @@ export function initWebSocket(server: HttpServer): void {
           sessionStore.get(sessionId, (err: Error | null, session: SessionData | null) => {
             if (!err && session?.userId) {
               client.userId = session.userId;
+              client.userRole = (session as any).userRole as string | undefined;
               logger.debug({ userId: client.userId }, "WebSocket client authenticated");
             }
           });
@@ -58,16 +63,33 @@ export function initWebSocket(server: HttpServer): void {
       client.isAlive = true;
     });
 
-    client.on("message", (data) => {
+    client.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
 
         switch (msg.type) {
-          case "subscribe":
-            if (msg.channel) {
-              client.subscriptions.add(msg.channel);
+          case "subscribe": {
+            if (!msg.channel) break;
+            const channelTopic = msg.channel as string;
+
+            // Enforce access control for channel:N subscriptions
+            const match = channelTopic.match(/^channel:(\d+)$/);
+            if (match) {
+              if (!client.userId) {
+                client.send(JSON.stringify({ type: "error", message: "No autenticado" }));
+                break;
+              }
+              const channelId = parseInt(match[1], 10);
+              const [ch] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
+              if (!ch || !(await canAccessChannel(ch, client.userId, client.userRole))) {
+                client.send(JSON.stringify({ type: "error", message: "No tienes acceso a este canal" }));
+                break;
+              }
             }
+
+            client.subscriptions.add(channelTopic);
             break;
+          }
 
           case "unsubscribe":
             if (msg.channel) {
@@ -77,19 +99,24 @@ export function initWebSocket(server: HttpServer): void {
 
           case "typing:start":
             if (msg.channelId && client.userId) {
-              broadcast(`channel:${msg.channelId}`, {
-                type: "typing:start",
-                data: { userId: client.userId, channelId: msg.channelId },
-              });
+              // Verify the client is already subscribed (implies they passed the access check)
+              if (client.subscriptions.has(`channel:${msg.channelId}`)) {
+                broadcast(`channel:${msg.channelId}`, {
+                  type: "typing:start",
+                  data: { userId: client.userId, channelId: msg.channelId },
+                });
+              }
             }
             break;
 
           case "typing:stop":
             if (msg.channelId && client.userId) {
-              broadcast(`channel:${msg.channelId}`, {
-                type: "typing:stop",
-                data: { userId: client.userId, channelId: msg.channelId },
-              });
+              if (client.subscriptions.has(`channel:${msg.channelId}`)) {
+                broadcast(`channel:${msg.channelId}`, {
+                  type: "typing:stop",
+                  data: { userId: client.userId, channelId: msg.channelId },
+                });
+              }
             }
             break;
 
