@@ -112,6 +112,9 @@ export interface Server {
   name: string;
   /** @nullable */
   iconUrl?: string | null;
+  /** @nullable */
+  bannerUrl?: string | null;
+  isGeneral?: boolean;
   ownerId: number;
   memberCount: number;
   createdAt: string;
@@ -147,13 +150,47 @@ export interface ServerMember {
   user: UserProfile;
 }
 
+export type ChannelChannelType = typeof ChannelChannelType[keyof typeof ChannelChannelType];
+
+
+export const ChannelChannelType = {
+  text: 'text',
+  voice: 'voice',
+  media: 'media',
+} as const;
+
+/**
+ * Visual decoration: { kind: 'gradient'|'image', value: string }
+ */
+export type ChannelVisualConfig = { [key: string]: unknown };
+
 export interface Channel {
   id: number;
   serverId: number;
   name: string;
+  channelType: ChannelChannelType;
   /** Role IDs that can access this channel. Empty = unrestricted. */
   restrictedRoles: number[];
+  /** Visual decoration: { kind: 'gradient'|'image', value: string } */
+  visualConfig: ChannelVisualConfig;
   createdAt: string;
+}
+
+export interface ServerInvite {
+  id: number;
+  serverId: number;
+  code: string;
+  createdById: number;
+  /** @nullable */
+  usedById?: number | null;
+  /** @nullable */
+  expiresAt?: string | null;
+  revoked: boolean;
+  createdAt: string;
+}
+
+export interface JoinByInviteInput {
+  code: string;
 }
 
 export interface Message {
@@ -230,14 +267,38 @@ export interface ServerRoleInput {
   permissions?: number;
 }
 
+export type ChannelInputChannelType = typeof ChannelInputChannelType[keyof typeof ChannelInputChannelType];
+
+
+export const ChannelInputChannelType = {
+  text: 'text',
+  voice: 'voice',
+  media: 'media',
+} as const;
+
+export type ChannelInputVisualConfig = { [key: string]: unknown };
+
 export interface ChannelInput {
   /**
      * @minLength 1
      * @maxLength 100
      */
   name: string;
+  channelType?: ChannelInputChannelType;
   restrictedRoles?: number[];
+  visualConfig?: ChannelInputVisualConfig;
 }
+
+export type ChannelUpdateChannelType = typeof ChannelUpdateChannelType[keyof typeof ChannelUpdateChannelType];
+
+
+export const ChannelUpdateChannelType = {
+  text: 'text',
+  voice: 'voice',
+  media: 'media',
+} as const;
+
+export type ChannelUpdateVisualConfig = { [key: string]: unknown };
 
 export interface ChannelUpdate {
   /**
@@ -245,7 +306,9 @@ export interface ChannelUpdate {
      * @maxLength 100
      */
   name?: string;
+  channelType?: ChannelUpdateChannelType;
   restrictedRoles?: number[];
+  visualConfig?: ChannelUpdateVisualConfig;
 }
 
 export interface MessageInput {
@@ -301,6 +364,14 @@ export interface MemberRoleUpdate {
 export interface InviteInput {
   note?: string;
 }
+
+export type UploadServerIconBody = {
+  file: Blob;
+};
+
+export type UploadServerBannerBody = {
+  file: Blob;
+};
 
 export type ListMessagesParams = {
 /**

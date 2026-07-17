@@ -5,6 +5,8 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
+import type { ChannelInputChannelType } from './channelInputChannelType';
+import type { ChannelInputVisualConfig } from './channelInputVisualConfig';
 
 export interface ChannelInput {
   /**
@@ -12,5 +14,7 @@ export interface ChannelInput {
      * @maxLength 100
      */
   name: string;
+  channelType?: ChannelInputChannelType;
   restrictedRoles?: number[];
+  visualConfig?: ChannelInputVisualConfig;
 }

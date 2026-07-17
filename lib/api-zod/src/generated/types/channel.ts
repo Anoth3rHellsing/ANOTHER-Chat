@@ -5,12 +5,17 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
+import type { ChannelChannelType } from './channelChannelType';
+import type { ChannelVisualConfig } from './channelVisualConfig';
 
 export interface Channel {
   id: number;
   serverId: number;
   name: string;
+  channelType: ChannelChannelType;
   /** Role IDs that can access this channel. Empty = unrestricted. */
   restrictedRoles: number[];
+  /** Visual decoration: { kind: 'gradient'|'image', value: string } */
+  visualConfig: ChannelVisualConfig;
   createdAt: Date;
 }

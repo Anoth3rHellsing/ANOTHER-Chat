@@ -2,6 +2,7 @@ import http from "http";
 import app, { ensureSessionTable } from "./app";
 import { logger } from "./lib/logger";
 import { initWebSocket } from "./lib/websocket";
+import { ensureGeneralServer } from "./lib/general-server";
 
 const rawPort = process.env["PORT"];
 
@@ -21,6 +22,7 @@ async function start() {
   // Create the sessions table before accepting connections so the session
   // store never tries to load the missing bundled table.sql file.
   await ensureSessionTable();
+  await ensureGeneralServer();
 
   const server = http.createServer(app);
 

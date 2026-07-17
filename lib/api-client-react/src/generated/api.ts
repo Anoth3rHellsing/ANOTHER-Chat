@@ -22,12 +22,14 @@ import type {
 import type {
   AdminStats,
   AdminUser,
+  AvatarUploadResult,
   Channel,
   ChannelInput,
   ChannelUpdate,
   HealthStatus,
   InviteCode,
   InviteInput,
+  JoinByInviteInput,
   ListMessagesParams,
   LoginInput,
   MemberRoleUpdate,
@@ -38,9 +40,12 @@ import type {
   RegisterInput,
   Server,
   ServerInput,
+  ServerInvite,
   ServerMember,
   ServerRole,
   ServerRoleInput,
+  UploadServerBannerBody,
+  UploadServerIconBody,
   User,
   UserProfile
 } from './api.schemas';
@@ -875,6 +880,446 @@ export const useLeaveServer = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getLeaveServerMutationOptions(options));
+    }
+
+export const getJoinServerByInviteUrl = () => {
+
+
+
+
+  return `/api/servers/join-by-invite`
+}
+
+/**
+ * @summary Join a server using an invite code
+ */
+export const joinServerByInvite = async (joinByInviteInput: JoinByInviteInput, options?: RequestInit): Promise<Server> => {
+
+  return customFetch<Server>(getJoinServerByInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(joinByInviteInput)
+  }
+);}
+
+
+
+
+
+export const getJoinServerByInviteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinServerByInvite>>, TError,{data: BodyType<JoinByInviteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinServerByInvite>>, TError,{data: BodyType<JoinByInviteInput>}, TContext> => {
+
+const mutationKey = ['joinServerByInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinServerByInvite>>, {data: BodyType<JoinByInviteInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  joinServerByInvite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinServerByInviteMutationResult = NonNullable<Awaited<ReturnType<typeof joinServerByInvite>>>
+    export type JoinServerByInviteMutationBody = BodyType<JoinByInviteInput>
+    export type JoinServerByInviteMutationError = ErrorType<void>
+
+    /**
+ * @summary Join a server using an invite code
+ */
+export const useJoinServerByInvite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinServerByInvite>>, TError,{data: BodyType<JoinByInviteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinServerByInvite>>,
+        TError,
+        {data: BodyType<JoinByInviteInput>},
+        TContext
+      > => {
+      return useMutation(getJoinServerByInviteMutationOptions(options));
+    }
+
+export const getListServerInvitesUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/invites`
+}
+
+/**
+ * @summary List active invite codes for a server
+ */
+export const listServerInvites = async (serverId: number, options?: RequestInit): Promise<ServerInvite[]> => {
+
+  return customFetch<ServerInvite[]>(getListServerInvitesUrl(serverId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListServerInvitesQueryKey = (serverId: number,) => {
+    return [
+    `/api/servers/${serverId}/invites`
+    ] as const;
+    }
+
+
+export const getListServerInvitesQueryOptions = <TData = Awaited<ReturnType<typeof listServerInvites>>, TError = ErrorType<unknown>>(serverId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listServerInvites>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListServerInvitesQueryKey(serverId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listServerInvites>>> = ({ signal }) => listServerInvites(serverId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: serverId !== null && serverId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listServerInvites>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListServerInvitesQueryResult = NonNullable<Awaited<ReturnType<typeof listServerInvites>>>
+export type ListServerInvitesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List active invite codes for a server
+ */
+
+export function useListServerInvites<TData = Awaited<ReturnType<typeof listServerInvites>>, TError = ErrorType<unknown>>(
+ serverId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listServerInvites>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListServerInvitesQueryOptions(serverId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateServerInviteUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/invites`
+}
+
+/**
+ * @summary Create a server invite code
+ */
+export const createServerInvite = async (serverId: number, options?: RequestInit): Promise<ServerInvite> => {
+
+  return customFetch<ServerInvite>(getCreateServerInviteUrl(serverId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateServerInviteMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createServerInvite>>, TError,{serverId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createServerInvite>>, TError,{serverId: number}, TContext> => {
+
+const mutationKey = ['createServerInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createServerInvite>>, {serverId: number}> = (props) => {
+          const {serverId} = props ?? {};
+
+          return  createServerInvite(serverId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateServerInviteMutationResult = NonNullable<Awaited<ReturnType<typeof createServerInvite>>>
+
+    export type CreateServerInviteMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a server invite code
+ */
+export const useCreateServerInvite = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createServerInvite>>, TError,{serverId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createServerInvite>>,
+        TError,
+        {serverId: number},
+        TContext
+      > => {
+      return useMutation(getCreateServerInviteMutationOptions(options));
+    }
+
+export const getRevokeServerInviteUrl = (serverId: number,
+    code: string,) => {
+
+
+
+
+  return `/api/servers/${serverId}/invites/${code}`
+}
+
+/**
+ * @summary Revoke a server invite code
+ */
+export const revokeServerInvite = async (serverId: number,
+    code: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRevokeServerInviteUrl(serverId,code),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokeServerInviteMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeServerInvite>>, TError,{serverId: number;code: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeServerInvite>>, TError,{serverId: number;code: string}, TContext> => {
+
+const mutationKey = ['revokeServerInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeServerInvite>>, {serverId: number;code: string}> = (props) => {
+          const {serverId,code} = props ?? {};
+
+          return  revokeServerInvite(serverId,code,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeServerInviteMutationResult = NonNullable<Awaited<ReturnType<typeof revokeServerInvite>>>
+
+    export type RevokeServerInviteMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Revoke a server invite code
+ */
+export const useRevokeServerInvite = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeServerInvite>>, TError,{serverId: number;code: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeServerInvite>>,
+        TError,
+        {serverId: number;code: string},
+        TContext
+      > => {
+      return useMutation(getRevokeServerInviteMutationOptions(options));
+    }
+
+export const getUploadServerIconUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/icon`
+}
+
+/**
+ * @summary Upload server icon image
+ */
+export const uploadServerIcon = async (serverId: number,
+    uploadServerIconBody: UploadServerIconBody, options?: RequestInit): Promise<AvatarUploadResult> => {
+    const formData = new FormData();
+formData.append(`file`, uploadServerIconBody.file);
+
+  return customFetch<AvatarUploadResult>(getUploadServerIconUrl(serverId),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getUploadServerIconMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadServerIcon>>, TError,{serverId: number;data: BodyType<UploadServerIconBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadServerIcon>>, TError,{serverId: number;data: BodyType<UploadServerIconBody>}, TContext> => {
+
+const mutationKey = ['uploadServerIcon'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadServerIcon>>, {serverId: number;data: BodyType<UploadServerIconBody>}> = (props) => {
+          const {serverId,data} = props ?? {};
+
+          return  uploadServerIcon(serverId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadServerIconMutationResult = NonNullable<Awaited<ReturnType<typeof uploadServerIcon>>>
+    export type UploadServerIconMutationBody = BodyType<UploadServerIconBody>
+    export type UploadServerIconMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upload server icon image
+ */
+export const useUploadServerIcon = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadServerIcon>>, TError,{serverId: number;data: BodyType<UploadServerIconBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadServerIcon>>,
+        TError,
+        {serverId: number;data: BodyType<UploadServerIconBody>},
+        TContext
+      > => {
+      return useMutation(getUploadServerIconMutationOptions(options));
+    }
+
+export const getUploadServerBannerUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/banner`
+}
+
+/**
+ * @summary Upload server banner image
+ */
+export const uploadServerBanner = async (serverId: number,
+    uploadServerBannerBody: UploadServerBannerBody, options?: RequestInit): Promise<AvatarUploadResult> => {
+    const formData = new FormData();
+formData.append(`file`, uploadServerBannerBody.file);
+
+  return customFetch<AvatarUploadResult>(getUploadServerBannerUrl(serverId),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getUploadServerBannerMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadServerBanner>>, TError,{serverId: number;data: BodyType<UploadServerBannerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadServerBanner>>, TError,{serverId: number;data: BodyType<UploadServerBannerBody>}, TContext> => {
+
+const mutationKey = ['uploadServerBanner'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadServerBanner>>, {serverId: number;data: BodyType<UploadServerBannerBody>}> = (props) => {
+          const {serverId,data} = props ?? {};
+
+          return  uploadServerBanner(serverId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadServerBannerMutationResult = NonNullable<Awaited<ReturnType<typeof uploadServerBanner>>>
+    export type UploadServerBannerMutationBody = BodyType<UploadServerBannerBody>
+    export type UploadServerBannerMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upload server banner image
+ */
+export const useUploadServerBanner = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadServerBanner>>, TError,{serverId: number;data: BodyType<UploadServerBannerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadServerBanner>>,
+        TError,
+        {serverId: number;data: BodyType<UploadServerBannerBody>},
+        TContext
+      > => {
+      return useMutation(getUploadServerBannerMutationOptions(options));
     }
 
 export const getGetServerMembersUrl = (serverId: number,) => {

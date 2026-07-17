@@ -1,25 +1,35 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { 
-  useGetCurrentUser, useListServers, useCreateServer, useJoinServer,
-  useGetServerMembers, useListChannels, useCreateChannel, 
+  useGetCurrentUser, useListServers, useJoinServer,
+  useGetServerMembers, useListChannels,
   useListMessages, useSendMessage, useEditMessage, useDeleteMessage,
   useUpdateMyProfile, getGetCurrentUserQueryKey,
   getListChannelsQueryKey, getListServersQueryKey, getGetServerMembersQueryKey,
+  useJoinServerByInvite,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { ProfileModal } from '@/components/profile-modal';
 import { ServerSettingsModal } from '@/components/server-settings-modal';
 import { UserProfileCard } from '@/components/user-profile-card';
+import { CreateChannelModal } from '@/components/create-channel-modal';
+import { CreateServerModal } from '@/components/create-server-modal';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
-  Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal
+  Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
+  Link2, Volume2, Image as ImageIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+const CHANNEL_TYPE_ICON = {
+  text: Hash,
+  voice: Volume2,
+  media: ImageIcon,
+} as const;
 
 export default function AppLayout() {
   const [, setLocation] = useLocation();
@@ -34,12 +44,15 @@ export default function AppLayout() {
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
+  const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
+  const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
   const [showMembers, setShowMembers] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedAnchorRect, setSelectedAnchorRect] = useState<DOMRect | null>(null);
 
   const openProfileCard = (userId: number, e: React.MouseEvent) => {
-    // Don't open card for self — open profile editor instead
     if (userId === user?.id) {
       setIsProfileOpen(true);
       return;
@@ -78,8 +91,7 @@ export default function AppLayout() {
   const sendMessage = useSendMessage();
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
-  const createServer = useCreateServer();
-  const createChannel = useCreateChannel();
+  const joinByInvite = useJoinServerByInvite();
 
   const [messageInput, setMessageInput] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
@@ -133,30 +145,24 @@ export default function AppLayout() {
     );
   };
 
-  const handleCreateServer = () => {
-    const name = prompt("Nombre del nuevo servidor clasificado:");
-    if (name) {
-      createServer.mutate({ data: { name } }, {
-        onSuccess: (newServer) => {
+  const handleJoinByCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinCode.trim()) return;
+    joinByInvite.mutate(
+      { data: { code: joinCode.trim() } },
+      {
+        onSuccess: (server: any) => {
           queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
-          setActiveServerId(newServer.id);
-          toast({ title: "Servidor creado" });
-        }
-      });
-    }
-  };
-
-  const handleCreateChannel = () => {
-    const name = prompt("Nombre del canal (sin espacios, minúsculas):");
-    if (name && activeServerId) {
-      createChannel.mutate({ serverId: activeServerId, data: { name: name.toLowerCase().replace(/\s+/g, '-') } }, {
-        onSuccess: (newChannel) => {
-          queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(activeServerId) });
-          setActiveChannelId(newChannel.id);
-          toast({ title: "Canal creado" });
-        }
-      });
-    }
+          setActiveServerId(server.id);
+          setJoinCode('');
+          setIsJoinByCodeOpen(false);
+          toast({ title: `Te uniste a ${server.name}` });
+        },
+        onError: () => {
+          toast({ title: 'Código inválido o expirado', variant: 'destructive' });
+        },
+      }
+    );
   };
 
   // Redirect to login when auth check completes and there's no user.
@@ -187,7 +193,7 @@ export default function AppLayout() {
 
   const canCreateChannel = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
 
-  // Group members — declared before any early returns to satisfy hooks rules.
+  // Group members
   const groupedMembers = useMemo(() => {
     if (!members) return { online: [], offline: [] };
     return members.reduce((acc, m) => {
@@ -206,7 +212,6 @@ export default function AppLayout() {
     }
   };
 
-  // Guard: show spinner while auth loads; redirect effect handles the !user case
   if (userLoading) {
     return (
       <div className="h-screen bg-background flex items-center justify-center text-primary">
@@ -221,7 +226,10 @@ export default function AppLayout() {
       
       {/* 1. SERVER LIST COLUMN */}
       <div className="w-[72px] bg-card border-r border-white/5 flex flex-col items-center py-4 gap-3 flex-shrink-0 z-20">
-        <div className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary cursor-pointer hover:rounded-xl transition-all" onClick={() => setLocation('/app')}>
+        <div
+          className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary cursor-pointer hover:rounded-xl transition-all"
+          onClick={() => setLocation('/app')}
+        >
           <Shield className="w-7 h-7" />
         </div>
         
@@ -236,56 +244,94 @@ export default function AppLayout() {
                 className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all overflow-hidden bg-secondary flex items-center justify-center border border-white/5 ${activeServerId === server.id ? 'rounded-[16px] bg-primary/20 text-primary border-primary/50' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
                 title={server.name}
               >
-                {server.iconUrl ? <img src={server.iconUrl} className="w-full h-full object-cover" alt="" /> : <span className="font-mono font-bold">{server.name.substring(0, 2).toUpperCase()}</span>}
+                {server.iconUrl
+                  ? <img src={server.iconUrl} className="w-full h-full object-cover" alt="" />
+                  : <span className="font-mono font-bold">{server.name.substring(0, 2).toUpperCase()}</span>
+                }
               </button>
             </div>
           ))}
           
-          <button onClick={handleCreateServer} className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-green-500 hover:bg-green-500/20 flex items-center justify-center group" title="Añadir Servidor">
+          {/* Create server button */}
+          <button
+            onClick={() => setIsCreateServerOpen(true)}
+            className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-green-500 hover:bg-green-500/20 flex items-center justify-center group"
+            title="Añadir Servidor"
+          >
             <Plus className="w-6 h-6 group-hover:scale-110 transition-transform" />
+          </button>
+
+          {/* Join by invite code button */}
+          <button
+            onClick={() => setIsJoinByCodeOpen(true)}
+            className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-blue-400 hover:bg-blue-400/20 flex items-center justify-center group"
+            title="Unirse con código"
+          >
+            <Link2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
           </button>
         </div>
       </div>
 
       {/* 2. CHANNEL LIST COLUMN */}
       <div className="w-60 bg-card/50 border-r border-white/5 flex flex-col flex-shrink-0">
-        <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
-          <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
-          {activeServer && canManageServer && (
-            <button
-              onClick={() => setIsServerSettingsOpen(true)}
-              className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
-              title="Configuración del servidor"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
+        {/* Server header with banner */}
+        <div className="flex-shrink-0">
+          {/* Banner */}
+          {activeServer?.bannerUrl && (
+            <div className="w-full h-16 overflow-hidden flex-shrink-0">
+              <img src={activeServer.bannerUrl} className="w-full h-full object-cover" alt="" />
+            </div>
           )}
+          {/* Server name bar */}
+          <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
+            <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
+            {activeServer && canManageServer && (
+              <button
+                onClick={() => setIsServerSettingsOpen(true)}
+                className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+                title="Configuración del servidor"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
         
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <div className="flex items-center justify-between px-2 mb-1 group">
             <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
             {activeServer && canCreateChannel && (
-              <button onClick={handleCreateChannel} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => setIsCreateChannelOpen(true)} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                 <Plus className="w-4 h-4" />
               </button>
             )}
           </div>
           
-          {channels?.map(channel => (
-            <button
-              key={channel.id}
-              onClick={() => setActiveChannelId(channel.id)}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${activeChannelId === channel.id ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
-            >
-              <Hash className="w-4 h-4 opacity-50 flex-shrink-0" />
-              <span className="truncate">{channel.name}</span>
-              {/* Lock indicator for restricted channels */}
-              {(channel as any).restrictedRoles?.length > 0 && (
-                <span className="ml-auto text-[10px] text-primary/60 font-mono flex-shrink-0">🔒</span>
-              )}
-            </button>
-          ))}
+          {channels?.map(channel => {
+            const ChannelIcon = CHANNEL_TYPE_ICON[(channel as any).channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
+            const vc = (channel as any).visualConfig ?? {};
+            const hasVisual = vc.kind && vc.value;
+            return (
+              <button
+                key={channel.id}
+                onClick={() => setActiveChannelId(channel.id)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                style={hasVisual && vc.kind === 'gradient'
+                  ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
+                  : hasVisual && vc.kind === 'image'
+                  ? { backgroundImage: `url(${vc.value})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'white' }
+                  : {}
+                }
+              >
+                {hasVisual && <div className="absolute inset-0 bg-black/30 rounded-md" />}
+                <ChannelIcon className="w-4 h-4 opacity-60 flex-shrink-0 relative z-10" />
+                <span className="truncate relative z-10">{channel.name}</span>
+                {(channel as any).restrictedRoles?.length > 0 && (
+                  <span className="ml-auto text-[10px] text-primary/60 font-mono flex-shrink-0 relative z-10">🔒</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* User Info Area */}
@@ -463,7 +509,6 @@ export default function AppLayout() {
                         <p className={`text-sm font-medium truncate ${member.role === 'admin' || member.role === 'owner' ? 'text-primary' : 'text-foreground/90'}`}>
                           {member.user.displayName}
                         </p>
-                        {/* Role badges */}
                         {member.roles && member.roles.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-0.5">
                             {member.roles.slice(0, 2).map((role: any) => (
@@ -475,9 +520,7 @@ export default function AppLayout() {
                                 {role.name}
                               </span>
                             ))}
-                            {member.roles.length > 2 && (
-                              <span className="text-[10px] text-muted-foreground">+{member.roles.length - 2}</span>
-                            )}
+                            {member.roles.length > 2 && <span className="text-[10px] text-muted-foreground">+{member.roles.length - 2}</span>}
                           </div>
                         )}
                       </div>
@@ -509,9 +552,7 @@ export default function AppLayout() {
                                 {role.name}
                               </span>
                             ))}
-                            {member.roles.length > 1 && (
-                              <span className="text-[10px] text-muted-foreground">+{member.roles.length - 1}</span>
-                            )}
+                            {member.roles.length > 1 && <span className="text-[10px] text-muted-foreground">+{member.roles.length - 1}</span>}
                           </div>
                         )}
                       </div>
@@ -551,10 +592,75 @@ export default function AppLayout() {
           onClose={() => setIsServerSettingsOpen(false)}
           serverId={activeServerId}
           serverName={activeServer.name}
+          serverIconUrl={(activeServer as any).iconUrl}
+          serverBannerUrl={(activeServer as any).bannerUrl}
+          isGeneral={(activeServer as any).isGeneral}
           members={members ?? []}
           currentUserId={user.id}
           currentUserMembershipRole={currentMembership?.role ?? 'member'}
         />
+      )}
+
+      {/* Create Server Modal */}
+      <CreateServerModal
+        isOpen={isCreateServerOpen}
+        onClose={() => setIsCreateServerOpen(false)}
+        onCreated={(server) => {
+          queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
+          setActiveServerId(server.id);
+          toast({ title: 'Servidor creado' });
+        }}
+      />
+
+      {/* Create Channel Modal */}
+      {activeServerId && (
+        <CreateChannelModal
+          isOpen={isCreateChannelOpen}
+          onClose={() => setIsCreateChannelOpen(false)}
+          serverId={activeServerId}
+          onCreated={(channel) => {
+            queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(activeServerId) });
+            setActiveChannelId(channel.id);
+            toast({ title: `Canal #${channel.name} creado` });
+          }}
+        />
+      )}
+
+      {/* Join by invite code overlay */}
+      {isJoinByCodeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setIsJoinByCodeOpen(false)}>
+          <div className="w-full max-w-sm bg-[#1e1f22] rounded-xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">Unirse a un servidor</h2>
+              <button onClick={() => setIsJoinByCodeOpen(false)} className="p-1 text-[#b5bac1] hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-[#b5bac1]">Introduce el código de invitación que te han enviado.</p>
+            <form onSubmit={handleJoinByCode} className="space-y-3">
+              <input
+                type="text"
+                value={joinCode}
+                onChange={e => setJoinCode(e.target.value)}
+                placeholder="ej. abc123def"
+                className="w-full bg-[#1a1b1e] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-[#6d6f78] focus:outline-none focus:border-primary/50 transition-colors font-mono tracking-wider"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setIsJoinByCodeOpen(false)} className="flex-1 py-2.5 text-sm text-[#b5bac1] hover:text-white transition-colors">
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!joinCode.trim() || joinByInvite.isPending}
+                  className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {joinByInvite.isPending ? 'Uniéndose...' : 'Unirse'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

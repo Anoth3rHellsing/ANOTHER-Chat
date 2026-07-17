@@ -1,8 +1,45 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcrypt";
-import { eq, isNull, count } from "drizzle-orm";
-import { db, usersTable, inviteCodesTable } from "@workspace/db";
+import { eq, isNull, count, and } from "drizzle-orm";
+import { db, usersTable, inviteCodesTable, serversTable, serverMembersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+
+/** Auto-join the general server for a given user, creating it if necessary */
+async function autoJoinGeneralServer(userId: number) {
+  try {
+    let [generalServer] = await db
+      .select()
+      .from(serversTable)
+      .where(eq(serversTable.isGeneral, true));
+
+    // First registration ever — create the General server with this user as owner
+    if (!generalServer) {
+      [generalServer] = await db
+        .insert(serversTable)
+        .values({ name: "General", ownerId: userId, isGeneral: true })
+        .returning();
+    }
+
+    const [existing] = await db
+      .select()
+      .from(serverMembersTable)
+      .where(and(
+        eq(serverMembersTable.serverId, generalServer.id),
+        eq(serverMembersTable.userId, userId)
+      ));
+
+    if (!existing) {
+      const isOwner = generalServer.ownerId === userId;
+      await db.insert(serverMembersTable).values({
+        serverId: generalServer.id,
+        userId,
+        role: isOwner ? "owner" : "member",
+      });
+    }
+  } catch {
+    // Non-fatal: log but don't block registration
+  }
+}
 
 const router: IRouter = Router();
 
@@ -143,6 +180,9 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       .set({ usedById: newUser.id, usedAt: new Date() })
       .where(eq(inviteCodesTable.code, inviteCode));
   }
+
+  // Auto-join the General server
+  await autoJoinGeneralServer(newUser.id);
 
   req.session.userId = newUser.id;
   req.session.userRole = newUser.role;

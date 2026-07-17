@@ -23,6 +23,22 @@ import {
 
 const router: IRouter = Router();
 
+function parseVisualConfig(raw: string | null | undefined): Record<string, any> {
+  try { return JSON.parse(raw ?? "{}") as Record<string, any>; } catch { return {}; }
+}
+
+function serializeChannel(c: typeof channelsTable.$inferSelect) {
+  return {
+    id: c.id,
+    serverId: c.serverId,
+    name: c.name,
+    channelType: c.channelType ?? "text",
+    restrictedRoles: parseRestrictedRoles(c.restrictedRoles),
+    visualConfig: parseVisualConfig(c.visualConfig),
+    createdAt: c.createdAt,
+  };
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 // GET /servers/:serverId/channels
@@ -44,15 +60,7 @@ router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise
     }
   }
 
-  res.json(
-    accessible.map((c) => ({
-      id: c.id,
-      serverId: c.serverId,
-      name: c.name,
-      restrictedRoles: parseRestrictedRoles(c.restrictedRoles),
-      createdAt: c.createdAt,
-    }))
-  );
+  res.json(accessible.map(serializeChannel));
 });
 
 // POST /servers/:serverId/channels
@@ -60,7 +68,7 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
   const userId = req.session.userId!;
   const raw = Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId;
   const serverId = parseInt(raw, 10);
-  const { name, restrictedRoles } = req.body;
+  const { name, restrictedRoles, channelType, visualConfig } = req.body;
 
   if (!name) {
     res.status(400).json({ error: "El nombre del canal es requerido" });
@@ -77,7 +85,7 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
   const perms = await getMemberPermissions(serverId, userId);
   const isAllowed =
     req.session.userRole === "admin" ||
-    perms === 0xffffffff || // owner or server admin
+    perms === 0xffffffff ||
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
@@ -88,22 +96,18 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
   const restrictedRolesJson = JSON.stringify(
     Array.isArray(restrictedRoles) ? restrictedRoles.map(Number) : []
   );
+  const validType = ["text", "voice", "media"].includes(channelType) ? channelType : "text";
+  const visualConfigJson = visualConfig ? JSON.stringify(visualConfig) : "{}";
 
   const [channel] = await db
     .insert(channelsTable)
-    .values({ serverId, name, restrictedRoles: restrictedRolesJson })
+    .values({ serverId, name, restrictedRoles: restrictedRolesJson, channelType: validType, visualConfig: visualConfigJson })
     .returning();
 
-  res.status(201).json({
-    id: channel.id,
-    serverId: channel.serverId,
-    name: channel.name,
-    restrictedRoles: parseRestrictedRoles(channel.restrictedRoles),
-    createdAt: channel.createdAt,
-  });
+  res.status(201).json(serializeChannel(channel));
 });
 
-// PATCH /channels/:channelId (edit name or restrictions)
+// PATCH /channels/:channelId
 router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const raw = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
@@ -128,10 +132,16 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
 
   const updates: Record<string, any> = {};
   if (req.body.name) updates.name = req.body.name;
+  if (req.body.channelType && ["text", "voice", "media"].includes(req.body.channelType)) {
+    updates.channelType = req.body.channelType;
+  }
   if (req.body.restrictedRoles !== undefined) {
     updates.restrictedRoles = JSON.stringify(
       Array.isArray(req.body.restrictedRoles) ? req.body.restrictedRoles.map(Number) : []
     );
+  }
+  if (req.body.visualConfig !== undefined) {
+    updates.visualConfig = JSON.stringify(req.body.visualConfig ?? {});
   }
 
   const [updated] = await db
@@ -140,13 +150,7 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
     .where(eq(channelsTable.id, channelId))
     .returning();
 
-  res.json({
-    id: updated.id,
-    serverId: updated.serverId,
-    name: updated.name,
-    restrictedRoles: parseRestrictedRoles(updated.restrictedRoles),
-    createdAt: updated.createdAt,
-  });
+  res.json(serializeChannel(updated));
 });
 
 // DELETE /channels/:channelId
@@ -184,7 +188,6 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
   const raw = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
   const channelId = parseInt(raw, 10);
 
-  // Enforce channel access restriction
   const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
   if (!channelCheck) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channelCheck, userId, req.session.userRole))) {
@@ -254,7 +257,6 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
   const channelId = parseInt(raw, 10);
   const { content } = req.body;
 
-  // Enforce channel access restriction
   const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
   if (!channelCheck) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channelCheck, userId, req.session.userRole))) {
@@ -284,15 +286,9 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     deletedAt: msg.deletedAt,
     createdAt: msg.createdAt,
     author: {
-      id: author.id,
-      username: author.username,
-      displayName: author.displayName,
-      bio: author.bio,
-      avatarUrl: author.avatarUrl,
-      bannerUrl: author.bannerUrl,
-      status: author.status,
-      role: author.role,
-      createdAt: author.createdAt,
+      id: author.id, username: author.username, displayName: author.displayName,
+      bio: author.bio, avatarUrl: author.avatarUrl, bannerUrl: author.bannerUrl,
+      status: author.status, role: author.role, createdAt: author.createdAt,
     },
   };
 
@@ -319,7 +315,6 @@ router.patch(
       return;
     }
 
-    // Enforce channel access restriction
     const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
     if (!channelCheck) { res.status(404).json({ error: "Canal no encontrado" }); return; }
     if (!(await canAccessChannel(channelCheck, userId, req.session.userRole))) {
@@ -349,23 +344,12 @@ router.patch(
     const [author] = await db.select().from(usersTable).where(eq(usersTable.id, updated.userId));
 
     const responseMsg = {
-      id: updated.id,
-      channelId: updated.channelId,
-      userId: updated.userId,
-      content,
-      editedAt: updated.editedAt,
-      deletedAt: updated.deletedAt,
-      createdAt: updated.createdAt,
+      id: updated.id, channelId: updated.channelId, userId: updated.userId,
+      content, editedAt: updated.editedAt, deletedAt: updated.deletedAt, createdAt: updated.createdAt,
       author: {
-        id: author.id,
-        username: author.username,
-        displayName: author.displayName,
-        bio: author.bio,
-        avatarUrl: author.avatarUrl,
-        bannerUrl: author.bannerUrl,
-        status: author.status,
-        role: author.role,
-        createdAt: author.createdAt,
+        id: author.id, username: author.username, displayName: author.displayName,
+        bio: author.bio, avatarUrl: author.avatarUrl, bannerUrl: author.bannerUrl,
+        status: author.status, role: author.role, createdAt: author.createdAt,
       },
     };
 
@@ -387,7 +371,6 @@ router.delete(
     const channelId = parseInt(rawCid, 10);
     const messageId = parseInt(rawMid, 10);
 
-    // Enforce channel access restriction
     const [channelForDelete] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
     if (!channelForDelete) { res.status(404).json({ error: "Canal no encontrado" }); return; }
     if (!(await canAccessChannel(channelForDelete, userId, req.session.userRole))) {
@@ -401,7 +384,6 @@ router.delete(
       return;
     }
 
-    // Allow: own message OR global-admin OR has manage_messages permission
     if (msg.userId !== userId && req.session.userRole !== "admin") {
       const perms = await getMemberPermissions(channelForDelete.serverId, userId);
       if (!hasPerm(perms, PERM.MANAGE_MESSAGES)) {

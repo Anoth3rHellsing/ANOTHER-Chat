@@ -113,6 +113,8 @@ export const ListServersResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "isGeneral": zod.boolean().optional(),
   "ownerId": zod.number(),
   "memberCount": zod.number(),
   "createdAt": zod.coerce.date()
@@ -135,6 +137,8 @@ export const CreateServerResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "isGeneral": zod.boolean().optional(),
   "ownerId": zod.number(),
   "memberCount": zod.number(),
   "createdAt": zod.coerce.date()
@@ -152,6 +156,8 @@ export const GetServerResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "isGeneral": zod.boolean().optional(),
   "ownerId": zod.number(),
   "memberCount": zod.number(),
   "createdAt": zod.coerce.date()
@@ -217,6 +223,107 @@ export const LeaveServerParams = zod.object({
 })
 
 export const LeaveServerResponse = zod.void()
+
+
+/**
+ * @summary Join a server using an invite code
+ */
+export const JoinServerByInviteBody = zod.object({
+  "code": zod.string()
+})
+
+export const JoinServerByInviteResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "iconUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "isGeneral": zod.boolean().optional(),
+  "ownerId": zod.number(),
+  "memberCount": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List active invite codes for a server
+ */
+export const ListServerInvitesParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const ListServerInvitesResponseItem = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "code": zod.string(),
+  "createdById": zod.number(),
+  "usedById": zod.number().nullish(),
+  "expiresAt": zod.coerce.date().nullish(),
+  "revoked": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+export const ListServerInvitesResponse = zod.array(ListServerInvitesResponseItem)
+
+
+/**
+ * @summary Create a server invite code
+ */
+export const CreateServerInviteParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const CreateServerInviteResponse = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "code": zod.string(),
+  "createdById": zod.number(),
+  "usedById": zod.number().nullish(),
+  "expiresAt": zod.coerce.date().nullish(),
+  "revoked": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Revoke a server invite code
+ */
+export const RevokeServerInviteParams = zod.object({
+  "serverId": zod.coerce.number(),
+  "code": zod.coerce.string()
+})
+
+export const RevokeServerInviteResponse = zod.void()
+
+
+/**
+ * @summary Upload server icon image
+ */
+export const UploadServerIconParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const UploadServerIconBody = zod.object({
+  "file": zod.any()
+})
+
+export const UploadServerIconResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary Upload server banner image
+ */
+export const UploadServerBannerParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const UploadServerBannerBody = zod.object({
+  "file": zod.any()
+})
+
+export const UploadServerBannerResponse = zod.object({
+  "url": zod.string()
+})
 
 
 /**
@@ -429,7 +536,9 @@ export const ListChannelsResponseItem = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
+  "channelType": zod.enum(['text', 'voice', 'media']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
+  "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
   "createdAt": zod.coerce.date()
 })
 export const ListChannelsResponse = zod.array(ListChannelsResponseItem)
@@ -448,14 +557,18 @@ export const createChannelBodyNameMax = 100;
 
 export const CreateChannelBody = zod.object({
   "name": zod.string().min(1).max(createChannelBodyNameMax),
-  "restrictedRoles": zod.array(zod.number()).optional()
+  "channelType": zod.enum(['text', 'voice', 'media']).optional(),
+  "restrictedRoles": zod.array(zod.number()).optional(),
+  "visualConfig": zod.record(zod.unknown()).optional()
 })
 
 export const CreateChannelResponse = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
+  "channelType": zod.enum(['text', 'voice', 'media']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
+  "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
   "createdAt": zod.coerce.date()
 })
 
@@ -473,14 +586,18 @@ export const updateChannelBodyNameMax = 100;
 
 export const UpdateChannelBody = zod.object({
   "name": zod.string().min(1).max(updateChannelBodyNameMax).optional(),
-  "restrictedRoles": zod.array(zod.number()).optional()
+  "channelType": zod.enum(['text', 'voice', 'media']).optional(),
+  "restrictedRoles": zod.array(zod.number()).optional(),
+  "visualConfig": zod.record(zod.unknown()).optional()
 })
 
 export const UpdateChannelResponse = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
+  "channelType": zod.enum(['text', 'voice', 'media']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
+  "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
   "createdAt": zod.coerce.date()
 })
 

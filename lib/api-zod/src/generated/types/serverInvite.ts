@@ -6,15 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface Server {
+export interface ServerInvite {
   id: number;
-  name: string;
+  serverId: number;
+  code: string;
+  createdById: number;
   /** @nullable */
-  iconUrl?: string | null;
+  usedById?: number | null;
   /** @nullable */
-  bannerUrl?: string | null;
-  isGeneral?: boolean;
-  ownerId: number;
-  memberCount: number;
+  expiresAt?: Date | null;
+  revoked: boolean;
   createdAt: Date;
 }

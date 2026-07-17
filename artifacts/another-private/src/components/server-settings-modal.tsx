@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useListServerRoles,
@@ -9,11 +9,16 @@ import {
   useRemoveMemberRole,
   useUpdateChannel,
   useListChannels,
+  useListServerInvites,
+  useCreateServerInvite,
+  useRevokeServerInvite,
   getListServerRolesQueryKey,
   getGetServerMembersQueryKey,
   getListChannelsQueryKey,
+  getListServerInvitesQueryKey,
+  getListServersQueryKey,
 } from '@workspace/api-client-react';
-import { X, Plus, Trash2, Check, Shield, Hash, Lock } from 'lucide-react';
+import { X, Plus, Trash2, Check, Shield, Hash, Lock, Copy, Link2, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PERM, PERM_LABELS, hasPerm } from '@/lib/permissions';
 
@@ -22,6 +27,9 @@ interface ServerSettingsModalProps {
   onClose: () => void;
   serverId: number;
   serverName: string;
+  serverIconUrl?: string | null;
+  serverBannerUrl?: string | null;
+  isGeneral?: boolean;
   members: any[];
   currentUserId: number;
   currentUserMembershipRole: string;
@@ -33,28 +41,41 @@ const PRESET_COLORS = [
   '#3b82f6', '#06b6d4', '#a855f7', '#64748b',
 ];
 
+type Tab = 'roles' | 'channels' | 'members' | 'apariencia' | 'invitaciones';
+
 export function ServerSettingsModal({
   isOpen,
   onClose,
   serverId,
   serverName,
+  serverIconUrl,
+  serverBannerUrl,
+  isGeneral,
   members,
   currentUserId,
   currentUserMembershipRole,
 }: ServerSettingsModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'roles' | 'channels' | 'members'>('roles');
+  const [activeTab, setActiveTab] = useState<Tab>('roles');
 
   const { data: roles = [] } = useListServerRoles(serverId, { query: { enabled: isOpen && !!serverId } as any });
   const { data: channels = [] } = useListChannels(serverId, { query: { enabled: isOpen && !!serverId } as any });
-  const updateChannel = useUpdateChannel();
+  const { data: invites = [], isLoading: invitesLoading } = useListServerInvites(serverId, { query: { enabled: isOpen && !!serverId && activeTab === 'invitaciones' } as any });
 
+  const updateChannel = useUpdateChannel();
   const createRole = useCreateServerRole();
   const updateRole = useUpdateServerRole();
   const deleteRole = useDeleteServerRole();
   const assignRole = useAssignMemberRole();
   const removeRole = useRemoveMemberRole();
+  const createInvite = useCreateServerInvite();
+  const revokeInvite = useRevokeServerInvite();
+  const [uploadingIcon, setUploadingIcon] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
+  const iconInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   // Role editor state
   const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
@@ -147,19 +168,88 @@ export function ServerSettingsModal({
   const handleToggleMemberRole = (member: any, role: any) => {
     const hasThisRole = member.roles?.some((r: any) => r.id === role.id);
     if (hasThisRole) {
-      removeRole.mutate(
-        { serverId, userId: member.userId, roleId: role.id },
-        { onSuccess: invalidateRoles }
-      );
+      removeRole.mutate({ serverId, userId: member.userId, roleId: role.id }, { onSuccess: invalidateRoles });
     } else {
-      assignRole.mutate(
-        { serverId, userId: member.userId, roleId: role.id },
-        { onSuccess: invalidateRoles }
-      );
+      assignRole.mutate({ serverId, userId: member.userId, roleId: role.id }, { onSuccess: invalidateRoles });
+    }
+  };
+
+  const handleCreateInvite = () => {
+    createInvite.mutate(
+      { serverId },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListServerInvitesQueryKey(serverId) });
+          toast({ title: 'Invitación creada' });
+        },
+      }
+    );
+  };
+
+  const handleRevokeInvite = (code: string) => {
+    revokeInvite.mutate(
+      { serverId, code },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListServerInvitesQueryKey(serverId) });
+          toast({ title: 'Invitación revocada' });
+        },
+      }
+    );
+  };
+
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast({ title: 'Código copiado', description: code });
+  };
+
+  const handleUploadIcon = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingIcon(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/servers/${serverId}/icon`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Upload failed');
+      queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
+      toast({ title: 'Icono actualizado' });
+    } catch {
+      toast({ title: 'Error al subir el icono', variant: 'destructive' });
+    } finally {
+      setUploadingIcon(false);
+    }
+  };
+
+  const handleUploadBanner = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBanner(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/servers/${serverId}/banner`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error('Upload failed');
+      queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
+      toast({ title: 'Banner actualizado' });
+    } catch {
+      toast({ title: 'Error al subir el banner', variant: 'destructive' });
+    } finally {
+      setUploadingBanner(false);
     }
   };
 
   if (!isOpen) return null;
+
+  const canManage = currentUserMembershipRole === 'owner' || currentUserMembershipRole === 'admin';
+
+  const TAB_LABELS: Record<Tab, string> = {
+    roles: 'Roles',
+    channels: 'Canales',
+    members: 'Miembros',
+    apariencia: 'Apariencia',
+    invitaciones: 'Invitaciones',
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
@@ -181,27 +271,28 @@ export function ServerSettingsModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/10 flex-shrink-0">
-          {(['roles', 'channels', 'members'] as const).map((tab) => (
+        <div className="flex border-b border-white/10 flex-shrink-0 overflow-x-auto">
+          {(Object.keys(TAB_LABELS) as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 text-sm font-mono uppercase tracking-wider transition-colors ${
+              className={`px-5 py-3 text-sm font-mono uppercase tracking-wider transition-colors whitespace-nowrap flex-shrink-0 ${
                 activeTab === tab
                   ? 'text-primary border-b-2 border-primary'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              {tab === 'roles' ? 'Roles' : tab === 'channels' ? 'Canales' : 'Miembros'}
+              {TAB_LABELS[tab]}
             </button>
           ))}
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
+
+          {/* ── ROLES TAB ─────────────────────────────── */}
           {activeTab === 'roles' && (
             <div className="space-y-4">
-              {/* Role list */}
               <div className="space-y-2">
                 {roles.map((role) => (
                   <div
@@ -224,7 +315,7 @@ export function ServerSettingsModal({
                         ) : null
                       )}
                     </div>
-                    {(currentUserMembershipRole === 'owner' || currentUserMembershipRole === 'admin') && (
+                    {canManage && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteRole(role.id); }}
                         className="p-1 text-muted-foreground hover:text-red-400 transition-colors"
@@ -234,21 +325,16 @@ export function ServerSettingsModal({
                     )}
                   </div>
                 ))}
-
                 {roles.length === 0 && !isCreating && (
-                  <p className="text-sm text-muted-foreground font-mono text-center py-4">
-                    No hay roles personalizados todavía.
-                  </p>
+                  <p className="text-sm text-muted-foreground font-mono text-center py-4">No hay roles personalizados todavía.</p>
                 )}
               </div>
 
-              {/* Role editor */}
               {(isCreating || editingRoleId !== null) && (
                 <div className="border border-primary/30 rounded-lg p-4 bg-primary/5 space-y-4">
                   <h3 className="text-sm font-mono uppercase tracking-wider text-primary">
                     {isCreating ? 'Nuevo rol' : 'Editar rol'}
                   </h3>
-
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Nombre</label>
                     <input
@@ -260,7 +346,6 @@ export function ServerSettingsModal({
                       autoFocus
                     />
                   </div>
-
                   <div className="space-y-2">
                     <label className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Color</label>
                     <div className="flex flex-wrap gap-2">
@@ -268,15 +353,12 @@ export function ServerSettingsModal({
                         <button
                           key={c}
                           onClick={() => setRoleColor(c)}
-                          className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${
-                            roleColor === c ? 'border-white scale-110' : 'border-transparent'
-                          }`}
+                          className={`w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 ${roleColor === c ? 'border-white scale-110' : 'border-transparent'}`}
                           style={{ backgroundColor: c }}
                         />
                       ))}
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     <label className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Permisos</label>
                     <div className="space-y-2">
@@ -284,11 +366,7 @@ export function ServerSettingsModal({
                         <label key={key} className="flex items-center gap-3 cursor-pointer group">
                           <div
                             onClick={() => togglePerm(flag)}
-                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              hasPerm(rolePermissions, flag)
-                                ? 'border-primary bg-primary'
-                                : 'border-white/20 bg-transparent group-hover:border-white/40'
-                            }`}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${hasPerm(rolePermissions, flag) ? 'border-primary bg-primary' : 'border-white/20 bg-transparent group-hover:border-white/40'}`}
                           >
                             {hasPerm(rolePermissions, flag) && <Check className="w-3 h-3 text-white" />}
                           </div>
@@ -297,7 +375,6 @@ export function ServerSettingsModal({
                       ))}
                     </div>
                   </div>
-
                   <div className="flex gap-2 pt-2">
                     <button
                       onClick={handleSaveRole}
@@ -306,17 +383,14 @@ export function ServerSettingsModal({
                     >
                       {isCreating ? 'Crear' : 'Guardar'}
                     </button>
-                    <button
-                      onClick={cancelEdit}
-                      className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
+                    <button onClick={cancelEdit} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                       Cancelar
                     </button>
                   </div>
                 </div>
               )}
 
-              {(currentUserMembershipRole === 'owner' || currentUserMembershipRole === 'admin') && !isCreating && editingRoleId === null && (
+              {canManage && !isCreating && editingRoleId === null && (
                 <button
                   onClick={startCreate}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-dashed border-white/20 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors text-sm"
@@ -328,15 +402,14 @@ export function ServerSettingsModal({
             </div>
           )}
 
+          {/* ── CHANNELS TAB ──────────────────────────── */}
           {activeTab === 'channels' && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider mb-4">
                 Controla qué roles pueden ver cada canal. Sin restricción = visible para todos.
               </p>
               {channels.length === 0 && (
-                <p className="text-sm text-muted-foreground font-mono text-center py-4">
-                  No hay canales en este servidor.
-                </p>
+                <p className="text-sm text-muted-foreground font-mono text-center py-4">No hay canales en este servidor.</p>
               )}
               {channels.map((channel: any) => {
                 const restricted: number[] = channel.restrictedRoles ?? [];
@@ -347,8 +420,7 @@ export function ServerSettingsModal({
                       <span className="text-sm font-medium text-foreground">{channel.name}</span>
                       {restricted.length > 0 && (
                         <span className="ml-auto flex items-center gap-1 text-xs text-primary/70 font-mono">
-                          <Lock className="w-3 h-3" />
-                          restringido
+                          <Lock className="w-3 h-3" />restringido
                         </span>
                       )}
                     </div>
@@ -362,14 +434,8 @@ export function ServerSettingsModal({
                             <button
                               key={role.id}
                               onClick={() => handleToggleChannelRole(channel, role.id)}
-                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
-                                isRestricted ? '' : 'border-white/20 text-muted-foreground hover:border-white/40'
-                              }`}
-                              style={isRestricted ? {
-                                backgroundColor: role.color + '33',
-                                borderColor: role.color,
-                                color: role.color,
-                              } : {}}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${isRestricted ? '' : 'border-white/20 text-muted-foreground hover:border-white/40'}`}
+                              style={isRestricted ? { backgroundColor: role.color + '33', borderColor: role.color, color: role.color } : {}}
                             >
                               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: role.color }} />
                               {role.name}
@@ -385,8 +451,7 @@ export function ServerSettingsModal({
                             )}
                             className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs text-red-400 border border-red-400/30 hover:bg-red-400/10 transition-colors"
                           >
-                            <X className="w-2.5 h-2.5" />
-                            Sin restricción
+                            <X className="w-2.5 h-2.5" />Sin restricción
                           </button>
                         )}
                       </div>
@@ -397,32 +462,27 @@ export function ServerSettingsModal({
             </div>
           )}
 
+          {/* ── MEMBERS TAB ───────────────────────────── */}
           {activeTab === 'members' && (
             <div className="space-y-3">
               {roles.length === 0 && (
-                <p className="text-sm text-muted-foreground font-mono text-center py-4">
-                  Crea roles primero para poder asignarlos.
-                </p>
+                <p className="text-sm text-muted-foreground font-mono text-center py-4">Crea roles primero para poder asignarlos.</p>
               )}
               {members.map((member) => (
                 <div key={member.id} className="border border-white/5 rounded-lg p-4 space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-                      {member.user?.avatarUrl ? (
-                        <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground font-mono">
-                          {member.user?.displayName?.substring(0, 2).toUpperCase()}
-                        </div>
-                      )}
+                      {member.user?.avatarUrl
+                        ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" />
+                        : <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground font-mono">{member.user?.displayName?.substring(0, 2).toUpperCase()}</div>
+                      }
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">{member.user?.displayName}</p>
                       <p className="text-xs text-muted-foreground font-mono">@{member.user?.username} · {member.role}</p>
                     </div>
                   </div>
-
-                  {roles.length > 0 && (currentUserMembershipRole === 'owner' || currentUserMembershipRole === 'admin') && member.userId !== currentUserId && (
+                  {roles.length > 0 && canManage && member.userId !== currentUserId && (
                     <div className="flex flex-wrap gap-2 pl-11">
                       {roles.map((role) => {
                         const hasThisRole = member.roles?.some((r: any) => r.id === role.id);
@@ -430,11 +490,7 @@ export function ServerSettingsModal({
                           <button
                             key={role.id}
                             onClick={() => handleToggleMemberRole(member, role)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
-                              hasThisRole
-                                ? 'border-transparent text-white'
-                                : 'border-white/20 text-muted-foreground hover:border-white/40 hover:text-foreground'
-                            }`}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${hasThisRole ? 'border-transparent text-white' : 'border-white/20 text-muted-foreground hover:border-white/40 hover:text-foreground'}`}
                             style={hasThisRole ? { backgroundColor: role.color + '33', borderColor: role.color, color: role.color } : {}}
                           >
                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: role.color }} />
@@ -445,16 +501,10 @@ export function ServerSettingsModal({
                       })}
                     </div>
                   )}
-
-                  {/* Show assigned roles if no edit access */}
-                  {(currentUserMembershipRole === 'member' || member.userId === currentUserId) && member.roles?.length > 0 && (
+                  {(!canManage || member.userId === currentUserId) && member.roles?.length > 0 && (
                     <div className="flex flex-wrap gap-1 pl-11">
                       {member.roles.map((r: any) => (
-                        <span
-                          key={r.id}
-                          className="px-2 py-0.5 rounded-full text-xs"
-                          style={{ backgroundColor: r.color + '33', color: r.color, border: `1px solid ${r.color}` }}
-                        >
+                        <span key={r.id} className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: r.color + '33', color: r.color, border: `1px solid ${r.color}` }}>
                           {r.name}
                         </span>
                       ))}
@@ -462,6 +512,129 @@ export function ServerSettingsModal({
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── APARIENCIA TAB ────────────────────────── */}
+          {activeTab === 'apariencia' && (
+            <div className="space-y-6">
+              {/* Server Icon */}
+              <div className="space-y-3">
+                <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Icono del Servidor</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 rounded-full bg-secondary border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
+                    {serverIconUrl
+                      ? <img src={serverIconUrl} className="w-full h-full object-cover" alt="" />
+                      : <span className="font-mono font-bold text-xl text-muted-foreground">{serverName.substring(0, 2).toUpperCase()}</span>
+                    }
+                  </div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => iconInputRef.current?.click()}
+                      disabled={uploadingIcon}
+                      className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      {uploadingIcon ? 'Subiendo...' : 'Cambiar icono'}
+                    </button>
+                    <p className="text-xs text-muted-foreground">Recomendado: cuadrado, mín. 128×128 px.</p>
+                  </div>
+                </div>
+                <input ref={iconInputRef} type="file" accept="image/*" className="hidden" onChange={handleUploadIcon} />
+              </div>
+
+              {/* Server Banner */}
+              <div className="space-y-3">
+                <label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Banner del Servidor</label>
+                <div
+                  className="w-full h-28 rounded-lg border border-white/10 overflow-hidden flex items-center justify-center bg-secondary cursor-pointer hover:border-primary/40 transition-colors group relative"
+                  onClick={() => bannerInputRef.current?.click()}
+                >
+                  {serverBannerUrl ? (
+                    <>
+                      <img src={serverBannerUrl} className="w-full h-full object-cover" alt="" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <p className="text-sm text-white font-mono">Cambiar banner</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground group-hover:text-white transition-colors">
+                      <ImageIcon className="w-8 h-8" />
+                      <p className="text-sm font-mono">Añadir banner (1920×480 recomendado)</p>
+                    </div>
+                  )}
+                </div>
+                <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleUploadBanner} />
+                {uploadingBanner && (
+                  <p className="text-xs text-primary font-mono flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Subiendo banner...
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── INVITACIONES TAB ──────────────────────── */}
+          {activeTab === 'invitaciones' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                  Códigos activos para unirse a este servidor
+                </p>
+                <button
+                  onClick={handleCreateInvite}
+                  disabled={createInvite.isPending}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-mono transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Nuevo código
+                </button>
+              </div>
+
+              {invitesLoading && (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                </div>
+              )}
+
+              {!invitesLoading && (invites as any[]).length === 0 && (
+                <div className="flex flex-col items-center gap-3 py-10 text-muted-foreground">
+                  <Link2 className="w-10 h-10 opacity-20" />
+                  <p className="text-sm font-mono">No hay invitaciones activas.</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {(invites as any[]).map((invite) => (
+                  <div key={invite.id} className="flex items-center gap-3 px-4 py-3 bg-white/5 rounded-lg border border-white/5 group">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-mono text-foreground tracking-wider">{invite.code}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Creado {new Date(invite.createdAt).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {invite.usedById && ' · Usado'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => copyCode(invite.code)}
+                        className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                        title="Copiar código"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      {canManage && (
+                        <button
+                          onClick={() => handleRevokeInvite(invite.code)}
+                          className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
+                          title="Revocar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

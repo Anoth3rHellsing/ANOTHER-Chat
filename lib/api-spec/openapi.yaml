@@ -24,6 +24,8 @@ tags:
     description: Admin management
   - name: roles
     description: Server role management
+  - name: invites
+    description: Server invitation management
 paths:
   /healthz:
     get:
@@ -205,6 +207,147 @@ paths:
       responses:
         "204":
           description: Left server
+
+  /servers/join-by-invite:
+    post:
+      operationId: joinServerByInvite
+      tags: [invites]
+      summary: Join a server using an invite code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinByInviteInput"
+      responses:
+        "200":
+          description: Joined server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Server"
+        "400":
+          description: Invalid or expired invite
+        "404":
+          description: Invite not found
+
+  /servers/{serverId}/invites:
+    get:
+      operationId: listServerInvites
+      tags: [invites]
+      summary: List active invite codes for a server
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invite list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServerInvite"
+    post:
+      operationId: createServerInvite
+      tags: [invites]
+      summary: Create a server invite code
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerInvite"
+
+  /servers/{serverId}/invites/{code}:
+    delete:
+      operationId: revokeServerInvite
+      tags: [invites]
+      summary: Revoke a server invite code
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Invite revoked
+
+  /servers/{serverId}/icon:
+    post:
+      operationId: uploadServerIcon
+      tags: [servers]
+      summary: Upload server icon image
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Icon uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarUploadResult"
+
+  /servers/{serverId}/banner:
+    post:
+      operationId: uploadServerBanner
+      tags: [servers]
+      summary: Upload server banner image
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Banner uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvatarUploadResult"
 
   /servers/{serverId}/members:
     get:
@@ -857,6 +1000,10 @@ components:
           type: string
         iconUrl:
           type: ["string", "null"]
+        bannerUrl:
+          type: ["string", "null"]
+        isGeneral:
+          type: boolean
         ownerId:
           type: integer
         memberCount:
@@ -911,7 +1058,7 @@ components:
 
     Channel:
       type: object
-      required: [id, serverId, name, restrictedRoles, createdAt]
+      required: [id, serverId, name, channelType, restrictedRoles, visualConfig, createdAt]
       properties:
         id:
           type: integer
@@ -919,14 +1066,50 @@ components:
           type: integer
         name:
           type: string
+        channelType:
+          type: string
+          enum: [text, voice, media]
         restrictedRoles:
           type: array
           items:
             type: integer
           description: Role IDs that can access this channel. Empty = unrestricted.
+        visualConfig:
+          type: object
+          description: "Visual decoration: { kind: 'gradient'|'image', value: string }"
         createdAt:
           type: string
           format: date-time
+
+    ServerInvite:
+      type: object
+      required: [id, serverId, code, createdById, revoked, createdAt]
+      properties:
+        id:
+          type: integer
+        serverId:
+          type: integer
+        code:
+          type: string
+        createdById:
+          type: integer
+        usedById:
+          type: ["integer", "null"]
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        revoked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    JoinByInviteInput:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
 
     Message:
       type: object
@@ -1048,10 +1231,15 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        channelType:
+          type: string
+          enum: [text, voice, media]
         restrictedRoles:
           type: array
           items:
             type: integer
+        visualConfig:
+          type: object
 
     ChannelUpdate:
       type: object
@@ -1060,10 +1248,15 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        channelType:
+          type: string
+          enum: [text, voice, media]
         restrictedRoles:
           type: array
           items:
             type: integer
+        visualConfig:
+          type: object
 
     MessageInput:
       type: object
