@@ -275,15 +275,27 @@ export function initWebSocket(server: HttpServer): void {
     });
 
     client.on("close", () => {
-      // Auto-leave any voice channels this client was in
+      // Auto-leave voice only when this is the user's LAST active connection.
+      // Multiple WS connections exist per user (use-webrtc + use-chat-websocket),
+      // so closing one (e.g. channelId change in chat hook) must not evict voice.
       if (client.userId) {
-        const channels = getAllVoiceChannelsForUser(client.userId);
-        for (const channelId of channels) {
-          leaveVoiceChannel(channelId, client.userId);
-          broadcast(`channel:${channelId}`, {
-            type: "voice:member_leave",
-            data: { channelId, userId: client.userId },
-          });
+        const hasOtherConnections = Array.from(wss!.clients).some((c) => {
+          const other = c as AuthedWebSocket;
+          return (
+            other !== client &&
+            other.readyState === WebSocket.OPEN &&
+            other.userId === client.userId
+          );
+        });
+        if (!hasOtherConnections) {
+          const channels = getAllVoiceChannelsForUser(client.userId);
+          for (const channelId of channels) {
+            leaveVoiceChannel(channelId, client.userId);
+            broadcast(`channel:${channelId}`, {
+              type: "voice:member_leave",
+              data: { channelId, userId: client.userId },
+            });
+          }
         }
       }
       logger.debug({ userId: client.userId }, "WebSocket client disconnected");

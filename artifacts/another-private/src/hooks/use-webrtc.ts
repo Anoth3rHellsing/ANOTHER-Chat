@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { safeCloseAudioContext } from '@/lib/settings-utils';
+import { playVoiceJoinSound, playVoiceLeaveSound } from '@/lib/voice-sounds';
 
 const STUN_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -98,7 +99,8 @@ export function useWebRTC(options: {
           if (prev.some(m => m.userId === member.userId)) return prev;
           return [...prev, member];
         });
-        // As the existing member, wait for the joiner to send us an offer
+        // Play sound for other members entering the channel
+        playVoiceJoinSound();
         break;
       }
 
@@ -106,6 +108,8 @@ export function useWebRTC(options: {
         const { userId } = msg.data;
         setVoiceMembers(prev => prev.filter(m => m.userId !== userId));
         closePeerConnection(userId);
+        // Play sound for other members leaving the channel
+        playVoiceLeaveSound();
         break;
       }
 
@@ -147,7 +151,6 @@ export function useWebRTC(options: {
 
       case 'dm:call-accepted': {
         const { acceptorId } = msg.data;
-        // We are the caller; now initiate WebRTC offer
         setCallState('connected');
         setDmCallUserId(acceptorId);
         await startDmCallOffer(acceptorId);
@@ -156,7 +159,6 @@ export function useWebRTC(options: {
 
       case 'dm:call-offer': {
         const { fromUserId, sdp } = msg.data;
-        // We accepted; receive offer
         const pc = getOrCreatePC(fromUserId);
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
         const answer = await pc.createAnswer();
@@ -212,7 +214,6 @@ export function useWebRTC(options: {
     const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
     peerConnections.current.set(peerId, pc);
 
-    // Add local tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
@@ -366,6 +367,9 @@ export function useWebRTC(options: {
     setIsInVoiceChannel(true);
     setVoiceMembers(members.filter(m => m.userId !== currentUserId));
 
+    // Play join sound for ourselves
+    playVoiceJoinSound();
+
     // Subscribe to channel voice events
     sendWS({ type: 'subscribe', channel: `channel:${channelId}` });
 
@@ -392,6 +396,9 @@ export function useWebRTC(options: {
   const leaveVoiceChannel = useCallback(async () => {
     if (!activeVoiceChannelId) return;
     const chId = activeVoiceChannelId;
+
+    // Play leave sound for ourselves before clearing state
+    playVoiceLeaveSound();
 
     const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
     await fetch(`${baseUrl}/api/channels/${chId}/voice/leave`, {
@@ -430,8 +437,6 @@ export function useWebRTC(options: {
     setCallState('connected');
     setDmCallUserId(callerId);
     sendWS({ type: 'dm:call-answer', callerId });
-
-    // Start local media; offer comes from the caller
     await startLocalMedia(false);
   }, [incomingCall, startLocalMedia]);
 
@@ -456,11 +461,16 @@ export function useWebRTC(options: {
   // ── Media controls ─────────────────────────────────────────────────────────
 
   const toggleMute = useCallback(() => {
-    if (!localStreamRef.current) return;
-    const audioTrack = localStreamRef.current.getAudioTracks()[0];
-    if (!audioTrack) return;
-    audioTrack.enabled = isMuted;
-    setIsMuted(!isMuted);
+    const newMuted = !isMuted;
+    // Toggle the actual audio track if we have a stream
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !newMuted; // enabled=true means unmuted
+      }
+    }
+    // Always update state so the UI reflects the change even without mic access
+    setIsMuted(newMuted);
   }, [isMuted]);
 
   const toggleCamera = useCallback(async () => {
@@ -470,7 +480,6 @@ export function useWebRTC(options: {
         const videoTracks = localStreamRef.current.getVideoTracks();
         videoTracks.forEach(t => localStreamRef.current?.removeTrack(t));
       }
-      // Update peer connections
       peerConnections.current.forEach(pc => {
         pc.getSenders().filter(s => s.track?.kind === 'video').forEach(s => pc.removeTrack(s));
       });
@@ -482,7 +491,6 @@ export function useWebRTC(options: {
         if (localStreamRef.current) {
           localStreamRef.current.addTrack(videoTrack);
         }
-        // Add to peer connections
         peerConnections.current.forEach(pc => {
           pc.addTrack(videoTrack, localStreamRef.current!);
         });
@@ -498,8 +506,6 @@ export function useWebRTC(options: {
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
       setIsScreenSharing(false);
-      // Revert to local camera/mic tracks in peer connections
-      // (simplified: signal peers to switch back)
     } else {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -509,7 +515,6 @@ export function useWebRTC(options: {
         screenStreamRef.current = screenStream;
         const screenTrack = screenStream.getVideoTracks()[0];
 
-        // Replace video track in all peer connections
         peerConnections.current.forEach(pc => {
           const videoSender = pc.getSenders().find(s => s.track?.kind === 'video');
           if (videoSender) {

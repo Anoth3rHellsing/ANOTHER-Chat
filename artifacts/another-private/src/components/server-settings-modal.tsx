@@ -18,7 +18,7 @@ import {
   getListServerInvitesQueryKey,
   getListServersQueryKey,
 } from '@workspace/api-client-react';
-import { X, Plus, Trash2, Check, Shield, Hash, Lock, Copy, Link2, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { X, Plus, Trash2, Check, Shield, Hash, Lock, Copy, Link2, Image as ImageIcon, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PERM, PERM_LABELS, hasPerm } from '@/lib/permissions';
 
@@ -30,9 +30,11 @@ interface ServerSettingsModalProps {
   serverIconUrl?: string | null;
   serverBannerUrl?: string | null;
   isGeneral?: boolean;
+  isOwner?: boolean;
   members: any[];
   currentUserId: number;
   currentUserMembershipRole: string;
+  onDeleted?: () => void;
 }
 
 const PRESET_COLORS = [
@@ -41,7 +43,7 @@ const PRESET_COLORS = [
   '#3b82f6', '#06b6d4', '#a855f7', '#64748b',
 ];
 
-type Tab = 'roles' | 'channels' | 'members' | 'apariencia' | 'invitaciones';
+type Tab = 'roles' | 'channels' | 'members' | 'apariencia' | 'invitaciones' | 'peligro';
 
 export function ServerSettingsModal({
   isOpen,
@@ -51,13 +53,17 @@ export function ServerSettingsModal({
   serverIconUrl,
   serverBannerUrl,
   isGeneral,
+  isOwner,
   members,
   currentUserId,
   currentUserMembershipRole,
+  onDeleted,
 }: ServerSettingsModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>('roles');
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const { data: roles = [] } = useListServerRoles(serverId, { query: { enabled: isOpen && !!serverId } as any });
   const { data: channels = [] } = useListChannels(serverId, { query: { enabled: isOpen && !!serverId } as any });
@@ -243,13 +249,38 @@ export function ServerSettingsModal({
 
   const canManage = currentUserMembershipRole === 'owner' || currentUserMembershipRole === 'admin';
 
+  const handleDeleteServer = async () => {
+    if (deleteConfirmName !== serverName) return;
+    setDeleting(true);
+    try {
+      const baseUrl = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+      const res = await fetch(`${baseUrl}/api/servers/${serverId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok || res.status === 204) {
+        queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
+        toast({ title: 'Servidor eliminado' });
+        onDeleted?.();
+        onClose();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: data.error ?? 'Error al eliminar', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Error de red', variant: 'destructive' });
+    }
+    setDeleting(false);
+  };
+
   const TAB_LABELS: Record<Tab, string> = {
     roles: 'Roles',
     channels: 'Canales',
     members: 'Miembros',
     apariencia: 'Apariencia',
     invitaciones: 'Invitaciones',
-  };
+    ...(isOwner && !isGeneral ? { peligro: '⚠ Peligro' } : {}),
+  } as Record<Tab, string>;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
@@ -637,6 +668,43 @@ export function ServerSettingsModal({
               </div>
             </div>
           )}
+
+          {/* ── PELIGRO TAB ───────────────────────────── */}
+          {activeTab === 'peligro' && !isGeneral && isOwner && (
+            <div className="space-y-6">
+              <div className="border border-red-500/30 rounded-xl p-5 bg-red-500/5 space-y-4">
+                <div className="flex items-center gap-2 text-red-400">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h3 className="font-bold font-mono uppercase tracking-wider text-sm">Eliminar servidor</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Esta acción es <strong className="text-foreground">permanente e irreversible</strong>. 
+                  Se eliminarán todos los canales, mensajes, roles e invitaciones de este servidor.
+                </p>
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground font-mono uppercase tracking-wider">
+                    Escribe <span className="text-foreground font-semibold">{serverName}</span> para confirmar
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmName}
+                    onChange={e => setDeleteConfirmName(e.target.value)}
+                    placeholder={serverName}
+                    className="w-full bg-background border border-red-500/30 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-red-500/60 placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <button
+                  onClick={handleDeleteServer}
+                  disabled={deleteConfirmName !== serverName || deleting}
+                  className="w-full bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2.5 text-sm font-bold font-mono uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {deleting ? 'Eliminando...' : 'Eliminar servidor definitivamente'}
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

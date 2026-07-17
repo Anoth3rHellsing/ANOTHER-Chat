@@ -21,10 +21,30 @@ function isChannelMessagesKey(queryKey: readonly unknown[], channelId: number): 
   );
 }
 
-export function useChatWebSocket(channelId?: number | null) {
+/**
+ * useChatWebSocket — manages one WS connection for a channel.
+ * 
+ * @param channelId       The primary active channel (for typing, message updates).
+ * @param allChannelIds   All channels to subscribe to for unread notifications.
+ *                        When a message:new arrives for a channel other than channelId,
+ *                        the unreadCounts map is updated.
+ */
+export function useChatWebSocket(
+  channelId?: number | null,
+  allChannelIds?: number[],
+) {
   const queryClient = useQueryClient();
   const ws = useRef<WebSocket | null>(null);
   const [typingUsers, setTypingUsers] = useState<Set<number>>(new Set());
+  const [unreadCounts, setUnreadCounts] = useState<Map<number, number>>(new Map());
+
+  const clearUnread = useCallback((id: number) => {
+    setUnreadCounts(prev => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -37,6 +57,14 @@ export function useChatWebSocket(channelId?: number | null) {
     ws.current.onopen = () => {
       if (channelId) {
         ws.current?.send(JSON.stringify({ type: "subscribe", channel: `channel:${channelId}` }));
+      }
+      // Subscribe to all other channels for notification purposes
+      if (allChannelIds) {
+        for (const cid of allChannelIds) {
+          if (cid !== channelId) {
+            ws.current?.send(JSON.stringify({ type: "subscribe", channel: `channel:${cid}` }));
+          }
+        }
       }
     };
 
@@ -55,6 +83,14 @@ export function useChatWebSocket(channelId?: number | null) {
                   return [...old, payload.data];
                 }
               );
+            } else if (payload.data.channelId && payload.data.channelId !== channelId) {
+              // Message in a non-active channel — increment unread
+              setUnreadCounts(prev => {
+                const next = new Map(prev);
+                const current = next.get(payload.data.channelId) ?? 0;
+                next.set(payload.data.channelId, current + 1);
+                return next;
+              });
             }
             break;
 
@@ -150,7 +186,7 @@ export function useChatWebSocket(channelId?: number | null) {
       ws.current?.close();
       setTypingUsers(new Set());
     };
-  }, [channelId, queryClient]);
+  }, [channelId, allChannelIds?.join(','), queryClient]);
 
   const sendTypingStart = useCallback(() => {
     if (ws.current?.readyState === WebSocket.OPEN && channelId) {
@@ -164,5 +200,5 @@ export function useChatWebSocket(channelId?: number | null) {
     }
   }, [channelId]);
 
-  return { typingUsers, sendTypingStart, sendTypingStop };
+  return { typingUsers, sendTypingStart, sendTypingStop, unreadCounts, clearUnread };
 }

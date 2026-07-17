@@ -9,6 +9,8 @@ import usersRouter from "./users";
 import adminRouter from "./admin";
 import rolesRouter from "./roles";
 import voiceRouter from "./voice";
+import storiesRouter from "./stories";
+import clipsRouter from "./clips";
 
 const router: IRouter = Router();
 
@@ -22,5 +24,7 @@ router.use(usersRouter);
 router.use(adminRouter);
 router.use(rolesRouter);
 router.use(voiceRouter);
+router.use(storiesRouter);
+router.use(clipsRouter);
 
 export default router;

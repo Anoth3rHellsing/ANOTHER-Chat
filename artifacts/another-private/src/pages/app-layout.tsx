@@ -23,13 +23,15 @@ import { UserProfileCard } from '@/components/user-profile-card';
 import { VoiceChannelRow } from '@/components/voice-channel-row';
 import { CreateChannelModal } from '@/components/create-channel-modal';
 import { CreateServerModal } from '@/components/create-server-modal';
+import { StoryBar } from '@/components/story-bar';
+import { ClipsView } from '@/components/clips-view';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
-  FileText, ExternalLink, Download, MessageSquare,
+  FileText, ExternalLink, Download, MessageSquare, Play,
   Cog, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff,
   PhoneIncoming
 } from 'lucide-react';
@@ -230,6 +232,7 @@ export default function AppLayout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [audioVideoSettings, setAudioVideoSettings] = useState<AudioVideoSettings>(loadSettings);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
+  const [showClips, setShowClips] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
@@ -288,7 +291,8 @@ export default function AppLayout() {
   const { data: members } = useGetServerMembers(activeServerId as number, { query: { enabled: !!activeServerId } as any });
   const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
   
-  const { typingUsers, sendTypingStart, sendTypingStop } = useChatWebSocket(activeChannelId);
+  const allChannelIds = useMemo(() => channels?.map(c => c.id) ?? [], [channels]);
+  const { typingUsers, sendTypingStart, sendTypingStop, unreadCounts, clearUnread } = useChatWebSocket(activeChannelId, allChannelIds);
   const { dmTypingUsers, sendDmTypingStart, sendDmTypingStop } = useDmWebSocket(activeDmUserId);
 
   // WebRTC — voice channels + DM calls
@@ -503,6 +507,11 @@ export default function AppLayout() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
+  // Clear unread when switching to a channel
+  useEffect(() => {
+    if (activeChannelId) clearUnread(activeChannelId);
+  }, [activeChannelId]);
+
   // Redirect to login when auth check completes and there's no user.
   useEffect(() => {
     if (!userLoading && !user) setLocation('/');
@@ -510,6 +519,12 @@ export default function AppLayout() {
 
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
+
+  // Compute per-server unread count for server icon badges
+  const serverUnread = useMemo(() => {
+    if (!channels) return 0;
+    return channels.reduce((sum, c) => sum + (unreadCounts.get(c.id) ?? 0), 0);
+  }, [channels, unreadCounts]);
 
   const currentMembership = useMemo(() => {
     if (!members || !user) return null;
@@ -589,7 +604,7 @@ export default function AppLayout() {
             <div key={server.id} className="relative group flex justify-center w-full">
               <div className={`absolute left-0 w-1 bg-primary rounded-r-full transition-all duration-200 ${activeServerId === server.id ? 'h-10 top-1' : 'h-2 top-5 opacity-0 group-hover:opacity-100 group-hover:h-5'}`} />
               <button
-                onClick={() => setActiveServerId(server.id)}
+                onClick={() => { setActiveServerId(server.id); setShowClips(false); }}
                 className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all overflow-hidden bg-secondary flex items-center justify-center border border-white/5 ${activeServerId === server.id ? 'rounded-[16px] bg-primary/20 text-primary border-primary/50' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
                 title={server.name}
               >
@@ -691,7 +706,7 @@ export default function AppLayout() {
 
             {/* User Info Area */}
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
-              <button onClick={() => setIsProfileOpen(true)} className="relative group">
+              <button onClick={() => setIsProfileOpen(true)} className="relative group" title="Perfil">
                 <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
                   {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                 </div>
@@ -701,9 +716,6 @@ export default function AppLayout() {
                 <p className="text-sm font-medium text-foreground truncate leading-tight">{user.displayName}</p>
                 <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
               </div>
-              <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Perfil">
-                <Settings className="w-4 h-4" />
-              </button>
               <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Ajustes">
                 <Cog className="w-4 h-4" />
               </button>
@@ -731,6 +743,9 @@ export default function AppLayout() {
               </div>
             </div>
 
+            {/* Story bar */}
+            <StoryBar currentUserId={user.id} currentUser={user} />
+
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
               <div className="flex items-center justify-between px-2 mb-1 group">
                 <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
@@ -752,7 +767,6 @@ export default function AppLayout() {
                       isJoined={webrtc.activeVoiceChannelId === channel.id}
                       onClick={() => {
                         if (webrtc.activeVoiceChannelId === channel.id) {
-                          // Already in this channel — clicking again shows it as active
                           setActiveChannelId(channel.id);
                         } else {
                           setActiveChannelId(channel.id);
@@ -766,11 +780,12 @@ export default function AppLayout() {
                 const ChannelIcon = CHANNEL_TYPE_ICON[channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
                 const vc = (channel as any).visualConfig ?? {};
                 const hasVisual = vc.kind && vc.value;
+                const channelUnread = unreadCounts.get(channel.id) ?? 0;
                 return (
                   <button
                     key={channel.id}
-                    onClick={() => setActiveChannelId(channel.id)}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    onClick={() => { setActiveChannelId(channel.id); setShowClips(false); clearUnread(channel.id); }}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                     style={hasVisual && vc.kind === 'gradient'
                       ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
                       : hasVisual && vc.kind === 'image'
@@ -780,13 +795,31 @@ export default function AppLayout() {
                   >
                     {hasVisual && <div className="absolute inset-0 bg-black/30 rounded-md" />}
                     <ChannelIcon className="w-4 h-4 opacity-60 flex-shrink-0 relative z-10" />
-                    <span className="truncate relative z-10">{channel.name}</span>
-                    {(channel as any).restrictedRoles?.length > 0 && (
-                      <span className="ml-auto text-[10px] text-primary/60 font-mono flex-shrink-0 relative z-10">🔒</span>
-                    )}
+                    <span className={`truncate relative z-10 ${channelUnread > 0 ? 'font-semibold text-foreground' : ''}`}>{channel.name}</span>
+                    <span className="ml-auto flex items-center gap-1 relative z-10">
+                      {(channel as any).restrictedRoles?.length > 0 && (
+                        <span className="text-[10px] text-primary/60 font-mono">🔒</span>
+                      )}
+                      {channelUnread > 0 && (
+                        <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                          {channelUnread > 99 ? '99+' : channelUnread}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
+
+              {/* Clips section */}
+              {activeServerId && (
+                <button
+                  onClick={() => setShowClips(v => !v)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors mt-2 ${showClips ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                >
+                  <Play className="w-4 h-4 opacity-60 flex-shrink-0" />
+                  <span>Clips</span>
+                </button>
+              )}
             </div>
 
             {/* Voice status bar (server mode) */}
@@ -810,7 +843,7 @@ export default function AppLayout() {
 
             {/* User Info Area */}
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
-              <button onClick={() => setIsProfileOpen(true)} className="relative group">
+              <button onClick={() => setIsProfileOpen(true)} className="relative group" title="Perfil">
                 <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
                   {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                 </div>
@@ -821,9 +854,6 @@ export default function AppLayout() {
                 <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Perfil">
-                  <Settings className="w-4 h-4" />
-                </button>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors" title="Ajustes">
                   <Cog className="w-4 h-4" />
                 </button>
@@ -1027,7 +1057,10 @@ export default function AppLayout() {
         )}
 
         {/* ── Server / channel chat pane ──────────────────────────────── */}
-        {activeView === 'servers' && activeChannel ? (
+        {/* ── Clips view ──────────────────────────────────────────────── */}
+        {activeView === 'servers' && showClips && activeServerId ? (
+          <ClipsView serverId={activeServerId} currentUserId={user.id} />
+        ) : activeView === 'servers' && activeChannel ? (
           <>
             {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
@@ -1563,10 +1596,16 @@ export default function AppLayout() {
           serverIconUrl={(activeServer as any).iconUrl}
           serverBannerUrl={(activeServer as any).bannerUrl}
           isGeneral={(activeServer as any).isGeneral ?? false}
+          isOwner={currentMembership?.role === 'owner'}
           members={members ?? []}
           currentUserId={user.id}
           currentUserMembershipRole={currentMembership?.role ?? 'member'}
           onClose={() => setIsServerSettingsOpen(false)}
+          onDeleted={() => {
+            setIsServerSettingsOpen(false);
+            setActiveServerId(null as any);
+            setActiveChannelId(null as any);
+          }}
         />
       )}
       {selectedUserId && selectedAnchorRect && (

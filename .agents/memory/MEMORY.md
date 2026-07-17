@@ -2,3 +2,5 @@
 - [WebSocket proxy path](ws-proxy-path.md) — /ws must be in artifact.toml paths array or proxy silently drops WS connections
 - [AES-256 message encryption](message-encryption.md) — messages encrypted before DB insert; IV stored per-row; MESSAGE_ENCRYPTION_KEY env var
 - [Permissions system](permissions-system.md) — bitmask roles, schema tables, key files, why PERM consts must be in a separate .ts file
+- [Voice WS close handler](voice-ws-close.md) — only auto-leave voice channels on last WS connection close (check wss.clients for other open sockets with same userId)
+- [Stories/clips raw SQL](stories-clips-raw-sql.md) — stories and clips tables not in drizzle schema; use pool.connect() raw queries; pool exported from @workspace/db
