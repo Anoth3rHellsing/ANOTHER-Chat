@@ -26,6 +26,10 @@ tags:
     description: Server role management
   - name: invites
     description: Server invitation management
+  - name: attachments
+    description: File attachments
+  - name: reactions
+    description: Message emoji reactions
 paths:
   /healthz:
     get:
@@ -678,6 +682,89 @@ paths:
               schema:
                 $ref: "#/components/schemas/Message"
 
+  /channels/{channelId}/attachments:
+    post:
+      operationId: uploadAttachment
+      tags: [attachments]
+      summary: Upload a file attachment for a channel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+
+  /messages/{messageId}/reactions:
+    post:
+      operationId: toggleReaction
+      tags: [reactions]
+      summary: Toggle an emoji reaction on a message (adds if missing, removes if present)
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionInput"
+      responses:
+        "200":
+          description: Reactions updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+
+  /messages/{messageId}/reactions/{emoji}:
+    delete:
+      operationId: deleteReaction
+      tags: [reactions]
+      summary: Remove an emoji reaction from a message
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: emoji
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reactions updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+
   /channels/{channelId}/messages/{messageId}:
     patch:
       operationId: editMessage
@@ -1111,6 +1198,67 @@ components:
         code:
           type: string
 
+    Attachment:
+      type: object
+      required: [id, url, filename, mimeType, size]
+      properties:
+        id:
+          type: integer
+        url:
+          type: string
+        filename:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+
+    MessageReaction:
+      type: object
+      required: [emoji, count, userIds]
+      properties:
+        emoji:
+          type: string
+        count:
+          type: integer
+        userIds:
+          type: array
+          items:
+            type: integer
+
+    LinkPreview:
+      type: object
+      required: [url, domain]
+      properties:
+        url:
+          type: string
+        domain:
+          type: string
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        imageUrl:
+          type: ["string", "null"]
+
+    ReplyPreview:
+      type: object
+      required: [id, authorDisplayName, contentPreview]
+      properties:
+        id:
+          type: integer
+        authorDisplayName:
+          type: string
+        contentPreview:
+          type: string
+
+    ReactionInput:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          type: string
+
     Message:
       type: object
       required: [id, channelId, userId, content, createdAt, author]
@@ -1123,6 +1271,8 @@ components:
           type: integer
         content:
           type: string
+        replyToId:
+          type: ["integer", "null"]
         editedAt:
           type: ["string", "null"]
           format: date-time
@@ -1134,6 +1284,20 @@ components:
           format: date-time
         author:
           $ref: "#/components/schemas/UserProfile"
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReaction"
+        replyTo:
+          $ref: "#/components/schemas/ReplyPreview"
+          nullable: true
+        linkPreview:
+          $ref: "#/components/schemas/LinkPreview"
+          nullable: true
 
     InviteCode:
       type: object
@@ -1266,6 +1430,13 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
+        replyToId:
+          type: integer
+          nullable: true
+        attachmentIds:
+          type: array
+          items:
+            type: integer
 
     MessageUpdate:
       type: object

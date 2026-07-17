@@ -629,6 +629,7 @@ export const ListMessagesResponseItem = zod.object({
   "channelId": zod.number(),
   "userId": zod.number(),
   "content": zod.string(),
+  "replyToId": zod.number().nullish(),
   "editedAt": zod.coerce.date().nullish(),
   "deletedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
@@ -647,7 +648,31 @@ export const ListMessagesResponseItem = zod.object({
   "url": zod.string(),
   "label": zod.string().optional()
 })).optional()
-})
+}),
+  "attachments": zod.array(zod.object({
+  "id": zod.number(),
+  "url": zod.string(),
+  "filename": zod.string(),
+  "mimeType": zod.string(),
+  "size": zod.number()
+})).optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).optional(),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish(),
+  "linkPreview": zod.object({
+  "url": zod.string(),
+  "domain": zod.string(),
+  "title": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "imageUrl": zod.string().nullish()
+}).nullish()
 })
 export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
 
@@ -664,7 +689,9 @@ export const sendMessageBodyContentMax = 4000;
 
 
 export const SendMessageBody = zod.object({
-  "content": zod.string().min(1).max(sendMessageBodyContentMax)
+  "content": zod.string().min(1).max(sendMessageBodyContentMax),
+  "replyToId": zod.number().nullish(),
+  "attachmentIds": zod.array(zod.number()).optional()
 })
 
 export const SendMessageResponse = zod.object({
@@ -672,6 +699,7 @@ export const SendMessageResponse = zod.object({
   "channelId": zod.number(),
   "userId": zod.number(),
   "content": zod.string(),
+  "replyToId": zod.number().nullish(),
   "editedAt": zod.coerce.date().nullish(),
   "deletedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
@@ -690,8 +718,87 @@ export const SendMessageResponse = zod.object({
   "url": zod.string(),
   "label": zod.string().optional()
 })).optional()
+}),
+  "attachments": zod.array(zod.object({
+  "id": zod.number(),
+  "url": zod.string(),
+  "filename": zod.string(),
+  "mimeType": zod.string(),
+  "size": zod.number()
+})).optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).optional(),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish(),
+  "linkPreview": zod.object({
+  "url": zod.string(),
+  "domain": zod.string(),
+  "title": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "imageUrl": zod.string().nullish()
+}).nullish()
 })
+
+
+/**
+ * @summary Upload a file attachment for a channel
+ */
+export const UploadAttachmentParams = zod.object({
+  "channelId": zod.coerce.number()
 })
+
+export const UploadAttachmentBody = zod.object({
+  "file": zod.any()
+})
+
+export const UploadAttachmentResponse = zod.object({
+  "id": zod.number(),
+  "url": zod.string(),
+  "filename": zod.string(),
+  "mimeType": zod.string(),
+  "size": zod.number()
+})
+
+
+/**
+ * @summary Toggle an emoji reaction on a message (adds if missing, removes if present)
+ */
+export const ToggleReactionParams = zod.object({
+  "messageId": zod.coerce.number()
+})
+
+export const ToggleReactionBody = zod.object({
+  "emoji": zod.string()
+})
+
+export const ToggleReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})
+export const ToggleReactionResponse = zod.array(ToggleReactionResponseItem)
+
+
+/**
+ * @summary Remove an emoji reaction from a message
+ */
+export const DeleteReactionParams = zod.object({
+  "messageId": zod.coerce.number(),
+  "emoji": zod.coerce.string()
+})
+
+export const DeleteReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})
+export const DeleteReactionResponse = zod.array(DeleteReactionResponseItem)
 
 
 /**
@@ -715,6 +822,7 @@ export const EditMessageResponse = zod.object({
   "channelId": zod.number(),
   "userId": zod.number(),
   "content": zod.string(),
+  "replyToId": zod.number().nullish(),
   "editedAt": zod.coerce.date().nullish(),
   "deletedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
@@ -733,7 +841,31 @@ export const EditMessageResponse = zod.object({
   "url": zod.string(),
   "label": zod.string().optional()
 })).optional()
-})
+}),
+  "attachments": zod.array(zod.object({
+  "id": zod.number(),
+  "url": zod.string(),
+  "filename": zod.string(),
+  "mimeType": zod.string(),
+  "size": zod.number()
+})).optional(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).optional(),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish(),
+  "linkPreview": zod.object({
+  "url": zod.string(),
+  "domain": zod.string(),
+  "title": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "imageUrl": zod.string().nullish()
+}).nullish()
 })
 
 

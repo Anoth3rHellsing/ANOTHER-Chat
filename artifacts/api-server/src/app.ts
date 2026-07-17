@@ -95,8 +95,20 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files (avatars, banners)
-app.use("/api/uploads", express.static(path.join(process.cwd(), "uploads")));
+// Serve uploaded files — hardened headers to prevent XSS
+app.use("/api/uploads", (req, res, next) => {
+  // Never sniff content type
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  // Isolate from app origin
+  res.setHeader("Content-Security-Policy", "default-src 'none'");
+  // Force attachment download for everything except known safe inline types
+  const ext = (req.path.split(".").pop() ?? "").toLowerCase();
+  const inlineAllowed = new Set(["jpg", "jpeg", "png", "gif", "webp", "mp4", "webm", "ogg"]);
+  if (!inlineAllowed.has(ext)) {
+    res.setHeader("Content-Disposition", "attachment");
+  }
+  next();
+}, express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api", router);
 

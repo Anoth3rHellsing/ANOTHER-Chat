@@ -12,4 +12,6 @@ export interface MessageInput {
      * @maxLength 4000
      */
   content: string;
+  replyToId?: number | null;
+  attachmentIds?: number[];
 }

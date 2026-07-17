@@ -5,6 +5,7 @@ type WSEvent =
   | { type: "message:new", data: any }
   | { type: "message:edit", data: any }
   | { type: "message:delete", data: { id: number, channelId: number } }
+  | { type: "message_reaction_update", data: { messageId: number, reactions: any[] } }
   | { type: "typing:start", data: { userId: number, channelId: number } }
   | { type: "typing:stop", data: { userId: number, channelId: number } }
   | { type: "user:status", data: { userId: number, status: any } };
@@ -43,8 +44,6 @@ export function useChatWebSocket(channelId?: number | null) {
         switch (payload.type) {
           case 'message:new':
             if (channelId && channelId === payload.data.channelId) {
-              // Use a predicate so the update finds the cache entry regardless of
-              // which optional params (before, limit) were passed to useListMessages.
               queryClient.setQueriesData(
                 { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
                 (old: any) => {
@@ -76,6 +75,22 @@ export function useChatWebSocket(channelId?: number | null) {
                   if (!old) return old;
                   return old.map((m: any) =>
                     m.id === payload.data.id ? { ...m, deletedAt: new Date().toISOString() } : m
+                  );
+                }
+              );
+            }
+            break;
+
+          case 'message_reaction_update':
+            if (channelId) {
+              queryClient.setQueriesData(
+                { predicate: (q) => isChannelMessagesKey(q.queryKey, channelId) },
+                (old: any) => {
+                  if (!old) return old;
+                  return old.map((m: any) =>
+                    m.id === payload.data.messageId
+                      ? { ...m, reactions: payload.data.reactions }
+                      : m
                   );
                 }
               );

@@ -5,6 +5,10 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
+import type { Attachment } from './attachment';
+import type { LinkPreview } from './linkPreview';
+import type { MessageReaction } from './messageReaction';
+import type { ReplyPreview } from './replyPreview';
 import type { UserProfile } from './userProfile';
 
 export interface Message {
@@ -13,9 +17,15 @@ export interface Message {
   userId: number;
   content: string;
   /** @nullable */
+  replyToId?: number | null;
+  /** @nullable */
   editedAt?: Date | null;
   /** @nullable */
   deletedAt?: Date | null;
   createdAt: Date;
   author: UserProfile;
+  attachments?: Attachment[];
+  reactions?: MessageReaction[];
+  replyTo?: ReplyPreview | null;
+  linkPreview?: LinkPreview | null;
 }

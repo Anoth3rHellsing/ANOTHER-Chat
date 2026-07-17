@@ -193,17 +193,58 @@ export interface JoinByInviteInput {
   code: string;
 }
 
+export interface Attachment {
+  id: number;
+  url: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  userIds: number[];
+}
+
+export interface LinkPreview {
+  url: string;
+  domain: string;
+  /** @nullable */
+  title?: string | null;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  imageUrl?: string | null;
+}
+
+export interface ReplyPreview {
+  id: number;
+  authorDisplayName: string;
+  contentPreview: string;
+}
+
+export interface ReactionInput {
+  emoji: string;
+}
+
 export interface Message {
   id: number;
   channelId: number;
   userId: number;
   content: string;
   /** @nullable */
+  replyToId?: number | null;
+  /** @nullable */
   editedAt?: string | null;
   /** @nullable */
   deletedAt?: string | null;
   createdAt: string;
   author: UserProfile;
+  attachments?: Attachment[];
+  reactions?: MessageReaction[];
+  replyTo?: ReplyPreview | null;
+  linkPreview?: LinkPreview | null;
 }
 
 export interface InviteCode {
@@ -317,6 +358,8 @@ export interface MessageInput {
      * @maxLength 4000
      */
   content: string;
+  replyToId?: number | null;
+  attachmentIds?: number[];
 }
 
 export interface MessageUpdate {
@@ -382,5 +425,9 @@ before?: number;
  * Max messages to return (default 50)
  */
 limit?: number;
+};
+
+export type UploadAttachmentBody = {
+  file: Blob;
 };
 

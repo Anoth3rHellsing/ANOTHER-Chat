@@ -1,25 +1,26 @@
 import { Router, type IRouter } from "express";
-import { eq, and, lt, desc } from "drizzle-orm";
+import { eq, and, lt, desc, inArray } from "drizzle-orm";
 import {
   db,
   channelsTable,
   messagesTable,
+  messageAttachmentsTable,
+  messageReactionsTable,
   serverMembersTable,
   serversTable,
   usersTable,
-  serverMemberRolesTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { encryptMessage, decryptMessage } from "../lib/crypto";
 import {
   getMemberPermissions,
-  getMembership,
-  getMemberRoleIds,
   canAccessChannel,
   parseRestrictedRoles,
   PERM,
   hasPerm,
 } from "../lib/permissions";
+import { fetchFirstLinkPreview } from "../lib/link-preview";
+import { groupReactions } from "./messages";
 
 const router: IRouter = Router();
 
@@ -39,20 +40,65 @@ function serializeChannel(c: typeof channelsTable.$inferSelect) {
   };
 }
 
+function serializeAuthor(author: typeof usersTable.$inferSelect | undefined) {
+  if (!author) return null;
+  return {
+    id: author.id,
+    username: author.username,
+    displayName: author.displayName,
+    bio: author.bio,
+    avatarUrl: author.avatarUrl,
+    bannerUrl: author.bannerUrl,
+    status: author.status,
+    role: author.role,
+    createdAt: author.createdAt,
+  };
+}
+
+async function buildMessageResponse(
+  msg: typeof messagesTable.$inferSelect,
+  decryptedContent: string,
+  authorRow: typeof usersTable.$inferSelect | undefined,
+  attachmentRows: Array<typeof messageAttachmentsTable.$inferSelect>,
+  reactionRows: Array<{ emoji: string; userId: number }>,
+  replyToData: { id: number; authorDisplayName: string; contentPreview: string } | null,
+  linkPreviewData: Awaited<ReturnType<typeof fetchFirstLinkPreview>>,
+) {
+  return {
+    id: msg.id,
+    channelId: msg.channelId,
+    userId: msg.userId,
+    content: decryptedContent,
+    replyToId: msg.replyToId ?? null,
+    editedAt: msg.editedAt,
+    deletedAt: msg.deletedAt,
+    createdAt: msg.createdAt,
+    author: serializeAuthor(authorRow),
+    attachments: attachmentRows.map(a => ({
+      id: a.id,
+      url: a.url,
+      filename: a.filename,
+      mimeType: a.mimeType,
+      size: a.size,
+    })),
+    reactions: groupReactions(reactionRows),
+    replyTo: replyToData ?? null,
+    linkPreview: linkPreviewData ?? null,
+  };
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 // GET /servers/:serverId/channels
 router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const raw = Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId;
-  const serverId = parseInt(raw, 10);
+  const serverId = parseInt(Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId, 10);
 
   const channels = await db
     .select()
     .from(channelsTable)
     .where(eq(channelsTable.serverId, serverId));
 
-  // Filter channels by role restriction
   const accessible: typeof channels = [];
   for (const c of channels) {
     if (await canAccessChannel(c, userId, req.session.userRole)) {
@@ -66,22 +112,16 @@ router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise
 // POST /servers/:serverId/channels
 router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const raw = Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId;
-  const serverId = parseInt(raw, 10);
+  const serverId = parseInt(Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId, 10);
   const { name, restrictedRoles, channelType, visualConfig } = req.body;
 
   if (!name) {
-    res.status(400).json({ error: "El nombre del canal es requerido" });
-    return;
+    res.status(400).json({ error: "El nombre del canal es requerido" }); return;
   }
 
   const [server] = await db.select().from(serversTable).where(eq(serversTable.id, serverId));
-  if (!server) {
-    res.status(404).json({ error: "Servidor no encontrado" });
-    return;
-  }
+  if (!server) { res.status(404).json({ error: "Servidor no encontrado" }); return; }
 
-  // Check permission: owner/admin OR has manage_channels
   const perms = await getMemberPermissions(serverId, userId);
   const isAllowed =
     req.session.userRole === "admin" ||
@@ -89,8 +129,7 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para crear canales" });
-    return;
+    res.status(403).json({ error: "No tienes permiso para crear canales" }); return;
   }
 
   const restrictedRolesJson = JSON.stringify(
@@ -110,14 +149,10 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
 // PATCH /channels/:channelId
 router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const raw = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
-  const channelId = parseInt(raw, 10);
+  const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
 
   const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
-  if (!channel) {
-    res.status(404).json({ error: "Canal no encontrado" });
-    return;
-  }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
 
   const perms = await getMemberPermissions(channel.serverId, userId);
   const isAllowed =
@@ -126,8 +161,7 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para editar canales" });
-    return;
+    res.status(403).json({ error: "No tienes permiso para editar canales" }); return;
   }
 
   const updates: Record<string, any> = {};
@@ -156,14 +190,10 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
 // DELETE /channels/:channelId
 router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const raw = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
-  const channelId = parseInt(raw, 10);
+  const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
 
   const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
-  if (!channel) {
-    res.status(404).json({ error: "Canal no encontrado" });
-    return;
-  }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
 
   const perms = await getMemberPermissions(channel.serverId, userId);
   const isAllowed =
@@ -172,10 +202,19 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para eliminar canales" });
-    return;
+    res.status(403).json({ error: "No tienes permiso para eliminar canales" }); return;
   }
 
+  await db.delete(messageAttachmentsTable).where(
+    inArray(messageAttachmentsTable.messageId,
+      db.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
+    )
+  );
+  await db.delete(messageReactionsTable).where(
+    inArray(messageReactionsTable.messageId,
+      db.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
+    )
+  );
   await db.delete(messagesTable).where(eq(messagesTable.channelId, channelId));
   await db.delete(channelsTable).where(eq(channelsTable.id, channelId));
 
@@ -185,8 +224,7 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
 // GET /channels/:channelId/messages
 router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const raw = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
-  const channelId = parseInt(raw, 10);
+  const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
 
   const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
   if (!channelCheck) { res.status(404).json({ error: "Canal no encontrado" }); return; }
@@ -209,41 +247,90 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
     .orderBy(desc(messagesTable.id))
     .limit(limit);
 
-  const result = await Promise.all(
-    messages.reverse().map(async (msg) => {
-      const [author] = await db.select().from(usersTable).where(eq(usersTable.id, msg.userId));
+  const reversed = messages.reverse();
 
+  if (reversed.length === 0) { res.json([]); return; }
+
+  // Batch fetch authors, attachments, reactions
+  const messageIds = reversed.map(m => m.id);
+  const authorIds = [...new Set(reversed.map(m => m.userId))];
+  const replyToIds = [...new Set(reversed.map(m => m.replyToId).filter((id): id is number => id != null))];
+
+  const [authors, attachments, rawReactions, replyMessages] = await Promise.all([
+    authorIds.length > 0
+      ? db.select().from(usersTable).where(inArray(usersTable.id, authorIds))
+      : Promise.resolve([] as (typeof usersTable.$inferSelect)[]),
+    db.select().from(messageAttachmentsTable).where(inArray(messageAttachmentsTable.messageId, messageIds)),
+    db.select({ emoji: messageReactionsTable.emoji, userId: messageReactionsTable.userId, messageId: messageReactionsTable.messageId })
+      .from(messageReactionsTable)
+      .where(inArray(messageReactionsTable.messageId, messageIds)),
+    replyToIds.length > 0
+      ? db.select().from(messagesTable).where(inArray(messagesTable.id, replyToIds))
+      : Promise.resolve([] as (typeof messagesTable.$inferSelect)[]),
+  ]);
+
+  // Build reply author map
+  const replyAuthorIds = [...new Set(replyMessages.map(m => m.userId))];
+  const replyAuthors = replyAuthorIds.length > 0
+    ? await db.select().from(usersTable).where(inArray(usersTable.id, replyAuthorIds))
+    : [];
+
+  const authorMap = new Map(authors.map(a => [a.id, a]));
+  const replyAuthorMap = new Map(replyAuthors.map(a => [a.id, a]));
+  const attachmentMap = new Map<number, typeof attachments>();
+  const reactionMap = new Map<number, Array<{ emoji: string; userId: number }>>();
+  const replyMap = new Map(replyMessages.map(m => [m.id, m]));
+
+  for (const a of attachments) {
+    if (!attachmentMap.has(a.messageId)) attachmentMap.set(a.messageId, []);
+    attachmentMap.get(a.messageId)!.push(a);
+  }
+  for (const r of rawReactions) {
+    if (!reactionMap.has(r.messageId)) reactionMap.set(r.messageId, []);
+    reactionMap.get(r.messageId)!.push({ emoji: r.emoji, userId: r.userId });
+  }
+
+  const result = await Promise.all(
+    reversed.map(async (msg) => {
+      const author = authorMap.get(msg.userId);
       let content = "[mensaje eliminado]";
       if (!msg.deletedAt) {
-        try {
-          content = decryptMessage(msg.contentEncrypted, msg.iv);
-        } catch {
-          content = "[error al descifrar]";
+        try { content = decryptMessage(msg.contentEncrypted, msg.iv); } catch { content = "[error al descifrar]"; }
+      }
+
+      // Build replyTo preview
+      let replyTo: { id: number; authorDisplayName: string; contentPreview: string } | null = null;
+      if (msg.replyToId) {
+        const rMsg = replyMap.get(msg.replyToId);
+        if (rMsg) {
+          const rAuthor = replyAuthorMap.get(rMsg.userId);
+          let rContent = "[mensaje eliminado]";
+          if (!rMsg.deletedAt) {
+            try { rContent = decryptMessage(rMsg.contentEncrypted, rMsg.iv); } catch { rContent = "[error al descifrar]"; }
+          }
+          replyTo = {
+            id: rMsg.id,
+            authorDisplayName: rAuthor?.displayName ?? "Usuario",
+            contentPreview: rContent.slice(0, 100),
+          };
         }
       }
 
-      return {
-        id: msg.id,
-        channelId: msg.channelId,
-        userId: msg.userId,
+      // Link preview — only for non-deleted messages (fire-and-forget cached)
+      let linkPreview = null;
+      if (!msg.deletedAt && content) {
+        linkPreview = await fetchFirstLinkPreview(content);
+      }
+
+      return buildMessageResponse(
+        msg,
         content,
-        editedAt: msg.editedAt,
-        deletedAt: msg.deletedAt,
-        createdAt: msg.createdAt,
-        author: author
-          ? {
-              id: author.id,
-              username: author.username,
-              displayName: author.displayName,
-              bio: author.bio,
-              avatarUrl: author.avatarUrl,
-              bannerUrl: author.bannerUrl,
-              status: author.status,
-              role: author.role,
-              createdAt: author.createdAt,
-            }
-          : null,
-      };
+        author,
+        attachmentMap.get(msg.id) ?? [],
+        reactionMap.get(msg.id) ?? [],
+        replyTo,
+        linkPreview,
+      );
     })
   );
 
@@ -253,9 +340,8 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
 // POST /channels/:channelId/messages
 router.post("/channels/:channelId/messages", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const raw = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
-  const channelId = parseInt(raw, 10);
-  const { content } = req.body;
+  const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
+  const { content, replyToId, attachmentIds } = req.body;
 
   const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
   if (!channelCheck) { res.status(404).json({ error: "Canal no encontrado" }); return; }
@@ -263,34 +349,84 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
 
-  if (content == null || typeof content !== "string" || content.trim().length === 0) {
-    res.status(400).json({ error: "El contenido del mensaje no puede estar vacío" });
-    return;
+  const hasAttachments = Array.isArray(attachmentIds) && attachmentIds.length > 0;
+  if ((content == null || typeof content !== "string" || content.trim().length === 0) && !hasAttachments) {
+    res.status(400).json({ error: "El mensaje debe tener contenido o adjuntos" }); return;
   }
 
-  const { encrypted, iv } = encryptMessage(content);
+  const safeContent = content?.trim() ?? "";
+  const { encrypted, iv } = encryptMessage(safeContent || " "); // encrypt a space if no text content
+
+  // Validate replyToId
+  let validReplyToId: number | null = null;
+  if (replyToId) {
+    const [replyMsg] = await db.select().from(messagesTable).where(eq(messagesTable.id, replyToId));
+    if (replyMsg && replyMsg.channelId === channelId) validReplyToId = replyToId;
+  }
 
   const [msg] = await db
     .insert(messagesTable)
-    .values({ channelId, userId, contentEncrypted: encrypted, iv })
+    .values({ channelId, userId, contentEncrypted: encrypted, iv, replyToId: validReplyToId })
     .returning();
+
+  // Associate attachments with this message — enforce ownership
+  let attachmentRows: Array<typeof messageAttachmentsTable.$inferSelect> = [];
+  if (hasAttachments) {
+    const ids = (attachmentIds as number[]).map(Number).slice(0, 10);
+    // Fetch the candidate rows before updating
+    const candidates = await db.select().from(messageAttachmentsTable)
+      .where(inArray(messageAttachmentsTable.id, ids));
+    // Only allow attachments that belong to this user, this channel, and are unclaimed
+    const allowed = candidates.filter(a =>
+      a.uploadedByUserId === userId &&
+      a.channelId === channelId &&
+      a.claimed === 0
+    );
+    if (allowed.length > 0) {
+      const allowedIds = allowed.map(a => a.id);
+      await db.update(messageAttachmentsTable)
+        .set({ messageId: msg.id, claimed: 1 })
+        .where(inArray(messageAttachmentsTable.id, allowedIds));
+      attachmentRows = await db.select().from(messageAttachmentsTable)
+        .where(eq(messageAttachmentsTable.messageId, msg.id));
+    }
+  }
 
   const [author] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
 
-  const responseMsg = {
-    id: msg.id,
-    channelId: msg.channelId,
-    userId: msg.userId,
-    content,
-    editedAt: msg.editedAt,
-    deletedAt: msg.deletedAt,
-    createdAt: msg.createdAt,
-    author: {
-      id: author.id, username: author.username, displayName: author.displayName,
-      bio: author.bio, avatarUrl: author.avatarUrl, bannerUrl: author.bannerUrl,
-      status: author.status, role: author.role, createdAt: author.createdAt,
-    },
-  };
+  // Build replyTo preview
+  let replyTo: { id: number; authorDisplayName: string; contentPreview: string } | null = null;
+  if (validReplyToId) {
+    const [rMsg] = await db.select().from(messagesTable).where(eq(messagesTable.id, validReplyToId));
+    if (rMsg) {
+      const [rAuthor] = await db.select().from(usersTable).where(eq(usersTable.id, rMsg.userId));
+      let rContent = "[mensaje eliminado]";
+      if (!rMsg.deletedAt) {
+        try { rContent = decryptMessage(rMsg.contentEncrypted, rMsg.iv); } catch { /* ignore */ }
+      }
+      replyTo = {
+        id: rMsg.id,
+        authorDisplayName: rAuthor?.displayName ?? "Usuario",
+        contentPreview: rContent.slice(0, 100),
+      };
+    }
+  }
+
+  // Link preview (non-blocking — fire and forget inline since it's cached)
+  let linkPreview = null;
+  if (safeContent) {
+    linkPreview = await fetchFirstLinkPreview(safeContent);
+  }
+
+  const responseMsg = await buildMessageResponse(
+    msg,
+    safeContent,
+    author,
+    attachmentRows,
+    [],
+    replyTo,
+    linkPreview,
+  );
 
   const { broadcast } = await import("../lib/websocket");
   broadcast(`channel:${channelId}`, { type: "message:new", data: responseMsg });
@@ -304,15 +440,12 @@ router.patch(
   requireAuth,
   async (req, res): Promise<void> => {
     const userId = req.session.userId!;
-    const rawCid = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
-    const rawMid = Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId;
-    const channelId = parseInt(rawCid, 10);
-    const messageId = parseInt(rawMid, 10);
+    const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
+    const messageId = parseInt(Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId, 10);
     const { content } = req.body;
 
     if (content == null || typeof content !== "string" || content.trim().length === 0) {
-      res.status(400).json({ error: "El contenido del mensaje no puede estar vacío" });
-      return;
+      res.status(400).json({ error: "El contenido del mensaje no puede estar vacío" }); return;
     }
 
     const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
@@ -322,19 +455,14 @@ router.patch(
     }
 
     const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
-
     if (!msg || msg.channelId !== channelId) {
-      res.status(404).json({ error: "Mensaje no encontrado" });
-      return;
+      res.status(404).json({ error: "Mensaje no encontrado" }); return;
     }
-
     if (msg.userId !== userId && req.session.userRole !== "admin") {
-      res.status(403).json({ error: "No puedes editar este mensaje" });
-      return;
+      res.status(403).json({ error: "No puedes editar este mensaje" }); return;
     }
 
     const { encrypted, iv } = encryptMessage(content);
-
     const [updated] = await db
       .update(messagesTable)
       .set({ contentEncrypted: encrypted, iv, editedAt: new Date() })
@@ -343,15 +471,34 @@ router.patch(
 
     const [author] = await db.select().from(usersTable).where(eq(usersTable.id, updated.userId));
 
-    const responseMsg = {
-      id: updated.id, channelId: updated.channelId, userId: updated.userId,
-      content, editedAt: updated.editedAt, deletedAt: updated.deletedAt, createdAt: updated.createdAt,
-      author: {
-        id: author.id, username: author.username, displayName: author.displayName,
-        bio: author.bio, avatarUrl: author.avatarUrl, bannerUrl: author.bannerUrl,
-        status: author.status, role: author.role, createdAt: author.createdAt,
-      },
-    };
+    const [attachmentRows, rawReactions] = await Promise.all([
+      db.select().from(messageAttachmentsTable).where(eq(messageAttachmentsTable.messageId, messageId)),
+      db.select({ emoji: messageReactionsTable.emoji, userId: messageReactionsTable.userId })
+        .from(messageReactionsTable)
+        .where(eq(messageReactionsTable.messageId, messageId)),
+    ]);
+
+    let linkPreview = null;
+    if (content) linkPreview = await fetchFirstLinkPreview(content);
+
+    // Preserve reply context if the message had a replyToId
+    let replyPreview: { id: number; authorDisplayName: string; contentPreview: string } | null = null;
+    if (updated.replyToId) {
+      const [replyMsg] = await db.select().from(messagesTable).where(eq(messagesTable.id, updated.replyToId));
+      if (replyMsg) {
+        const [replyAuthor] = await db.select().from(usersTable).where(eq(usersTable.id, replyMsg.userId));
+        const replyContent = decryptMessage(replyMsg.contentEncrypted, replyMsg.iv);
+        replyPreview = {
+          id: replyMsg.id,
+          authorDisplayName: replyAuthor?.displayName ?? "Usuario",
+          contentPreview: replyContent.slice(0, 100),
+        };
+      }
+    }
+
+    const responseMsg = await buildMessageResponse(
+      updated, content, author, attachmentRows, rawReactions, replyPreview, linkPreview,
+    );
 
     const { broadcast } = await import("../lib/websocket");
     broadcast(`channel:${channelId}`, { type: "message:edit", data: responseMsg });
@@ -366,10 +513,8 @@ router.delete(
   requireAuth,
   async (req, res): Promise<void> => {
     const userId = req.session.userId!;
-    const rawCid = Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId;
-    const rawMid = Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId;
-    const channelId = parseInt(rawCid, 10);
-    const messageId = parseInt(rawMid, 10);
+    const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
+    const messageId = parseInt(Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId, 10);
 
     const [channelForDelete] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
     if (!channelForDelete) { res.status(404).json({ error: "Canal no encontrado" }); return; }
@@ -378,22 +523,18 @@ router.delete(
     }
 
     const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
-
     if (!msg || msg.channelId !== channelId) {
-      res.status(404).json({ error: "Mensaje no encontrado" });
-      return;
+      res.status(404).json({ error: "Mensaje no encontrado" }); return;
     }
 
     if (msg.userId !== userId && req.session.userRole !== "admin") {
       const perms = await getMemberPermissions(channelForDelete.serverId, userId);
       if (!hasPerm(perms, PERM.MANAGE_MESSAGES)) {
-        res.status(403).json({ error: "No puedes eliminar este mensaje" });
-        return;
+        res.status(403).json({ error: "No puedes eliminar este mensaje" }); return;
       }
     }
 
-    await db
-      .update(messagesTable)
+    await db.update(messagesTable)
       .set({ deletedAt: new Date() })
       .where(eq(messagesTable.id, messageId));
 

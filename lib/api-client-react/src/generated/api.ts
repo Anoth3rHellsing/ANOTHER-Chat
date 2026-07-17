@@ -22,6 +22,7 @@ import type {
 import type {
   AdminStats,
   AdminUser,
+  Attachment,
   AvatarUploadResult,
   Channel,
   ChannelInput,
@@ -35,8 +36,10 @@ import type {
   MemberRoleUpdate,
   Message,
   MessageInput,
+  MessageReaction,
   MessageUpdate,
   ProfileUpdate,
+  ReactionInput,
   RegisterInput,
   Server,
   ServerInput,
@@ -44,6 +47,7 @@ import type {
   ServerMember,
   ServerRole,
   ServerRoleInput,
+  UploadAttachmentBody,
   UploadServerBannerBody,
   UploadServerIconBody,
   User,
@@ -2370,6 +2374,225 @@ export const useSendMessage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendMessageMutationOptions(options));
+    }
+
+export const getUploadAttachmentUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/attachments`
+}
+
+/**
+ * @summary Upload a file attachment for a channel
+ */
+export const uploadAttachment = async (channelId: number,
+    uploadAttachmentBody: UploadAttachmentBody, options?: RequestInit): Promise<Attachment> => {
+    const formData = new FormData();
+formData.append(`file`, uploadAttachmentBody.file);
+
+  return customFetch<Attachment>(getUploadAttachmentUrl(channelId),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getUploadAttachmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAttachment>>, TError,{channelId: number;data: BodyType<UploadAttachmentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadAttachment>>, TError,{channelId: number;data: BodyType<UploadAttachmentBody>}, TContext> => {
+
+const mutationKey = ['uploadAttachment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadAttachment>>, {channelId: number;data: BodyType<UploadAttachmentBody>}> = (props) => {
+          const {channelId,data} = props ?? {};
+
+          return  uploadAttachment(channelId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadAttachmentMutationResult = NonNullable<Awaited<ReturnType<typeof uploadAttachment>>>
+    export type UploadAttachmentMutationBody = BodyType<UploadAttachmentBody>
+    export type UploadAttachmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upload a file attachment for a channel
+ */
+export const useUploadAttachment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadAttachment>>, TError,{channelId: number;data: BodyType<UploadAttachmentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadAttachment>>,
+        TError,
+        {channelId: number;data: BodyType<UploadAttachmentBody>},
+        TContext
+      > => {
+      return useMutation(getUploadAttachmentMutationOptions(options));
+    }
+
+export const getToggleReactionUrl = (messageId: number,) => {
+
+
+
+
+  return `/api/messages/${messageId}/reactions`
+}
+
+/**
+ * @summary Toggle an emoji reaction on a message (adds if missing, removes if present)
+ */
+export const toggleReaction = async (messageId: number,
+    reactionInput: ReactionInput, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getToggleReactionUrl(messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reactionInput)
+  }
+);}
+
+
+
+
+
+export const getToggleReactionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleReaction>>, TError,{messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleReaction>>, TError,{messageId: number;data: BodyType<ReactionInput>}, TContext> => {
+
+const mutationKey = ['toggleReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleReaction>>, {messageId: number;data: BodyType<ReactionInput>}> = (props) => {
+          const {messageId,data} = props ?? {};
+
+          return  toggleReaction(messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleReactionMutationResult = NonNullable<Awaited<ReturnType<typeof toggleReaction>>>
+    export type ToggleReactionMutationBody = BodyType<ReactionInput>
+    export type ToggleReactionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Toggle an emoji reaction on a message (adds if missing, removes if present)
+ */
+export const useToggleReaction = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleReaction>>, TError,{messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleReaction>>,
+        TError,
+        {messageId: number;data: BodyType<ReactionInput>},
+        TContext
+      > => {
+      return useMutation(getToggleReactionMutationOptions(options));
+    }
+
+export const getDeleteReactionUrl = (messageId: number,
+    emoji: string,) => {
+
+
+
+
+  return `/api/messages/${messageId}/reactions/${emoji}`
+}
+
+/**
+ * @summary Remove an emoji reaction from a message
+ */
+export const deleteReaction = async (messageId: number,
+    emoji: string, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getDeleteReactionUrl(messageId,emoji),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteReactionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteReaction>>, TError,{messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteReaction>>, TError,{messageId: number;emoji: string}, TContext> => {
+
+const mutationKey = ['deleteReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteReaction>>, {messageId: number;emoji: string}> = (props) => {
+          const {messageId,emoji} = props ?? {};
+
+          return  deleteReaction(messageId,emoji,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteReactionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteReaction>>>
+
+    export type DeleteReactionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove an emoji reaction from a message
+ */
+export const useDeleteReaction = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteReaction>>, TError,{messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteReaction>>,
+        TError,
+        {messageId: number;emoji: string},
+        TContext
+      > => {
+      return useMutation(getDeleteReactionMutationOptions(options));
     }
 
 export const getEditMessageUrl = (channelId: number,

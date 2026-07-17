@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { 
   useGetCurrentUser, useListServers, useJoinServer,
   useGetServerMembers, useListChannels,
   useListMessages, useSendMessage, useEditMessage, useDeleteMessage,
-  useUpdateMyProfile, getGetCurrentUserQueryKey,
+  useToggleReaction,
+  getGetCurrentUserQueryKey,
   getListChannelsQueryKey, getListServersQueryKey, getGetServerMembersQueryKey,
   useJoinServerByInvite,
 } from '@workspace/api-client-react';
@@ -20,7 +21,8 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
-  Link2, Volume2, Image as ImageIcon
+  Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
+  FileText, ExternalLink, Download
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,6 +32,171 @@ const CHANNEL_TYPE_ICON = {
   voice: Volume2,
   media: ImageIcon,
 } as const;
+
+// Common emoji palette for the picker
+const COMMON_EMOJIS = [
+  '👍','👎','❤️','😂','😮','😢','😡','🎉',
+  '✅','🔥','💯','🙏','👏','😎','🤔','💪',
+  '🚀','⭐','💡','🎯','👀','😅','🤣','😊',
+  '😍','🥳','🤗','😏','🙃','😤','😬','🫡',
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isImage(mimeType: string) {
+  return mimeType.startsWith('image/');
+}
+
+function isVideo(mimeType: string) {
+  return mimeType.startsWith('video/');
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function AttachmentRenderer({ attachment }: { attachment: any }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  if (isImage(attachment.mimeType)) {
+    return (
+      <>
+        <img
+          src={attachment.url}
+          alt={attachment.filename}
+          className="max-w-xs max-h-64 rounded-lg cursor-pointer hover:opacity-90 transition-opacity object-cover border border-white/10"
+          onClick={() => setLightboxOpen(true)}
+        />
+        {lightboxOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+            onClick={() => setLightboxOpen(false)}
+          >
+            <button className="absolute top-4 right-4 text-white/70 hover:text-white p-2">
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={attachment.url}
+              alt={attachment.filename}
+              className="max-w-full max-h-full object-contain rounded-lg"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (isVideo(attachment.mimeType)) {
+    return (
+      <video
+        src={attachment.url}
+        controls
+        className="max-w-xs max-h-64 rounded-lg border border-white/10"
+      />
+    );
+  }
+
+  // Document / generic file
+  return (
+    <a
+      href={attachment.url}
+      download={attachment.filename}
+      className="flex items-center gap-3 bg-secondary border border-white/10 rounded-lg px-4 py-3 hover:bg-white/5 transition-colors max-w-xs"
+    >
+      <FileText className="w-8 h-8 text-primary flex-shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-foreground font-medium truncate">{attachment.filename}</p>
+        <p className="text-xs text-muted-foreground">{formatBytes(attachment.size)}</p>
+      </div>
+      <Download className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+    </a>
+  );
+}
+
+function LinkPreviewCard({ preview, onDismiss }: { preview: any; onDismiss: () => void }) {
+  return (
+    <div className="mt-2 border border-white/10 rounded-lg overflow-hidden bg-secondary max-w-md relative">
+      <button
+        onClick={onDismiss}
+        className="absolute top-2 right-2 text-muted-foreground hover:text-white z-10"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+      <a href={preview.url} target="_blank" rel="noopener noreferrer" className="block hover:bg-white/5 transition-colors">
+        {preview.imageUrl && (
+          <img src={preview.imageUrl} alt="" className="w-full h-32 object-cover" />
+        )}
+        <div className="p-3">
+          <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider mb-1 flex items-center gap-1">
+            <ExternalLink className="w-3 h-3" />
+            {preview.domain}
+          </p>
+          {preview.title && (
+            <p className="text-sm font-medium text-foreground line-clamp-2">{preview.title}</p>
+          )}
+          {preview.description && (
+            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{preview.description}</p>
+          )}
+        </div>
+      </a>
+    </div>
+  );
+}
+
+function ReplyQuote({ replyTo, onClick }: { replyTo: any; onClick?: () => void }) {
+  return (
+    <div
+      className="flex items-start gap-2 mb-1 pl-3 border-l-2 border-primary/50 cursor-pointer group/reply"
+      onClick={onClick}
+    >
+      <CornerUpLeft className="w-3 h-3 text-primary/60 flex-shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <span className="text-xs text-primary/70 font-medium">{replyTo.authorDisplayName}</span>
+        <p className="text-xs text-muted-foreground truncate group-hover/reply:text-foreground transition-colors">
+          {replyTo.contentPreview}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
+  const [search, setSearch] = useState('');
+  const filtered = search
+    ? COMMON_EMOJIS.filter(e => e.includes(search))
+    : COMMON_EMOJIS;
+
+  return (
+    <div className="absolute bottom-full mb-1 right-0 bg-card border border-white/10 rounded-xl shadow-2xl p-3 z-30 w-52">
+      <input
+        type="text"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar emoji..."
+        className="w-full bg-secondary border border-white/10 rounded-lg px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none mb-2"
+        autoFocus
+      />
+      <div className="grid grid-cols-8 gap-1">
+        {filtered.map(emoji => (
+          <button
+            key={emoji}
+            onClick={() => { onSelect(emoji); onClose(); }}
+            className="text-lg hover:bg-white/10 rounded p-0.5 transition-colors"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AppLayout() {
   const [, setLocation] = useLocation();
@@ -52,6 +219,26 @@ export default function AppLayout() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedAnchorRect, setSelectedAnchorRect] = useState<DOMRect | null>(null);
 
+  // Messaging state
+  const [messageInput, setMessageInput] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editInput, setEditInput] = useState('');
+
+  // Reply state
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+
+  // Attachment state
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<number[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Emoji picker state
+  const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
+
+  // Dismissed link previews (by message id)
+  const [dismissedPreviews, setDismissedPreviews] = useState<Set<number>>(new Set());
+
   const openProfileCard = (userId: number, e: React.MouseEvent) => {
     if (userId === user?.id) {
       setIsProfileOpen(true);
@@ -73,13 +260,9 @@ export default function AppLayout() {
   useEffect(() => {
     if (channels && channels.length > 0 && activeServerId) {
       const validChannel = channels.find(c => c.id === activeChannelId);
-      if (!validChannel) {
-        setActiveChannelId(channels[0].id);
-      }
-    } else {
-      if (!channels || channels.length === 0) {
-        setActiveChannelId(null);
-      }
+      if (!validChannel) setActiveChannelId(channels[0].id);
+    } else if (!channels || channels.length === 0) {
+      setActiveChannelId(null);
     }
   }, [channels, activeServerId, activeChannelId]);
 
@@ -91,18 +274,65 @@ export default function AppLayout() {
   const sendMessage = useSendMessage();
   const editMessage = useEditMessage();
   const deleteMessage = useDeleteMessage();
+  const toggleReaction = useToggleReaction();
   const joinByInvite = useJoinServerByInvite();
-
-  const [messageInput, setMessageInput] = useState('');
-  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
-  const [editInput, setEditInput] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages]);
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    if (emojiPickerMsgId == null) return;
+    const close = () => setEmojiPickerMsgId(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [emojiPickerMsgId]);
+
+  // ─── File upload helpers ──────────────────────────────────────────────────
+
+  const uploadFile = useCallback(async (file: File) => {
+    if (!activeChannelId) return;
+    setUploadingFile(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/channels/${activeChannelId}/attachments`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      setPendingAttachmentIds(prev => [...prev, data.id]);
+    } catch {
+      toast({ title: 'Error al subir el archivo', variant: 'destructive' });
+    } finally {
+      setUploadingFile(false);
+    }
+  }, [activeChannelId, toast]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    // Reset input so the same file can be selected again
+    e.target.value = '';
+    const newFiles = files.slice(0, 5); // max 5 files at once
+    setPendingFiles(prev => [...prev, ...newFiles]);
+    for (const file of newFiles) {
+      await uploadFile(file);
+    }
+  };
+
+  const removePendingFile = (idx: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+    setPendingAttachmentIds(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // ─── Message handlers ─────────────────────────────────────────────────────
 
   const handleMessageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
@@ -113,11 +343,20 @@ export default function AppLayout() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageInput.trim() || !activeChannelId) return;
+    const hasContent = messageInput.trim().length > 0;
+    const hasAttachments = pendingAttachmentIds.length > 0;
+    if ((!hasContent && !hasAttachments) || !activeChannelId || uploadingFile) return;
     const channelId = activeChannelId;
 
     sendMessage.mutate(
-      { channelId, data: { content: messageInput.trim() } },
+      {
+        channelId,
+        data: {
+          content: messageInput.trim() || ' ',
+          ...(replyingTo ? { replyToId: replyingTo.id } : {}),
+          ...(hasAttachments ? { attachmentIds: pendingAttachmentIds } : {}),
+        },
+      },
       {
         onSuccess: (newMessage) => {
           queryClient.setQueriesData(
@@ -129,6 +368,9 @@ export default function AppLayout() {
             }
           );
           setMessageInput('');
+          setReplyingTo(null);
+          setPendingFiles([]);
+          setPendingAttachmentIds([]);
           sendTypingStop();
         }
       }
@@ -138,7 +380,6 @@ export default function AppLayout() {
   const handleEditMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editInput.trim() || !editingMessageId || !activeChannelId) return;
-
     editMessage.mutate(
       { channelId: activeChannelId, messageId: editingMessageId, data: { content: editInput.trim() } },
       { onSuccess: () => { setEditingMessageId(null); setEditInput(''); } }
@@ -165,23 +406,28 @@ export default function AppLayout() {
     );
   };
 
+  const handleReact = (messageId: number, emoji: string) => {
+    toggleReaction.mutate({ messageId, data: { emoji } });
+  };
+
+  const scrollToMessage = (msgId: number) => {
+    const el = messageRefs.current.get(msgId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   // Redirect to login when auth check completes and there's no user.
   useEffect(() => {
-    if (!userLoading && !user) {
-      setLocation('/');
-    }
+    if (!userLoading && !user) setLocation('/');
   }, [userLoading, user, setLocation]);
 
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
 
-  // Current user's membership in the active server
   const currentMembership = useMemo(() => {
     if (!members || !user) return null;
     return members.find(m => m.userId === user.id) ?? null;
   }, [members, user]);
 
-  // Effective permissions (bitmask) for the current user
   const myPermissions = useMemo(() => {
     if (!currentMembership) return 0;
     return getEffectivePermissions(currentMembership.role, currentMembership.roles ?? []);
@@ -193,7 +439,6 @@ export default function AppLayout() {
 
   const canCreateChannel = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
 
-  // Group members
   const groupedMembers = useMemo(() => {
     if (!members) return { online: [], offline: [] };
     return members.reduce((acc, m) => {
@@ -252,7 +497,6 @@ export default function AppLayout() {
             </div>
           ))}
           
-          {/* Create server button */}
           <button
             onClick={() => setIsCreateServerOpen(true)}
             className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-green-500 hover:bg-green-500/20 flex items-center justify-center group"
@@ -261,7 +505,6 @@ export default function AppLayout() {
             <Plus className="w-6 h-6 group-hover:scale-110 transition-transform" />
           </button>
 
-          {/* Join by invite code button */}
           <button
             onClick={() => setIsJoinByCodeOpen(true)}
             className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-blue-400 hover:bg-blue-400/20 flex items-center justify-center group"
@@ -274,15 +517,12 @@ export default function AppLayout() {
 
       {/* 2. CHANNEL LIST COLUMN */}
       <div className="w-60 bg-card/50 border-r border-white/5 flex flex-col flex-shrink-0">
-        {/* Server header with banner */}
         <div className="flex-shrink-0">
-          {/* Banner */}
           {activeServer?.bannerUrl && (
             <div className="w-full h-16 overflow-hidden flex-shrink-0">
               <img src={activeServer.bannerUrl} className="w-full h-full object-cover" alt="" />
             </div>
           )}
-          {/* Server name bar */}
           <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
             <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
             {activeServer && canManageServer && (
@@ -363,6 +603,7 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col bg-background min-w-0 relative">
         {activeChannel ? (
           <>
+            {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
               <div className="flex items-center gap-2 text-foreground font-medium">
                 <Hash className="w-5 h-5 text-muted-foreground" />
@@ -379,32 +620,43 @@ export default function AppLayout() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-1">
               {messages?.map((msg, idx) => {
                 const isFirst = idx === 0 || messages[idx - 1].userId !== msg.userId || new Date(msg.createdAt).getTime() - new Date(messages[idx - 1].createdAt).getTime() > 300000;
                 const isOwn = msg.userId === user.id;
+                const msgAny = msg as any;
 
                 return (
-                  <div key={msg.id} className={`group flex gap-4 ${isFirst ? 'mt-6' : 'mt-1'}`}>
+                  <div
+                    key={msg.id}
+                    ref={el => { if (el) messageRefs.current.set(msg.id, el); else messageRefs.current.delete(msg.id); }}
+                    className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-6 pt-1' : 'mt-0.5'}`}
+                  >
                     {isFirst ? (
-                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all" onClick={e => openProfileCard(msg.userId, e)}>
-                        {msg.author.avatarUrl ? <img src={msg.author.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5" onClick={e => openProfileCard(msg.userId, e)}>
+                        {msgAny.author?.avatarUrl ? <img src={msgAny.author.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                     ) : (
-                      <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-center">
+                      <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-start pt-1">
                         {format(new Date(msg.createdAt), 'HH:mm')}
                       </div>
                     )}
                     
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 pb-1">
                       {isFirst && (
-                        <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-                          <span className="font-medium text-foreground hover:underline cursor-pointer" onClick={e => openProfileCard(msg.userId, e)}>{msg.author.displayName}</span>
+                        <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
+                          <span className="font-medium text-foreground hover:underline cursor-pointer" onClick={e => openProfileCard(msg.userId, e)}>{msgAny.author?.displayName ?? 'Usuario'}</span>
                           <span className="text-xs text-muted-foreground font-mono">{format(new Date(msg.createdAt), "dd/MM/yyyy HH:mm")}</span>
                         </div>
                       )}
+
+                      {/* Reply quote */}
+                      {msgAny.replyTo && !msg.deletedAt && (
+                        <ReplyQuote replyTo={msgAny.replyTo} onClick={() => scrollToMessage(msgAny.replyTo.id)} />
+                      )}
                       
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-2">
                         {editingMessageId === msg.id ? (
                           <form onSubmit={handleEditMessage} className="w-full relative">
                             <input 
@@ -413,32 +665,63 @@ export default function AppLayout() {
                               onChange={e => setEditInput(e.target.value)}
                               className="w-full bg-secondary border border-white/10 rounded px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                               autoFocus
+                              onKeyDown={e => { if (e.key === 'Escape') { setEditingMessageId(null); setEditInput(''); } }}
                             />
                             <div className="text-xs text-muted-foreground mt-1">Esc para cancelar, Enter para guardar</div>
                           </form>
                         ) : (
-                          <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                          <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed min-w-0">
                             {msg.deletedAt ? (
                               <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             ) : (
                               <>
-                                {msg.content}
-                                {msg.editedAt && <span className="text-[10px] text-muted-foreground ml-2 font-mono">(editado)</span>}
+                                {msg.content && msg.content.trim() !== '' && msg.content !== ' ' && (
+                                  <>
+                                    {msg.content}
+                                    {msg.editedAt && <span className="text-[10px] text-muted-foreground ml-2 font-mono">(editado)</span>}
+                                  </>
+                                )}
                               </>
                             )}
                           </div>
                         )}
 
+                        {/* Hover action bar */}
                         {!msg.deletedAt && editingMessageId !== msg.id && (
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
-                            {isOwn && (
-                              <button onClick={() => { setEditingMessageId(msg.id); setEditInput(msg.content); }} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-white transition-colors" title="Editar">
-                                <Edit2 className="w-3.5 h-3.5" />
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0 relative">
+                            {/* React */}
+                            <div className="relative" onClick={e => e.stopPropagation()}>
+                              <button
+                                onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                                className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-yellow-400 transition-colors"
+                                title="Reaccionar"
+                              >
+                                <Smile className="w-3.5 h-3.5" />
                               </button>
-                            )}
+                              {emojiPickerMsgId === msg.id && (
+                                <EmojiPicker
+                                  onSelect={emoji => handleReact(msg.id, emoji)}
+                                  onClose={() => setEmojiPickerMsgId(null)}
+                                />
+                              )}
+                            </div>
+                            <div className="w-[1px] h-4 bg-white/10" />
+                            {/* Reply */}
+                            <button
+                              onClick={() => setReplyingTo(msg)}
+                              className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-blue-400 transition-colors"
+                              title="Responder"
+                            >
+                              <CornerUpLeft className="w-3.5 h-3.5" />
+                            </button>
                             {(isOwn || hasPerm(myPermissions, PERM.MANAGE_MESSAGES) || canManageServer) && (
                               <>
-                                {isOwn && <div className="w-[1px] h-4 bg-white/10" />}
+                                <div className="w-[1px] h-4 bg-white/10" />
+                                {isOwn && (
+                                  <button onClick={() => { setEditingMessageId(msg.id); setEditInput(msg.content); }} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-white transition-colors" title="Editar">
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button onClick={() => activeChannelId && deleteMessage.mutate({ channelId: activeChannelId, messageId: msg.id })} className="p-1.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors" title="Eliminar">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -447,6 +730,43 @@ export default function AppLayout() {
                           </div>
                         )}
                       </div>
+
+                      {/* Attachments */}
+                      {!msg.deletedAt && msgAny.attachments?.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {msgAny.attachments.map((att: any) => (
+                            <AttachmentRenderer key={att.id} attachment={att} />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Link preview */}
+                      {!msg.deletedAt && msgAny.linkPreview && !dismissedPreviews.has(msg.id) && (
+                        <LinkPreviewCard
+                          preview={msgAny.linkPreview}
+                          onDismiss={() => setDismissedPreviews(prev => new Set([...prev, msg.id]))}
+                        />
+                      )}
+
+                      {/* Reactions */}
+                      {!msg.deletedAt && msgAny.reactions?.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {msgAny.reactions.map((r: any) => {
+                            const hasReacted = r.userIds?.includes(user.id);
+                            return (
+                              <button
+                                key={r.emoji}
+                                onClick={() => handleReact(msg.id, r.emoji)}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${hasReacted ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-secondary border-white/10 text-muted-foreground hover:bg-white/10 hover:border-white/20'}`}
+                                title={`${r.count} reacción${r.count !== 1 ? 'es' : ''}`}
+                              >
+                                <span>{r.emoji}</span>
+                                <span className="font-mono font-medium">{r.count}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -454,6 +774,7 @@ export default function AppLayout() {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Input area */}
             <div className="p-4 pt-0">
               <div className="h-6 flex items-end px-2">
                 {typingUsers.size > 0 && (
@@ -462,18 +783,94 @@ export default function AppLayout() {
                   </span>
                 )}
               </div>
-              <form onSubmit={handleSendMessage} className="relative flex items-center">
+
+              {/* Reply banner */}
+              {replyingTo && (
+                <div className="flex items-center justify-between bg-secondary border border-white/10 rounded-t-xl px-4 py-2 text-xs border-b-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CornerUpLeft className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                    <span className="text-muted-foreground">Respondiendo a</span>
+                    <span className="text-primary font-medium truncate">{(replyingTo as any).author?.displayName ?? 'Usuario'}</span>
+                    <span className="text-muted-foreground truncate">— {replyingTo.content?.slice(0, 60)}{replyingTo.content?.length > 60 ? '…' : ''}</span>
+                  </div>
+                  <button onClick={() => setReplyingTo(null)} className="text-muted-foreground hover:text-white flex-shrink-0 ml-2">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Pending file previews */}
+              {pendingFiles.length > 0 && (
+                <div className={`flex flex-wrap gap-2 bg-secondary border border-white/10 px-4 py-3 border-b-0 ${replyingTo ? '' : 'rounded-t-xl'}`}>
+                  {pendingFiles.map((file, idx) => (
+                    <div key={idx} className="relative group/file">
+                      {file.type.startsWith('image/') ? (
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={file.name}
+                          className="w-16 h-16 rounded-lg object-cover border border-white/10"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-card border border-white/10 flex flex-col items-center justify-center gap-1">
+                          <FileText className="w-6 h-6 text-primary" />
+                          <span className="text-[9px] text-muted-foreground truncate w-12 text-center">{file.name}</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removePendingFile(idx)}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover/file:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2.5 h-2.5 text-white" />
+                      </button>
+                      {uploadingFile && idx === pendingFiles.length - 1 && (
+                        <div className="absolute inset-0 rounded-lg bg-black/50 flex items-center justify-center">
+                          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Input form */}
+              <form
+                onSubmit={handleSendMessage}
+                className={`relative flex items-center bg-card border border-white/10 ${(replyingTo || pendingFiles.length > 0) ? 'rounded-b-xl rounded-t-none border-t-0' : 'rounded-xl'}`}
+              >
+                {/* Clip button */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingFile}
+                  className="p-3 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                  title="Adjuntar archivo"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+
                 <input 
                   type="text"
                   value={messageInput}
                   onChange={handleMessageChange}
                   placeholder={`Escribir en #${activeChannel.name}...`}
-                  className="w-full bg-card border border-white/10 rounded-xl pl-4 pr-12 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all font-sans"
+                  className="flex-1 bg-transparent py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
+                  onKeyDown={e => {
+                    if (e.key === 'Escape' && replyingTo) setReplyingTo(null);
+                  }}
                 />
+
                 <button 
                   type="submit" 
-                  disabled={!messageInput.trim() || sendMessage.isPending}
-                  className="absolute right-2 p-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                  disabled={(!messageInput.trim() && pendingAttachmentIds.length === 0) || sendMessage.isPending || uploadingFile}
+                  className="p-3 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
                 >
                   <Send className="w-5 h-5" />
                 </button>
@@ -492,82 +889,101 @@ export default function AppLayout() {
       {showMembers && activeChannel && (
         <div className="w-60 bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0">
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            
             {groupedMembers.online.length > 0 && (
               <div>
                 <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Conectados — {groupedMembers.online.length}</h3>
                 <div className="space-y-1">
                   {groupedMembers.online.map(member => (
-                    <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-white/5 cursor-pointer group" onClick={e => openProfileCard(member.userId, e)}>
+                    <button
+                      key={member.id}
+                      onClick={e => openProfileCard(member.userId, e)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
+                    >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
                           {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                         </div>
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(member.user.status)}`} />
+                        <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(member.user.status)}`} />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${member.role === 'admin' || member.role === 'owner' ? 'text-primary' : 'text-foreground/90'}`}>
-                          {member.user.displayName}
-                        </p>
-                        {member.roles && member.roles.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {member.roles.slice(0, 2).map((role: any) => (
-                              <span
-                                key={role.id}
-                                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded-full text-[10px] font-medium leading-4"
-                                style={{ backgroundColor: role.color + '22', color: role.color, border: `1px solid ${role.color}44` }}
-                              >
-                                {role.name}
-                              </span>
-                            ))}
-                            {member.roles.length > 2 && <span className="text-[10px] text-muted-foreground">+{member.roles.length - 2}</span>}
-                          </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm text-foreground truncate">{member.user.displayName}</p>
+                        {member.role !== 'member' && (
+                          <p className="text-[10px] text-primary font-mono capitalize">{member.role}</p>
                         )}
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
             )}
-
             {groupedMembers.offline.length > 0 && (
               <div>
                 <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-2">Desconectados — {groupedMembers.offline.length}</h3>
                 <div className="space-y-1">
                   {groupedMembers.offline.map(member => (
-                    <div key={member.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md opacity-50 hover:opacity-100 hover:bg-white/5 cursor-pointer transition-opacity" onClick={e => openProfileCard(member.userId, e)}>
-                      <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-                        {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover grayscale" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                    <button
+                      key={member.id}
+                      onClick={e => openProfileCard(member.userId, e)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors opacity-50"
+                    >
+                      <div className="relative flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
+                          {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                        </div>
+                        <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(member.user.status)}`} />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate text-foreground">{member.user.displayName}</p>
-                        {member.roles && member.roles.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-0.5">
-                            {member.roles.slice(0, 1).map((role: any) => (
-                              <span
-                                key={role.id}
-                                className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium leading-4"
-                                style={{ backgroundColor: role.color + '22', color: role.color, border: `1px solid ${role.color}44` }}
-                              >
-                                {role.name}
-                              </span>
-                            ))}
-                            {member.roles.length > 1 && <span className="text-[10px] text-muted-foreground">+{member.roles.length - 1}</span>}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      <p className="text-sm text-foreground truncate flex-1 text-left">{member.user.displayName}</p>
+                    </button>
                   ))}
                 </div>
               </div>
             )}
-
           </div>
         </div>
       )}
 
-      {/* Profile Card popup */}
-      {selectedUserId !== null && (
+      {/* Join by invite overlay */}
+      {isJoinByCodeOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-card border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-foreground">Unirse con código</h3>
+              <button onClick={() => setIsJoinByCodeOpen(false)} className="text-muted-foreground hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleJoinByCode} className="space-y-4">
+              <input
+                type="text"
+                value={joinCode}
+                onChange={e => setJoinCode(e.target.value)}
+                placeholder="Código de invitación..."
+                className="w-full bg-secondary border border-white/10 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary font-mono"
+                autoFocus
+              />
+              <button type="submit" disabled={!joinCode.trim() || joinByInvite.isPending} className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium disabled:opacity-50 transition-opacity">
+                {joinByInvite.isPending ? 'Uniéndose...' : 'Unirse'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      <ProfileModal user={user} isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      {isServerSettingsOpen && activeServer && (
+        <ServerSettingsModal
+          isOpen={isServerSettingsOpen}
+          serverId={activeServer.id}
+          serverName={activeServer.name}
+          serverIconUrl={(activeServer as any).iconUrl}
+          serverBannerUrl={(activeServer as any).bannerUrl}
+          isGeneral={(activeServer as any).isGeneral ?? false}
+          members={members ?? []}
+          currentUserId={user.id}
+          currentUserMembershipRole={currentMembership?.role ?? 'member'}
+          onClose={() => setIsServerSettingsOpen(false)}
+        />
+      )}
+      {selectedUserId && selectedAnchorRect && (
         <UserProfileCard
           userId={selectedUserId}
           currentUserId={user.id}
@@ -575,92 +991,25 @@ export default function AppLayout() {
           onClose={() => { setSelectedUserId(null); setSelectedAnchorRect(null); }}
         />
       )}
-
-      {/* Profile Modal */}
-      {user && (
-        <ProfileModal 
-          isOpen={isProfileOpen} 
-          onClose={() => setIsProfileOpen(false)} 
-          user={user} 
-        />
-      )}
-
-      {/* Server Settings Modal */}
-      {activeServer && activeServerId && (
-        <ServerSettingsModal
-          isOpen={isServerSettingsOpen}
-          onClose={() => setIsServerSettingsOpen(false)}
-          serverId={activeServerId}
-          serverName={activeServer.name}
-          serverIconUrl={(activeServer as any).iconUrl}
-          serverBannerUrl={(activeServer as any).bannerUrl}
-          isGeneral={(activeServer as any).isGeneral}
-          members={members ?? []}
-          currentUserId={user.id}
-          currentUserMembershipRole={currentMembership?.role ?? 'member'}
-        />
-      )}
-
-      {/* Create Server Modal */}
       <CreateServerModal
         isOpen={isCreateServerOpen}
         onClose={() => setIsCreateServerOpen(false)}
-        onCreated={(server) => {
+        onCreated={(server: any) => {
           queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
           setActiveServerId(server.id);
-          toast({ title: 'Servidor creado' });
+          setIsCreateServerOpen(false);
         }}
       />
-
-      {/* Create Channel Modal */}
       {activeServerId && (
         <CreateChannelModal
           isOpen={isCreateChannelOpen}
-          onClose={() => setIsCreateChannelOpen(false)}
           serverId={activeServerId}
-          onCreated={(channel) => {
+          onClose={() => setIsCreateChannelOpen(false)}
+          onCreated={() => {
             queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(activeServerId) });
-            setActiveChannelId(channel.id);
-            toast({ title: `Canal #${channel.name} creado` });
+            setIsCreateChannelOpen(false);
           }}
         />
-      )}
-
-      {/* Join by invite code overlay */}
-      {isJoinByCodeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setIsJoinByCodeOpen(false)}>
-          <div className="w-full max-w-sm bg-[#1e1f22] rounded-xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white">Unirse a un servidor</h2>
-              <button onClick={() => setIsJoinByCodeOpen(false)} className="p-1 text-[#b5bac1] hover:text-white transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-[#b5bac1]">Introduce el código de invitación que te han enviado.</p>
-            <form onSubmit={handleJoinByCode} className="space-y-3">
-              <input
-                type="text"
-                value={joinCode}
-                onChange={e => setJoinCode(e.target.value)}
-                placeholder="ej. abc123def"
-                className="w-full bg-[#1a1b1e] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-[#6d6f78] focus:outline-none focus:border-primary/50 transition-colors font-mono tracking-wider"
-                autoFocus
-              />
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setIsJoinByCodeOpen(false)} className="flex-1 py-2.5 text-sm text-[#b5bac1] hover:text-white transition-colors">
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!joinCode.trim() || joinByInvite.isPending}
-                  className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {joinByInvite.isPending ? 'Uniéndose...' : 'Unirse'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );
