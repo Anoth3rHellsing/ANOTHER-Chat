@@ -404,6 +404,35 @@ export interface MemberRoleUpdate {
   role: MemberRoleUpdateRole;
 }
 
+export interface DirectMessage {
+  id: number;
+  senderId: number;
+  recipientId: number;
+  content: string;
+  /** @nullable */
+  replyToId?: number | null;
+  /** @nullable */
+  deletedAt?: string | null;
+  createdAt: string;
+  sender: UserProfile;
+  replyTo?: ReplyPreview | null;
+}
+
+export interface DmConversation {
+  otherUser: UserProfile;
+  lastMessage: DirectMessage | null;
+  unreadCount: number;
+}
+
+export interface DmInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  content: string;
+  replyToId?: number | null;
+}
+
 export interface InviteInput {
   note?: string;
 }

@@ -27,6 +27,9 @@ import type {
   Channel,
   ChannelInput,
   ChannelUpdate,
+  DirectMessage,
+  DmConversation,
+  DmInput,
   HealthStatus,
   InviteCode,
   InviteInput,
@@ -3397,6 +3400,374 @@ export const useUnbanUser = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUnbanUserMutationOptions(options));
+    }
+
+export const getListDmConversationsUrl = () => {
+
+
+
+
+  return `/api/dms`
+}
+
+/**
+ * @summary List all DM conversations for the current user (ordered by most recent activity)
+ */
+export const listDmConversations = async ( options?: RequestInit): Promise<DmConversation[]> => {
+
+  return customFetch<DmConversation[]>(getListDmConversationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDmConversationsQueryKey = () => {
+    return [
+    `/api/dms`
+    ] as const;
+    }
+
+
+export const getListDmConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listDmConversations>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDmConversationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDmConversations>>> = ({ signal }) => listDmConversations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDmConversations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDmConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listDmConversations>>>
+export type ListDmConversationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all DM conversations for the current user (ordered by most recent activity)
+ */
+
+export function useListDmConversations<TData = Awaited<ReturnType<typeof listDmConversations>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDmConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDmConversationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDmHistoryUrl = (userId: number,) => {
+
+
+
+
+  return `/api/dms/${userId}`
+}
+
+/**
+ * @summary Get DM message history with a user (most recent 50)
+ */
+export const getDmHistory = async (userId: number, options?: RequestInit): Promise<DirectMessage[]> => {
+
+  return customFetch<DirectMessage[]>(getGetDmHistoryUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDmHistoryQueryKey = (userId: number,) => {
+    return [
+    `/api/dms/${userId}`
+    ] as const;
+    }
+
+
+export const getGetDmHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getDmHistory>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDmHistoryQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDmHistory>>> = ({ signal }) => getDmHistory(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDmHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDmHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getDmHistory>>>
+export type GetDmHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get DM message history with a user (most recent 50)
+ */
+
+export function useGetDmHistory<TData = Awaited<ReturnType<typeof getDmHistory>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDmHistoryQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendDmUrl = (userId: number,) => {
+
+
+
+
+  return `/api/dms/${userId}`
+}
+
+/**
+ * @summary Send a direct message to a user
+ */
+export const sendDm = async (userId: number,
+    dmInput: DmInput, options?: RequestInit): Promise<DirectMessage> => {
+
+  return customFetch<DirectMessage>(getSendDmUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(dmInput)
+  }
+);}
+
+
+
+
+
+export const getSendDmMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDm>>, TError,{userId: number;data: BodyType<DmInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendDm>>, TError,{userId: number;data: BodyType<DmInput>}, TContext> => {
+
+const mutationKey = ['sendDm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendDm>>, {userId: number;data: BodyType<DmInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  sendDm(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendDmMutationResult = NonNullable<Awaited<ReturnType<typeof sendDm>>>
+    export type SendDmMutationBody = BodyType<DmInput>
+    export type SendDmMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a direct message to a user
+ */
+export const useSendDm = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDm>>, TError,{userId: number;data: BodyType<DmInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendDm>>,
+        TError,
+        {userId: number;data: BodyType<DmInput>},
+        TContext
+      > => {
+      return useMutation(getSendDmMutationOptions(options));
+    }
+
+export const getMarkDmReadUrl = (userId: number,) => {
+
+
+
+
+  return `/api/dms/${userId}/read`
+}
+
+/**
+ * @summary Mark DM conversation as read (updates cursor to now)
+ */
+export const markDmRead = async (userId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getMarkDmReadUrl(userId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkDmReadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markDmRead>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markDmRead>>, TError,{userId: number}, TContext> => {
+
+const mutationKey = ['markDmRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markDmRead>>, {userId: number}> = (props) => {
+          const {userId} = props ?? {};
+
+          return  markDmRead(userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkDmReadMutationResult = NonNullable<Awaited<ReturnType<typeof markDmRead>>>
+
+    export type MarkDmReadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mark DM conversation as read (updates cursor to now)
+ */
+export const useMarkDmRead = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markDmRead>>, TError,{userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markDmRead>>,
+        TError,
+        {userId: number},
+        TContext
+      > => {
+      return useMutation(getMarkDmReadMutationOptions(options));
+    }
+
+export const getDeleteDmUrl = (dmId: number,) => {
+
+
+
+
+  return `/api/dms/messages/${dmId}`
+}
+
+/**
+ * @summary Soft-delete own DM message
+ */
+export const deleteDm = async (dmId: number, options?: RequestInit): Promise<DirectMessage> => {
+
+  return customFetch<DirectMessage>(getDeleteDmUrl(dmId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDmMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDm>>, TError,{dmId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDm>>, TError,{dmId: number}, TContext> => {
+
+const mutationKey = ['deleteDm'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDm>>, {dmId: number}> = (props) => {
+          const {dmId} = props ?? {};
+
+          return  deleteDm(dmId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDmMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDm>>>
+
+    export type DeleteDmMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Soft-delete own DM message
+ */
+export const useDeleteDm = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDm>>, TError,{dmId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDm>>,
+        TError,
+        {dmId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteDmMutationOptions(options));
     }
 
 export const getGetAdminStatsUrl = () => {

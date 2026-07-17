@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, unique, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -36,6 +36,30 @@ export const messageReactionsTable = pgTable("message_reactions", {
 }, (t) => [
   unique("message_reactions_unique").on(t.messageId, t.userId, t.emoji),
 ]);
+
+// ─── Direct Messages ──────────────────────────────────────────────────────────
+
+export const directMessagesTable = pgTable("direct_messages", {
+  id: serial("id").primaryKey(),
+  senderId: integer("sender_id").notNull(),
+  recipientId: integer("recipient_id").notNull(),
+  contentEncrypted: text("content_encrypted").notNull(),
+  iv: text("iv").notNull(),
+  replyToId: integer("reply_to_id"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const dmReadCursorsTable = pgTable("dm_read_cursors", {
+  userId: integer("user_id").notNull(),
+  otherUserId: integer("other_user_id").notNull(),
+  lastReadAt: timestamp("last_read_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.otherUserId] }),
+]);
+
+export type DirectMessage = typeof directMessagesTable.$inferSelect;
+export type DmReadCursor = typeof dmReadCursorsTable.$inferSelect;
 
 export const insertMessageSchema = createInsertSchema(messagesTable).omit({
   id: true,

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGetUserProfile } from '@workspace/api-client-react';
-import { X, User as UserIcon, Instagram, Youtube, Twitch, Github, ExternalLink } from 'lucide-react';
+import { X, User as UserIcon, Instagram, Youtube, Twitch, Github, ExternalLink, MessageSquare } from 'lucide-react';
 
 interface UserProfileCardProps {
   userId: number;
@@ -9,6 +9,8 @@ interface UserProfileCardProps {
   onClose: () => void;
   /** Position hint — card tries to appear near trigger but stays in viewport */
   anchorRect?: DOMRect | null;
+  /** Called when the user clicks "Send DM" */
+  onOpenDm?: (userId: number) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -52,7 +54,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   custom:    'hover:text-primary',
 };
 
-export function UserProfileCard({ userId, currentUserId, onClose, anchorRect }: UserProfileCardProps) {
+export function UserProfileCard({ userId, currentUserId, onClose, anchorRect, onOpenDm }: UserProfileCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const { data: profile, isLoading } = useGetUserProfile(userId);
 
@@ -177,6 +179,17 @@ export function UserProfileCard({ userId, currentUserId, onClose, anchorRect }: 
                     </a>
                   ))}
                 </div>
+              )}
+
+              {/* DM button — only show for other users */}
+              {onOpenDm && userId !== currentUserId && (
+                <button
+                  onClick={() => { onOpenDm(userId); onClose(); }}
+                  className="w-full mt-1 flex items-center justify-center gap-2 px-3 py-2 bg-primary/15 hover:bg-primary/25 text-primary rounded-xl text-sm font-medium transition-colors border border-primary/20"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Mensaje directo
+                </button>
               )}
             </>
           ) : (

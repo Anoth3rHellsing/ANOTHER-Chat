@@ -8,9 +8,12 @@ import {
   getGetCurrentUserQueryKey,
   getListChannelsQueryKey, getListServersQueryKey, getGetServerMembersQueryKey,
   useJoinServerByInvite,
+  useListDmConversations, useGetDmHistory, useSendDm, useMarkDmRead, useDeleteDm,
+  getListDmConversationsQueryKey, getGetDmHistoryQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
+import { useDmWebSocket } from '@/hooks/use-dm-websocket';
 import { ProfileModal } from '@/components/profile-modal';
 import { ServerSettingsModal } from '@/components/server-settings-modal';
 import { UserProfileCard } from '@/components/user-profile-card';
@@ -22,7 +25,7 @@ import {
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
-  FileText, ExternalLink, Download
+  FileText, ExternalLink, Download, MessageSquare
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -208,7 +211,15 @@ export default function AppLayout() {
 
   const [activeServerId, setActiveServerId] = useState<number | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<number | null>(null);
-  
+
+  // DM state
+  const [activeView, setActiveView] = useState<'servers' | 'dms'>('servers');
+  const [activeDmUserId, setActiveDmUserId] = useState<number | null>(null);
+  const [dmInput, setDmInput] = useState('');
+  const [dmReplyingTo, setDmReplyingTo] = useState<any | null>(null);
+  const dmMessagesEndRef = useRef<HTMLDivElement>(null);
+  const dmTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
@@ -270,6 +281,16 @@ export default function AppLayout() {
   const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
   
   const { typingUsers, sendTypingStart, sendTypingStop } = useChatWebSocket(activeChannelId);
+  const { dmTypingUsers, sendDmTypingStart, sendDmTypingStop } = useDmWebSocket(activeDmUserId);
+
+  // DM data
+  const { data: dmConversations, refetch: refetchDmConversations } = useListDmConversations({ query: { enabled: !!user } as any });
+  const { data: dmMessages } = useGetDmHistory(activeDmUserId as number, { query: { enabled: !!activeDmUserId } as any });
+  const totalDmUnread = useMemo(() => (dmConversations ?? []).reduce((sum: number, c: any) => sum + (c.unreadCount ?? 0), 0), [dmConversations]);
+  const sendDm = useSendDm();
+  const markDmRead = useMarkDmRead();
+  const deleteDm = useDeleteDm();
+  const activeDmConvo = useMemo(() => (dmConversations ?? []).find((c: any) => c.otherUser?.id === activeDmUserId), [dmConversations, activeDmUserId]);
 
   const sendMessage = useSendMessage();
   const editMessage = useEditMessage();
@@ -284,6 +305,24 @@ export default function AppLayout() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages]);
+
+  useEffect(() => {
+    dmMessagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [dmMessages]);
+
+  // Mark DM as read when opening a conversation
+  useEffect(() => {
+    if (activeDmUserId) {
+      markDmRead.mutate({ userId: activeDmUserId }, {
+        onSuccess: () => refetchDmConversations(),
+      });
+    }
+  }, [activeDmUserId]);
+
+  const openDm = useCallback((targetUserId: number) => {
+    setActiveView('dms');
+    setActiveDmUserId(targetUserId);
+  }, []);
 
   // Close emoji picker on outside click
   useEffect(() => {
@@ -386,6 +425,41 @@ export default function AppLayout() {
     );
   };
 
+  // ─── DM message handlers ──────────────────────────────────────────────────
+
+  const handleDmInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDmInput(e.target.value);
+    if (!activeDmUserId) return;
+    sendDmTypingStart(activeDmUserId);
+    if (dmTypingTimeoutRef.current) clearTimeout(dmTypingTimeoutRef.current);
+    dmTypingTimeoutRef.current = setTimeout(() => activeDmUserId && sendDmTypingStop(activeDmUserId), 2000);
+  };
+
+  const handleSendDm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dmInput.trim() || !activeDmUserId) return;
+    const recipientId = activeDmUserId;
+    sendDm.mutate(
+      { userId: recipientId, data: { content: dmInput.trim(), ...(dmReplyingTo ? { replyToId: dmReplyingTo.id } : {}) } },
+      {
+        onSuccess: (msg: any) => {
+          queryClient.setQueriesData(
+            { predicate: q => q.queryKey[0] === `/api/dms/${recipientId}` },
+            (old: any) => {
+              if (!Array.isArray(old)) return [msg];
+              if (old.some((m: any) => m.id === msg.id)) return old;
+              return [...old, msg];
+            }
+          );
+          queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === '/api/dms' });
+          setDmInput('');
+          setDmReplyingTo(null);
+          if (activeDmUserId) sendDmTypingStop(activeDmUserId);
+        }
+      }
+    );
+  };
+
   const handleJoinByCode = (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinCode.trim()) return;
@@ -473,11 +547,27 @@ export default function AppLayout() {
       <div className="w-[72px] bg-card border-r border-white/5 flex flex-col items-center py-4 gap-3 flex-shrink-0 z-20">
         <div
           className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary cursor-pointer hover:rounded-xl transition-all"
-          onClick={() => setLocation('/app')}
+          onClick={() => { setActiveView('servers'); setLocation('/app'); }}
         >
           <Shield className="w-7 h-7" />
         </div>
-        
+
+        {/* DM button with unread badge */}
+        <div className="relative group">
+          <button
+            onClick={() => setActiveView('dms')}
+            className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all flex items-center justify-center border ${activeView === 'dms' ? 'rounded-[16px] bg-indigo-500/20 text-indigo-400 border-indigo-500/40' : 'bg-secondary text-muted-foreground hover:bg-indigo-500/15 hover:text-indigo-400 border-white/5'}`}
+            title="Mensajes directos"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          {totalDmUnread > 0 && (
+            <span className="absolute -bottom-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 pointer-events-none">
+              {totalDmUnread > 99 ? '99+' : totalDmUnread}
+            </span>
+          )}
+        </div>
+
         <div className="w-8 h-[2px] bg-white/10 rounded-full" />
 
         <div className="flex-1 w-full overflow-y-auto hide-scrollbar flex flex-col items-center gap-3">
@@ -515,93 +605,326 @@ export default function AppLayout() {
         </div>
       </div>
 
-      {/* 2. CHANNEL LIST COLUMN */}
+      {/* 2. LEFT COLUMN — Channels or DM conversations */}
       <div className="w-60 bg-card/50 border-r border-white/5 flex flex-col flex-shrink-0">
-        <div className="flex-shrink-0">
-          {activeServer?.bannerUrl && (
-            <div className="w-full h-16 overflow-hidden flex-shrink-0">
-              <img src={activeServer.bannerUrl} className="w-full h-full object-cover" alt="" />
+        {activeView === 'dms' ? (
+          <>
+            {/* DM header */}
+            <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card flex-shrink-0">
+              <MessageSquare className="w-4 h-4 text-indigo-400 mr-2" />
+              <h2 className="font-bold text-foreground truncate flex-1">Mensajes directos</h2>
             </div>
-          )}
-          <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
-            <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
-            {activeServer && canManageServer && (
-              <button
-                onClick={() => setIsServerSettingsOpen(true)}
-                className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
-                title="Configuración del servidor"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          <div className="flex items-center justify-between px-2 mb-1 group">
-            <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
-            {activeServer && canCreateChannel && (
-              <button onClick={() => setIsCreateChannelOpen(true)} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                <Plus className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          
-          {channels?.map(channel => {
-            const ChannelIcon = CHANNEL_TYPE_ICON[(channel as any).channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
-            const vc = (channel as any).visualConfig ?? {};
-            const hasVisual = vc.kind && vc.value;
-            return (
-              <button
-                key={channel.id}
-                onClick={() => setActiveChannelId(channel.id)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
-                style={hasVisual && vc.kind === 'gradient'
-                  ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
-                  : hasVisual && vc.kind === 'image'
-                  ? { backgroundImage: `url(${vc.value})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'white' }
-                  : {}
-                }
-              >
-                {hasVisual && <div className="absolute inset-0 bg-black/30 rounded-md" />}
-                <ChannelIcon className="w-4 h-4 opacity-60 flex-shrink-0 relative z-10" />
-                <span className="truncate relative z-10">{channel.name}</span>
-                {(channel as any).restrictedRoles?.length > 0 && (
-                  <span className="ml-auto text-[10px] text-primary/60 font-mono flex-shrink-0 relative z-10">🔒</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
 
-        {/* User Info Area */}
-        <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
-          <button onClick={() => setIsProfileOpen(true)} className="relative group">
-            <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
-              {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+            {/* DM conversation list */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              {(!dmConversations || dmConversations.length === 0) && (
+                <p className="text-xs text-muted-foreground text-center mt-4 font-mono">Sin conversaciones todavía</p>
+              )}
+              {(dmConversations as any[] ?? []).map((convo: any) => {
+                const other = convo.otherUser;
+                const unread = convo.unreadCount ?? 0;
+                const isActive = activeDmUserId === other?.id;
+                return (
+                  <button
+                    key={other?.id}
+                    onClick={() => setActiveDmUserId(other?.id)}
+                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-indigo-500/20 text-foreground' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden">
+                        {other?.avatarUrl ? <img src={other.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2.5 text-muted-foreground" />}
+                      </div>
+                      <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(other?.status ?? 'offline')}`} />
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-sm font-medium text-foreground truncate">{other?.displayName}</p>
+                        {unread > 0 && (
+                          <span className="min-w-[18px] h-[18px] bg-indigo-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 flex-shrink-0">
+                            {unread > 99 ? '99+' : unread}
+                          </span>
+                        )}
+                      </div>
+                      {convo.lastMessage && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {convo.lastMessage.senderId === user.id ? 'Tú: ' : ''}{convo.lastMessage.content?.slice(0, 35)}{convo.lastMessage.content?.length > 35 ? '…' : ''}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground truncate leading-tight">{user.displayName}</p>
-            <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
-          </div>
-          <div className="flex gap-1">
-            <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors">
-              <Settings className="w-4 h-4" />
-            </button>
-            {user.role === 'admin' && (
-              <button onClick={() => setLocation('/app/admin')} className="p-1.5 text-primary hover:text-primary rounded-md hover:bg-primary/20 transition-colors" title="Panel de Admin">
-                <ShieldAlert className="w-4 h-4" />
+
+            {/* User Info Area */}
+            <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
+              <button onClick={() => setIsProfileOpen(true)} className="relative group">
+                <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
+                  {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                </div>
+                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
               </button>
-            )}
-          </div>
-        </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate leading-tight">{user.displayName}</p>
+                <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
+              </div>
+              <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors">
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex-shrink-0">
+              {activeServer?.bannerUrl && (
+                <div className="w-full h-16 overflow-hidden flex-shrink-0">
+                  <img src={activeServer.bannerUrl} className="w-full h-full object-cover" alt="" />
+                </div>
+              )}
+              <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
+                <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
+                {activeServer && canManageServer && (
+                  <button
+                    onClick={() => setIsServerSettingsOpen(true)}
+                    className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+                    title="Configuración del servidor"
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              <div className="flex items-center justify-between px-2 mb-1 group">
+                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
+                {activeServer && canCreateChannel && (
+                  <button onClick={() => setIsCreateChannelOpen(true)} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              
+              {channels?.map(channel => {
+                const ChannelIcon = CHANNEL_TYPE_ICON[(channel as any).channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
+                const vc = (channel as any).visualConfig ?? {};
+                const hasVisual = vc.kind && vc.value;
+                return (
+                  <button
+                    key={channel.id}
+                    onClick={() => setActiveChannelId(channel.id)}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    style={hasVisual && vc.kind === 'gradient'
+                      ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
+                      : hasVisual && vc.kind === 'image'
+                      ? { backgroundImage: `url(${vc.value})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'white' }
+                      : {}
+                    }
+                  >
+                    {hasVisual && <div className="absolute inset-0 bg-black/30 rounded-md" />}
+                    <ChannelIcon className="w-4 h-4 opacity-60 flex-shrink-0 relative z-10" />
+                    <span className="truncate relative z-10">{channel.name}</span>
+                    {(channel as any).restrictedRoles?.length > 0 && (
+                      <span className="ml-auto text-[10px] text-primary/60 font-mono flex-shrink-0 relative z-10">🔒</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* User Info Area */}
+            <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
+              <button onClick={() => setIsProfileOpen(true)} className="relative group">
+                <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
+                  {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                </div>
+                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate leading-tight">{user.displayName}</p>
+                <p className="text-xs text-muted-foreground font-mono truncate leading-tight">@{user.username}</p>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => setIsProfileOpen(true)} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors">
+                  <Settings className="w-4 h-4" />
+                </button>
+                {user.role === 'admin' && (
+                  <button onClick={() => setLocation('/app/admin')} className="p-1.5 text-primary hover:text-primary rounded-md hover:bg-primary/20 transition-colors" title="Panel de Admin">
+                    <ShieldAlert className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* 3. CHAT AREA */}
+      {/* 3. CHAT / DM AREA */}
       <div className="flex-1 flex flex-col bg-background min-w-0 relative">
-        {activeChannel ? (
+        {/* ── DM chat pane ─────────────────────────────────────────────── */}
+        {activeView === 'dms' && activeDmUserId && activeDmConvo && (
+          <>
+            {/* DM header */}
+            <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10 gap-3">
+              <div className="relative flex-shrink-0">
+                <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
+                  {(activeDmConvo as any).otherUser?.avatarUrl
+                    ? <img src={(activeDmConvo as any).otherUser.avatarUrl} className="w-full h-full object-cover" alt="" />
+                    : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                </div>
+                <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-2 border-card ${getStatusColor((activeDmConvo as any).otherUser?.status ?? 'offline')}`} />
+              </div>
+              <span className="font-semibold text-foreground">{(activeDmConvo as any).otherUser?.displayName}</span>
+              <span className="text-xs text-muted-foreground font-mono">@{(activeDmConvo as any).otherUser?.username}</span>
+            </div>
+
+            {/* DM messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-1">
+              {(dmMessages as any[] ?? []).map((msg: any, idx: number) => {
+                const list = dmMessages as any[] ?? [];
+                const isFirst = idx === 0 || list[idx - 1].senderId !== msg.senderId || new Date(msg.createdAt).getTime() - new Date(list[idx - 1].createdAt).getTime() > 300000;
+                const isOwn = msg.senderId === user.id;
+                return (
+                  <div
+                    key={msg.id}
+                    className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-6 pt-1' : 'mt-0.5'}`}
+                  >
+                    {isFirst ? (
+                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all mt-0.5"
+                        onClick={e => openProfileCard(msg.senderId, e)}>
+                        {msg.sender?.avatarUrl ? <img src={msg.sender.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                      </div>
+                    ) : (
+                      <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-start pt-1">
+                        {format(new Date(msg.createdAt), 'HH:mm')}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 pb-1">
+                      {isFirst && (
+                        <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
+                          <span className="font-medium text-foreground hover:underline cursor-pointer" onClick={e => openProfileCard(msg.senderId, e)}>{msg.sender?.displayName ?? 'Usuario'}</span>
+                          <span className="text-xs text-muted-foreground font-mono">{format(new Date(msg.createdAt), "dd/MM/yyyy HH:mm")}</span>
+                        </div>
+                      )}
+                      {msg.replyTo && !msg.deletedAt && (
+                        <div className="mb-1 flex items-start gap-1.5 text-xs text-muted-foreground border-l-2 border-indigo-500/50 pl-2 py-0.5">
+                          <CornerUpLeft className="w-3 h-3 flex-shrink-0 mt-0.5 text-indigo-400" />
+                          <span className="text-indigo-400 font-medium mr-1">{msg.replyTo.authorDisplayName}</span>
+                          <span className="truncate">{msg.replyTo.contentPreview}</span>
+                        </div>
+                      )}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed min-w-0">
+                          {msg.deletedAt
+                            ? <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
+                            : msg.content}
+                        </div>
+                        {!msg.deletedAt && isOwn && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
+                            <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-blue-400 transition-colors" title="Responder">
+                              <CornerUpLeft className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="w-[1px] h-4 bg-white/10" />
+                            <button onClick={() => deleteDm.mutate({ dmId: msg.id })} className="p-1.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors" title="Eliminar">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                        {!msg.deletedAt && !isOwn && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
+                            <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-blue-400 transition-colors" title="Responder">
+                              <CornerUpLeft className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={dmMessagesEndRef} />
+            </div>
+
+            {/* DM input */}
+            <div className="p-4 pt-0">
+              <div className="h-6 flex items-end px-2">
+                {dmTypingUsers.size > 0 && (
+                  <span className="text-xs text-indigo-400 font-mono animate-pulse">
+                    {(activeDmConvo as any).otherUser?.displayName} está escribiendo...
+                  </span>
+                )}
+              </div>
+              {dmReplyingTo && (
+                <div className="flex items-center justify-between bg-secondary border border-white/10 rounded-t-xl px-4 py-2 text-xs border-b-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CornerUpLeft className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                    <span className="text-muted-foreground">Respondiendo a</span>
+                    <span className="text-indigo-400 font-medium truncate">{dmReplyingTo.sender?.displayName ?? 'Usuario'}</span>
+                    <span className="text-muted-foreground truncate">— {dmReplyingTo.content?.slice(0, 60)}{dmReplyingTo.content?.length > 60 ? '…' : ''}</span>
+                  </div>
+                  <button onClick={() => setDmReplyingTo(null)} className="text-muted-foreground hover:text-white flex-shrink-0 ml-2">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              <form
+                onSubmit={handleSendDm}
+                className={`relative flex items-center bg-card border border-white/10 ${dmReplyingTo ? 'rounded-b-xl rounded-t-none border-t-0' : 'rounded-xl'}`}
+              >
+                <input
+                  type="text"
+                  value={dmInput}
+                  onChange={handleDmInputChange}
+                  placeholder={`Mensaje a ${(activeDmConvo as any).otherUser?.displayName}...`}
+                  className="flex-1 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
+                  onKeyDown={e => { if (e.key === 'Escape' && dmReplyingTo) setDmReplyingTo(null); }}
+                />
+                <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-50">
+                  <Send className="w-5 h-5" />
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+
+        {/* DM mode — no conversation selected */}
+        {activeView === 'dms' && !activeDmUserId && (
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+            <MessageSquare className="w-16 h-16 opacity-20" />
+            <p>Selecciona una conversación o haz clic en "Mensaje directo" en el perfil de alguien.</p>
+          </div>
+        )}
+
+        {/* DM mode — conversation selected but not in list (first message) */}
+        {activeView === 'dms' && activeDmUserId && !activeDmConvo && (
+          <>
+            <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10">
+              <span className="font-semibold text-foreground">Nueva conversación</span>
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+              <MessageSquare className="w-12 h-12 opacity-20" />
+              <p className="text-sm">Inicia la conversación enviando el primer mensaje.</p>
+            </div>
+            <div className="p-4 pt-0">
+              <div className="h-6" />
+              <form onSubmit={handleSendDm} className="relative flex items-center bg-card border border-white/10 rounded-xl">
+                <input
+                  type="text"
+                  value={dmInput}
+                  onChange={handleDmInputChange}
+                  placeholder="Escribe un mensaje..."
+                  className="flex-1 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
+                />
+                <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-50">
+                  <Send className="w-5 h-5" />
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+
+        {/* ── Server / channel chat pane ──────────────────────────────── */}
+        {activeView === 'servers' && activeChannel ? (
           <>
             {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
@@ -885,8 +1208,8 @@ export default function AppLayout() {
         )}
       </div>
 
-      {/* 4. MEMBER LIST COLUMN */}
-      {showMembers && activeChannel && (
+      {/* 4. MEMBER LIST COLUMN — only in server mode */}
+      {activeView === 'servers' && showMembers && activeChannel && (
         <div className="w-60 bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0">
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {groupedMembers.online.length > 0 && (
@@ -989,6 +1312,7 @@ export default function AppLayout() {
           currentUserId={user.id}
           anchorRect={selectedAnchorRect}
           onClose={() => { setSelectedUserId(null); setSelectedAnchorRect(null); }}
+          onOpenDm={openDm}
         />
       )}
       <CreateServerModal

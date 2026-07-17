@@ -30,6 +30,8 @@ tags:
     description: File attachments
   - name: reactions
     description: Message emoji reactions
+  - name: dms
+    description: Direct messages between users
 paths:
   /healthz:
     get:
@@ -960,6 +962,99 @@ paths:
         "204":
           description: User unbanned
 
+  /dms:
+    get:
+      operationId: listDmConversations
+      tags: [dms]
+      summary: List all DM conversations for the current user (ordered by most recent activity)
+      responses:
+        "200":
+          description: DM conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DmConversation"
+
+  /dms/{userId}:
+    get:
+      operationId: getDmHistory
+      tags: [dms]
+      summary: Get DM message history with a user (most recent 50)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: DM messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DirectMessage"
+    post:
+      operationId: sendDm
+      tags: [dms]
+      summary: Send a direct message to a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DmInput"
+      responses:
+        "201":
+          description: DM sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectMessage"
+
+  /dms/{userId}/read:
+    post:
+      operationId: markDmRead
+      tags: [dms]
+      summary: Mark DM conversation as read (updates cursor to now)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Marked as read
+
+  /dms/messages/{dmId}:
+    delete:
+      operationId: deleteDm
+      tags: [dms]
+      summary: Soft-delete own DM message
+      parameters:
+        - name: dmId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Message deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DirectMessage"
+
   /admin/stats:
     get:
       operationId: getAdminStats
@@ -1472,6 +1567,56 @@ components:
         role:
           type: string
           enum: [admin, member]
+
+    DirectMessage:
+      type: object
+      required: [id, senderId, recipientId, content, createdAt, sender]
+      properties:
+        id:
+          type: integer
+        senderId:
+          type: integer
+        recipientId:
+          type: integer
+        content:
+          type: string
+        replyToId:
+          type: ["integer", "null"]
+        deletedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        sender:
+          $ref: "#/components/schemas/UserProfile"
+        replyTo:
+          $ref: "#/components/schemas/ReplyPreview"
+          nullable: true
+
+    DmConversation:
+      type: object
+      required: [otherUser, lastMessage, unreadCount]
+      properties:
+        otherUser:
+          $ref: "#/components/schemas/UserProfile"
+        lastMessage:
+          $ref: "#/components/schemas/DirectMessage"
+          nullable: true
+        unreadCount:
+          type: integer
+
+    DmInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        replyToId:
+          type: integer
+          nullable: true
 
     InviteInput:
       type: object

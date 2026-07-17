@@ -120,6 +120,24 @@ export function initWebSocket(server: HttpServer): void {
             }
             break;
 
+          case "dm_typing:start":
+            if (msg.recipientId && client.userId) {
+              broadcastToUser(msg.recipientId, {
+                type: "dm_typing:start",
+                data: { userId: client.userId },
+              });
+            }
+            break;
+
+          case "dm_typing:stop":
+            if (msg.recipientId && client.userId) {
+              broadcastToUser(msg.recipientId, {
+                type: "dm_typing:stop",
+                data: { userId: client.userId },
+              });
+            }
+            break;
+
           case "ping":
             client.send(JSON.stringify({ type: "pong" }));
             break;
@@ -161,6 +179,18 @@ export function broadcastAll(payload: object): void {
   wss.clients.forEach((ws) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(data);
+    }
+  });
+}
+
+/** Send a payload to every connected WebSocket client authenticated as `targetUserId`. */
+export function broadcastToUser(targetUserId: number, payload: object): void {
+  if (!wss) return;
+  const data = JSON.stringify(payload);
+  wss.clients.forEach((ws) => {
+    const client = ws as AuthedWebSocket;
+    if (client.readyState === WebSocket.OPEN && client.userId === targetUserId) {
+      client.send(data);
     }
   });
 }

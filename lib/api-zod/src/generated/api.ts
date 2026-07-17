@@ -1031,6 +1031,198 @@ export const UnbanUserResponse = zod.void()
 
 
 /**
+ * @summary List all DM conversations for the current user (ordered by most recent activity)
+ */
+export const ListDmConversationsResponseItem = zod.object({
+  "otherUser": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "bio": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "status": zod.enum(['online', 'away', 'dnd', 'offline']),
+  "role": zod.enum(['admin', 'member']),
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
+}),
+  "lastMessage": zod.object({
+  "id": zod.number(),
+  "senderId": zod.number(),
+  "recipientId": zod.number(),
+  "content": zod.string(),
+  "replyToId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "sender": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "bio": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "status": zod.enum(['online', 'away', 'dnd', 'offline']),
+  "role": zod.enum(['admin', 'member']),
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
+}),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish()
+}).nullable(),
+  "unreadCount": zod.number()
+})
+export const ListDmConversationsResponse = zod.array(ListDmConversationsResponseItem)
+
+
+/**
+ * @summary Get DM message history with a user (most recent 50)
+ */
+export const GetDmHistoryParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const GetDmHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "senderId": zod.number(),
+  "recipientId": zod.number(),
+  "content": zod.string(),
+  "replyToId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "sender": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "bio": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "status": zod.enum(['online', 'away', 'dnd', 'offline']),
+  "role": zod.enum(['admin', 'member']),
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
+}),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish()
+})
+export const GetDmHistoryResponse = zod.array(GetDmHistoryResponseItem)
+
+
+/**
+ * @summary Send a direct message to a user
+ */
+export const SendDmParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const sendDmBodyContentMax = 4000;
+
+
+
+export const SendDmBody = zod.object({
+  "content": zod.string().min(1).max(sendDmBodyContentMax),
+  "replyToId": zod.number().nullish()
+})
+
+export const SendDmResponse = zod.object({
+  "id": zod.number(),
+  "senderId": zod.number(),
+  "recipientId": zod.number(),
+  "content": zod.string(),
+  "replyToId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "sender": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "bio": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "status": zod.enum(['online', 'away', 'dnd', 'offline']),
+  "role": zod.enum(['admin', 'member']),
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
+}),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish()
+})
+
+
+/**
+ * @summary Mark DM conversation as read (updates cursor to now)
+ */
+export const MarkDmReadParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const MarkDmReadResponse = zod.void()
+
+
+/**
+ * @summary Soft-delete own DM message
+ */
+export const DeleteDmParams = zod.object({
+  "dmId": zod.coerce.number()
+})
+
+export const DeleteDmResponse = zod.object({
+  "id": zod.number(),
+  "senderId": zod.number(),
+  "recipientId": zod.number(),
+  "content": zod.string(),
+  "replyToId": zod.number().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "sender": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "bio": zod.string().nullish(),
+  "avatarUrl": zod.string().nullish(),
+  "bannerUrl": zod.string().nullish(),
+  "status": zod.enum(['online', 'away', 'dnd', 'offline']),
+  "role": zod.enum(['admin', 'member']),
+  "createdAt": zod.coerce.date(),
+  "socialLinks": zod.array(zod.object({
+  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
+  "url": zod.string(),
+  "label": zod.string().optional()
+})).optional()
+}),
+  "replyTo": zod.object({
+  "id": zod.number(),
+  "authorDisplayName": zod.string(),
+  "contentPreview": zod.string()
+}).nullish()
+})
+
+
+/**
  * @summary Get platform activity stats
  */
 export const GetAdminStatsResponse = zod.object({
