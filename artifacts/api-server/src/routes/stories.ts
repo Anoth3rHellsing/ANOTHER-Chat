@@ -6,7 +6,6 @@ import { eq, and, gt, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
-import pg from "pg";
 
 const router: IRouter = Router();
 

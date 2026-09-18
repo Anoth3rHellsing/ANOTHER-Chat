@@ -401,12 +401,12 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     const allowed = candidates.filter(a =>
       a.uploadedByUserId === userId &&
       a.channelId === channelId &&
-      a.claimed === 0
+      a.claimed === false
     );
     if (allowed.length > 0) {
       const allowedIds = allowed.map(a => a.id);
       await db.update(messageAttachmentsTable)
-        .set({ messageId: msg.id, claimed: 1 })
+        .set({ messageId: msg.id, claimed: true })
         .where(inArray(messageAttachmentsTable.id, allowedIds));
       attachmentRows = await db.select().from(messageAttachmentsTable)
         .where(eq(messageAttachmentsTable.messageId, msg.id));
@@ -456,7 +456,7 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
   if (safeContent) {
     const mentionMatches = safeContent.match(/@(\w+)/g);
     if (mentionMatches && channelCheck.serverId) {
-      const usernames = [...new Set(mentionMatches.map(m => m.slice(1).toLowerCase()))];
+      const usernames = [...new Set(mentionMatches.map((m: string) => m.slice(1).toLowerCase()))];
       try {
         const { pool } = await import("@workspace/db");
         const mentionClient = await pool.connect();

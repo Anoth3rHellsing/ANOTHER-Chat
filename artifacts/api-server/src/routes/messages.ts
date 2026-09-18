@@ -132,7 +132,7 @@ router.post(
       messageId: 0, // Placeholder — updated when message is sent
       uploadedByUserId: userId,
       channelId,
-      claimed: 0,
+      claimed: false,
       url,
       filename: file.originalname,
       mimeType: file.mimetype,

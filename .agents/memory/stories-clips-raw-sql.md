@@ -1,10 +1,10 @@
 ---
-name: Stories and clips routes use raw SQL
-description: stories/clips/story_views/clip_likes/clip_comments tables are not in the Drizzle schema; routes use raw pg pool queries
+name: Complete database baseline
+description: Raw-SQL feature tables are declared in Drizzle and covered by a verified zero migration
 ---
 
-**Rule:** Never try to use drizzle ORM for the stories, story_views, clips, clip_likes, or clip_comments tables. Use raw `pool.connect()` queries.
+**Rule:** Keep the Drizzle schema and zero migration complete even when application routes continue to use raw SQL.
 
-**Why:** These tables were added via raw `psql` migration after the Drizzle schema was already generated. Adding them to the schema would require regenerating all codegen. Raw SQL was chosen to avoid that churn.
+**Why:** The development database accumulated feature tables and constraints outside the handwritten schema, making clean reconstruction impossible. The full catalog is now represented and verified against a temporary empty database.
 
-**How to apply:** Import `pool` from `@workspace/db` (it is exported from `lib/db/src/index.ts`). Use `const client = await pool.connect(); try { return await client.query(text, values); } finally { client.release(); }` pattern. Both `artifacts/api-server/src/routes/stories.ts` and `clips.ts` use a local `rawQuery()` helper with dynamic import to avoid circular init issues.
+**How to apply:** New database objects must be added to the Drizzle schema and generated migrations even if a route uses `pool.connect()`. Preserve the live catalog's names, types, nullability, defaults, indexes, and constraints unless a separate hardening migration intentionally changes them.
