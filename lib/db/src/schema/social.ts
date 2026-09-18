@@ -1,0 +1,14 @@
+import { pgTable, serial, integer, varchar, timestamp, foreignKey, unique } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { users } from "./users";
+export const friendRequests = pgTable("friend_requests", { id: serial().primaryKey().notNull(), senderId: integer("sender_id").notNull(), receiverId: integer("receiver_id").notNull(), status: varchar({ length: 20 }).default("pending").notNull(), createdAt: timestamp("created_at", { mode: "date" }).defaultNow() }, t => [foreignKey({ columns: [t.receiverId], foreignColumns: [users.id], name: "friend_requests_receiver_id_fkey" }).onDelete("cascade"), foreignKey({ columns: [t.senderId], foreignColumns: [users.id], name: "friend_requests_sender_id_fkey" }).onDelete("cascade"), unique("friend_requests_sender_id_receiver_id_key").on(t.senderId, t.receiverId)]);
+export const friendships = pgTable("friendships", { id: serial().primaryKey().notNull(), user1Id: integer("user1_id").notNull(), user2Id: integer("user2_id").notNull(), createdAt: timestamp("created_at", { mode: "date" }).defaultNow() }, t => [foreignKey({ columns: [t.user1Id], foreignColumns: [users.id], name: "friendships_user1_id_fkey" }).onDelete("cascade"), foreignKey({ columns: [t.user2Id], foreignColumns: [users.id], name: "friendships_user2_id_fkey" }).onDelete("cascade"), unique("friendships_user1_id_user2_id_key").on(t.user1Id, t.user2Id)]);
+export const friendRequestsTable = friendRequests;
+export const friendshipsTable = friendships;
+export const insertFriendRequestSchema = createInsertSchema(friendRequests).omit({ id: true, createdAt: true });
+export const insertFriendshipSchema = createInsertSchema(friendships).omit({ id: true, createdAt: true });
+export type FriendRequest = typeof friendRequests.$inferSelect;
+export type InsertFriendRequest = z.infer<typeof insertFriendRequestSchema>;
+export type Friendship = typeof friendships.$inferSelect;
+export type InsertFriendship = z.infer<typeof insertFriendshipSchema>;

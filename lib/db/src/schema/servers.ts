@@ -1,6 +1,12 @@
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { servers, serverMembers, serverRoles, serverMemberRoles, serverInvites } from "./introspected";
+import { pgTable, serial, integer, text, timestamp, boolean, foreignKey, unique } from "drizzle-orm/pg-core";
+import { users } from "./users";
+export const servers = pgTable("servers", { id: serial().primaryKey().notNull(), name: text().notNull(), iconUrl: text("icon_url"), ownerId: integer("owner_id").notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(), bannerUrl: text("banner_url"), isGeneral: boolean("is_general").default(false).notNull() });
+export const serverMembers = pgTable("server_members", { id: serial().primaryKey().notNull(), serverId: integer("server_id").notNull(), userId: integer("user_id").notNull(), role: text().default("member").notNull(), joinedAt: timestamp("joined_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() });
+export const serverRoles = pgTable("server_roles", { id: serial().primaryKey().notNull(), serverId: integer("server_id").notNull(), name: text().notNull(), color: text().default("#6366f1").notNull(), permissions: integer().default(0).notNull(), position: integer().default(0).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() });
+export const serverMemberRoles = pgTable("server_member_roles", { id: serial().primaryKey().notNull(), memberId: integer("member_id").notNull(), roleId: integer("role_id").notNull() });
+export const serverInvites = pgTable("server_invites", { id: serial().primaryKey().notNull(), serverId: integer("server_id").notNull(), code: text().notNull(), createdById: integer("created_by_id").notNull(), usedById: integer("used_by_id"), expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }), revoked: boolean().default(false).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() }, t => [foreignKey({ columns: [t.createdById], foreignColumns: [users.id], name: "server_invites_created_by_id_fkey" }), foreignKey({ columns: [t.serverId], foreignColumns: [servers.id], name: "server_invites_server_id_fkey" }).onDelete("cascade"), foreignKey({ columns: [t.usedById], foreignColumns: [users.id], name: "server_invites_used_by_id_fkey" }), unique("server_invites_code_key").on(t.code)]);
 export const serversTable = servers;
 export const serverMembersTable = serverMembers;
 export const serverRolesTable = serverRoles;

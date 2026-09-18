@@ -1,3 +1,4 @@
-import { inviteCodes } from "./introspected";
+import { pgTable, unique, serial, text, boolean, timestamp, integer } from "drizzle-orm/pg-core";
+export const inviteCodes = pgTable("invite_codes", { id: serial().primaryKey().notNull(), code: text().notNull(), generatedById: integer("generated_by_id").notNull(), usedById: integer("used_by_id"), usedAt: timestamp("used_at", { withTimezone: true, mode: "date" }), revoked: boolean().default(false).notNull(), note: text(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() }, t => [unique("invite_codes_code_unique").on(t.code)]);
 export const inviteCodesTable = inviteCodes;
 export type InviteCode = typeof inviteCodesTable.$inferSelect;

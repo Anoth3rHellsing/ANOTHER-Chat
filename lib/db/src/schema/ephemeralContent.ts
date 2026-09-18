@@ -1,0 +1,15 @@
+import { sql } from "drizzle-orm";
+import { pgTable, serial, integer, text, timestamp, foreignKey, unique } from "drizzle-orm/pg-core";
+import { users } from "./users";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+export const stories = pgTable("stories", { id: serial().primaryKey().notNull(), userId: integer("user_id").notNull(), mediaUrl: text("media_url").notNull(), mediaType: text("media_type").default("image").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).default(sql`(now() + '24:00:00'::interval)`).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() }, t => [foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: "stories_user_id_fkey" }).onDelete("cascade")]);
+export const storyViews = pgTable("story_views", { id: serial().primaryKey().notNull(), storyId: integer("story_id").notNull(), viewerId: integer("viewer_id").notNull(), viewedAt: timestamp("viewed_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() }, t => [foreignKey({ columns: [t.storyId], foreignColumns: [stories.id], name: "story_views_story_id_fkey" }).onDelete("cascade"), foreignKey({ columns: [t.viewerId], foreignColumns: [users.id], name: "story_views_viewer_id_fkey" }).onDelete("cascade"), unique("story_views_story_id_viewer_id_key").on(t.storyId, t.viewerId)]);
+export const storiesTable = stories;
+export const storyViewsTable = storyViews;
+export const insertStorySchema = createInsertSchema(stories).omit({ id: true, createdAt: true });
+export const insertStoryViewSchema = createInsertSchema(storyViews).omit({ id: true, viewedAt: true });
+export type Story = typeof stories.$inferSelect;
+export type InsertStory = z.infer<typeof insertStorySchema>;
+export type StoryView = typeof storyViews.$inferSelect;
+export type InsertStoryView = z.infer<typeof insertStoryViewSchema>;
