@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Users as UsersIcon } from 'lucide-react';
 import { StoryViewer } from './story-viewer';
+import { csrfFetch } from '@workspace/api-client-react';
 
 interface StoryGroup {
   userId: number;
@@ -33,7 +34,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
 
   const fetchStories = async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/stories`, { credentials: 'include' });
+      const res = await csrfFetch(`${baseUrl}/api/stories`, { credentials: 'include' });
       if (res.ok) setGroups(await res.json());
     } catch {}
   };
@@ -52,7 +53,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
     try {
       const form = new FormData();
       form.append('file', file);
-      await fetch(`${baseUrl}/api/stories`, { method: 'POST', body: form, credentials: 'include' });
+      await csrfFetch(`${baseUrl}/api/stories`, { method: 'POST', body: form, credentials: 'include' });
       await fetchStories();
     } catch {}
     setUploading(false);
@@ -63,7 +64,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
     // Mark all stories in this group as viewed
     group.stories.forEach(s => {
       if (!s.viewed) {
-        fetch(`${baseUrl}/api/stories/${s.id}/view`, { method: 'POST', credentials: 'include' }).catch(() => {});
+        csrfFetch(`${baseUrl}/api/stories/${s.id}/view`, { method: 'POST', credentials: 'include' }).catch(() => {});
       }
     });
   };

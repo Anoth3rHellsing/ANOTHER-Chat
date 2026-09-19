@@ -1,3 +1,5 @@
+import { addCsrfHeader } from "./csrf";
+
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
 };
@@ -336,6 +338,7 @@ export async function customFetch<T = unknown>(
   }
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
+  addCsrfHeader(headers, method);
 
   if (
     typeof init.body === "string" &&

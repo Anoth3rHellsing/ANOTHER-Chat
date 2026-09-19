@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
+import { csrfFetch } from '@workspace/api-client-react';
 import { 
   useGetCurrentUser, useListServers, useJoinServer,
   useGetServerMembers, useListChannels,
@@ -367,7 +368,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!activeServerId) { setMuteStatus(null); return; }
     const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-    fetch(`${BASE}/api/servers/${activeServerId}/mute-status`, { credentials: 'include' })
+    csrfFetch(`${BASE}/api/servers/${activeServerId}/mute-status`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(d => setMuteStatus(d?.muted ? { expiresAt: d.expiresAt, reason: d.reason } : null))
       .catch(() => setMuteStatus(null));
@@ -377,7 +378,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!showDmGroupModal) return;
     const BASE = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-    fetch(`${BASE}/api/friends`, { credentials: 'include' })
+    csrfFetch(`${BASE}/api/friends`, { credentials: 'include' })
       .then(r => r.json()).then(d => setDmFriends(Array.isArray(d) ? d : [])).catch(() => {});
   }, [showDmGroupModal]);
 
@@ -413,7 +414,7 @@ export default function AppLayout() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`/api/channels/${activeChannelId}/attachments`, {
+      const res = await csrfFetch(`/api/channels/${activeChannelId}/attachments`, {
         method: 'POST',
         body: form,
       });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Play, Heart, MessageSquare, Trash2, X, Upload, Users as UsersIcon } from 'lucide-react';
+import { csrfFetch } from '@workspace/api-client-react';
 
 interface Clip {
   id: number;
@@ -44,7 +45,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
   const fetchClips = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${baseUrl}/api/servers/${serverId}/clips`, { credentials: 'include' });
+      const res = await csrfFetch(`${baseUrl}/api/servers/${serverId}/clips`, { credentials: 'include' });
       if (res.ok) setClips(await res.json());
     } catch {}
     setLoading(false);
@@ -52,7 +53,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
 
   const fetchComments = async (clipId: number) => {
     try {
-      const res = await fetch(`${baseUrl}/api/clips/${clipId}/comments`, { credentials: 'include' });
+      const res = await csrfFetch(`${baseUrl}/api/clips/${clipId}/comments`, { credentials: 'include' });
       if (res.ok) setComments(await res.json());
     } catch {}
   };
@@ -61,7 +62,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
 
   const handleLike = async (clip: Clip) => {
     try {
-      const res = await fetch(`${baseUrl}/api/clips/${clip.id}/like`, { method: 'POST', credentials: 'include' });
+      const res = await csrfFetch(`${baseUrl}/api/clips/${clip.id}/like`, { method: 'POST', credentials: 'include' });
       if (res.ok) {
         const { liked } = await res.json();
         setClips(prev => prev.map(c => c.id === clip.id
@@ -84,7 +85,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
     e.preventDefault();
     if (!commentInput.trim() || !selectedClip) return;
     try {
-      const res = await fetch(`${baseUrl}/api/clips/${selectedClip.id}/comments`, {
+      const res = await csrfFetch(`${baseUrl}/api/clips/${selectedClip.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -102,7 +103,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
 
   const handleDelete = async (clipId: number) => {
     try {
-      await fetch(`${baseUrl}/api/clips/${clipId}`, { method: 'DELETE', credentials: 'include' });
+      await csrfFetch(`${baseUrl}/api/clips/${clipId}`, { method: 'DELETE', credentials: 'include' });
       setClips(prev => prev.filter(c => c.id !== clipId));
       if (selectedClip?.id === clipId) setSelectedClip(null);
     } catch {}
@@ -116,7 +117,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
       const form = new FormData();
       form.append('file', uploadFile);
       form.append('title', uploadTitle.trim());
-      const res = await fetch(`${baseUrl}/api/servers/${serverId}/clips`, {
+      const res = await csrfFetch(`${baseUrl}/api/servers/${serverId}/clips`, {
         method: 'POST',
         body: form,
         credentials: 'include',

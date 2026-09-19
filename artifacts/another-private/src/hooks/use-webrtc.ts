@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { safeCloseAudioContext, videoConstraintsFromQuality, type VideoQuality } from '@/lib/settings-utils';
 import { playVoiceJoinSound, playVoiceLeaveSound } from '@/lib/voice-sounds';
+import { csrfFetch } from '@workspace/api-client-react';
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -367,7 +368,7 @@ export function useWebRTC(options: {
 
   const joinVoiceChannel = useCallback(async (channelId: number, currentMembers: VoiceMember[]) => {
     const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-    const res = await fetch(`${baseUrl}/api/channels/${channelId}/voice/join`, {
+    const res = await csrfFetch(`${baseUrl}/api/channels/${channelId}/voice/join`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -412,7 +413,7 @@ export function useWebRTC(options: {
     playVoiceLeaveSound();
 
     const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-    await fetch(`${baseUrl}/api/channels/${chId}/voice/leave`, {
+    await csrfFetch(`${baseUrl}/api/channels/${chId}/voice/leave`, {
       method: 'POST',
       credentials: 'include',
     });

@@ -4,3 +4,4 @@
 - [Permissions system](permissions-system.md) — bitmask roles, schema tables, key files, why PERM consts must be in a separate .ts file
 - [Voice WS close handler](voice-ws-close.md) — only auto-leave voice channels on last WS connection close (check wss.clients for other open sockets with same userId)
 - [Complete database baseline](stories-clips-raw-sql.md) — raw-SQL feature tables are now declared in Drizzle and covered by a verified zero migration
+- [CSRF token re-emission](csrf-token-reemission.md) — /auth/me reemits the session token instead of rotating it, avoiding concurrent-load mismatches

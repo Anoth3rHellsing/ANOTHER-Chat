@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { eq, isNull, count, and } from "drizzle-orm";
 import { db, usersTable, inviteCodesTable, serversTable, serverMembersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+import { issueCsrfToken } from "../lib/csrf";
 
 /** Auto-join the general server for a given user, creating it if necessary */
 async function autoJoinGeneralServer(userId: number) {
@@ -84,6 +85,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   req.session.userId = user.id;
   req.session.userRole = user.role;
+  issueCsrfToken(req, res, { rotate: true });
 
   // Explicitly save the session before responding so the PostgreSQL store's
   // async set() completes and the Set-Cookie header is sent with the response.
@@ -186,6 +188,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   req.session.userId = newUser.id;
   req.session.userRole = newUser.role;
+  issueCsrfToken(req, res, { rotate: true });
 
   req.session.save((err) => {
     if (err) {
@@ -237,17 +240,24 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({
-    id: user.id,
-    username: user.username,
-    displayName: user.displayName,
-    bio: user.bio,
-    avatarUrl: user.avatarUrl,
-    bannerUrl: user.bannerUrl,
-    status: user.status,
-    role: user.role,
-    createdAt: user.createdAt,
-    socialLinks: parseLinks(user.socialLinks),
+  issueCsrfToken(req, res);
+  req.session.save((err) => {
+    if (err) {
+      res.status(500).json({ error: "Error al guardar la sesión" });
+      return;
+    }
+    res.json({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      bio: user.bio,
+      avatarUrl: user.avatarUrl,
+      bannerUrl: user.bannerUrl,
+      status: user.status,
+      role: user.role,
+      createdAt: user.createdAt,
+      socialLinks: parseLinks(user.socialLinks),
+    });
   });
 });
 

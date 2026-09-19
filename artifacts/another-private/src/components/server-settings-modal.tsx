@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { csrfFetch } from '@workspace/api-client-react';
 import {
   useListServerRoles,
   useCreateServerRole,
@@ -81,19 +82,19 @@ export function ServerSettingsModal({
   useEffect(() => {
     if (!isOpen || !serverId) return;
     if (activeTab === 'mutes') {
-      fetch(`${BASE}/api/servers/${serverId}/mutes`, { credentials: 'include' })
+      csrfFetch(`${BASE}/api/servers/${serverId}/mutes`, { credentials: 'include' })
         .then(r => r.json()).then(d => setMutes(Array.isArray(d) ? d : [])).catch(() => {});
     }
     if (activeTab === 'word_filters') {
-      fetch(`${BASE}/api/servers/${serverId}/word-filters`, { credentials: 'include' })
+      csrfFetch(`${BASE}/api/servers/${serverId}/word-filters`, { credentials: 'include' })
         .then(r => r.json()).then(d => setWordFilters(Array.isArray(d) ? d : [])).catch(() => {});
     }
     if (activeTab === 'reports') {
-      fetch(`${BASE}/api/servers/${serverId}/reports`, { credentials: 'include' })
+      csrfFetch(`${BASE}/api/servers/${serverId}/reports`, { credentials: 'include' })
         .then(r => r.json()).then(d => setReports(Array.isArray(d) ? d : [])).catch(() => {});
     }
     if (activeTab === 'audit') {
-      fetch(`${BASE}/api/servers/${serverId}/audit-log`, { credentials: 'include' })
+      csrfFetch(`${BASE}/api/servers/${serverId}/audit-log`, { credentials: 'include' })
         .then(r => r.json()).then(d => setAuditLog(Array.isArray(d) ? d : [])).catch(() => {});
     }
   }, [activeTab, isOpen, serverId]);
@@ -102,11 +103,11 @@ export function ServerSettingsModal({
     if (!muteTargetUsername.trim()) return;
     setMutingUser(true);
     try {
-      const userRes = await fetch(`${BASE}/api/users/by-username/${encodeURIComponent(muteTargetUsername.trim())}`, { credentials: 'include' });
+      const userRes = await csrfFetch(`${BASE}/api/users/by-username/${encodeURIComponent(muteTargetUsername.trim())}`, { credentials: 'include' });
       // Fallback: search by username through members list
       const member = members.find(m => m.user.username.toLowerCase() === muteTargetUsername.trim().toLowerCase());
       if (!member) { toast({ title: 'Usuario no encontrado en el servidor', variant: 'destructive' }); setMutingUser(false); return; }
-      const res = await fetch(`${BASE}/api/servers/${serverId}/mutes`, {
+      const res = await csrfFetch(`${BASE}/api/servers/${serverId}/mutes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -115,7 +116,7 @@ export function ServerSettingsModal({
       if (res.ok) {
         toast({ title: `${member.user.displayName} silenciado por ${muteDuration} minutos` });
         setMuteTargetUsername(''); setMuteReason('');
-        fetch(`${BASE}/api/servers/${serverId}/mutes`, { credentials: 'include' })
+        csrfFetch(`${BASE}/api/servers/${serverId}/mutes`, { credentials: 'include' })
           .then(r => r.json()).then(d => setMutes(Array.isArray(d) ? d : [])).catch(() => {});
       } else {
         const d = await res.json().catch(() => ({}));
@@ -126,14 +127,14 @@ export function ServerSettingsModal({
   };
 
   const handleUnmute = async (muteId: number) => {
-    await fetch(`${BASE}/api/servers/${serverId}/mutes/${muteId}`, { method: 'DELETE', credentials: 'include' });
+    await csrfFetch(`${BASE}/api/servers/${serverId}/mutes/${muteId}`, { method: 'DELETE', credentials: 'include' });
     setMutes(prev => prev.filter(m => m.id !== muteId));
     toast({ title: 'Silencio eliminado' });
   };
 
   const handleAddWord = async () => {
     if (!newWord.trim()) return;
-    const res = await fetch(`${BASE}/api/servers/${serverId}/word-filters`, {
+    const res = await csrfFetch(`${BASE}/api/servers/${serverId}/word-filters`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ word: newWord.trim() }),
     });
@@ -146,12 +147,12 @@ export function ServerSettingsModal({
   };
 
   const handleRemoveWord = async (filterId: number) => {
-    await fetch(`${BASE}/api/servers/${serverId}/word-filters/${filterId}`, { method: 'DELETE', credentials: 'include' });
+    await csrfFetch(`${BASE}/api/servers/${serverId}/word-filters/${filterId}`, { method: 'DELETE', credentials: 'include' });
     setWordFilters(prev => prev.filter(f => f.id !== filterId));
   };
 
   const handleResolveReport = async (reportId: number, action: 'dismiss' | 'delete_message') => {
-    await fetch(`${BASE}/api/reports/${reportId}`, {
+    await csrfFetch(`${BASE}/api/reports/${reportId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ action }),
     });
@@ -310,7 +311,7 @@ export function ServerSettingsModal({
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`/api/servers/${serverId}/icon`, { method: 'POST', body: form });
+      const res = await csrfFetch(`/api/servers/${serverId}/icon`, { method: 'POST', body: form });
       if (!res.ok) throw new Error('Upload failed');
       queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
       toast({ title: 'Icono actualizado' });
@@ -328,7 +329,7 @@ export function ServerSettingsModal({
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`/api/servers/${serverId}/banner`, { method: 'POST', body: form });
+      const res = await csrfFetch(`/api/servers/${serverId}/banner`, { method: 'POST', body: form });
       if (!res.ok) throw new Error('Upload failed');
       queryClient.invalidateQueries({ queryKey: getListServersQueryKey() });
       toast({ title: 'Banner actualizado' });
@@ -348,7 +349,7 @@ export function ServerSettingsModal({
     setDeleting(true);
     try {
       const baseUrl = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
-      const res = await fetch(`${baseUrl}/api/servers/${serverId}`, {
+      const res = await csrfFetch(`${baseUrl}/api/servers/${serverId}`, {
         method: 'DELETE',
         credentials: 'include',
       });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Flag, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { csrfFetch } from '@workspace/api-client-react';
 
 interface ReportModalProps {
   messageId: number;
@@ -31,7 +32,7 @@ export function ReportModal({ messageId, serverId, authorName, onClose }: Report
     if (!reason) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${BASE}/api/messages/${messageId}/report`, {
+      const res = await csrfFetch(`${BASE}/api/messages/${messageId}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

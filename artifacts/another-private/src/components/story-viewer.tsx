@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Eye, Trash2 } from 'lucide-react';
+import { csrfFetch } from '@workspace/api-client-react';
 
 interface Story {
   id: number;
@@ -76,13 +77,13 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
   // Fetch viewers if own story
   useEffect(() => {
     if (isOwn && current) {
-      fetch(`${baseUrl}/api/stories/${current.id}/viewers`, { credentials: 'include' })
+      csrfFetch(`${baseUrl}/api/stories/${current.id}/viewers`, { credentials: 'include' })
         .then(r => r.json()).then(setViewers).catch(() => {});
     }
   }, [storyIndex, isOwn]);
 
   const handleDelete = async () => {
-    await fetch(`${baseUrl}/api/stories/${current.id}`, { method: 'DELETE', credentials: 'include' });
+    await csrfFetch(`${baseUrl}/api/stories/${current.id}`, { method: 'DELETE', credentials: 'include' });
     onClose();
   };
 

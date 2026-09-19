@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { UserPlus, Check, X, MessageSquare, Users as UsersIcon, Clock, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { csrfFetch } from '@workspace/api-client-react';
 
 interface Friend {
   id: number;
@@ -47,8 +48,8 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
   const fetchFriends = async () => {
     try {
       const [fr, rq] = await Promise.all([
-        fetch(`${BASE}/api/friends`, { credentials: 'include' }).then(r => r.json()),
-        fetch(`${BASE}/api/friends/requests`, { credentials: 'include' }).then(r => r.json()),
+        csrfFetch(`${BASE}/api/friends`, { credentials: 'include' }).then(r => r.json()),
+        csrfFetch(`${BASE}/api/friends/requests`, { credentials: 'include' }).then(r => r.json()),
       ]);
       setFriends(Array.isArray(fr) ? fr : []);
       setIncoming(Array.isArray(rq?.incoming) ? rq.incoming : []);
@@ -63,7 +64,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
     if (!addUsername.trim()) return;
     setAdding(true);
     try {
-      const res = await fetch(`${BASE}/api/friends/request`, {
+      const res = await csrfFetch(`${BASE}/api/friends/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -82,17 +83,17 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
   };
 
   const acceptRequest = async (id: number) => {
-    await fetch(`${BASE}/api/friends/requests/${id}/accept`, { method: 'POST', credentials: 'include' });
+    await csrfFetch(`${BASE}/api/friends/requests/${id}/accept`, { method: 'POST', credentials: 'include' });
     fetchFriends();
   };
 
   const rejectRequest = async (id: number) => {
-    await fetch(`${BASE}/api/friends/requests/${id}/reject`, { method: 'POST', credentials: 'include' });
+    await csrfFetch(`${BASE}/api/friends/requests/${id}/reject`, { method: 'POST', credentials: 'include' });
     fetchFriends();
   };
 
   const removeFriend = async (friendId: number) => {
-    await fetch(`${BASE}/api/friends/${friendId}`, { method: 'DELETE', credentials: 'include' });
+    await csrfFetch(`${BASE}/api/friends/${friendId}`, { method: 'DELETE', credentials: 'include' });
     setFriends(prev => prev.filter(f => f.id !== friendId));
   };
 

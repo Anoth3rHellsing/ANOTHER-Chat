@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Users as UsersIcon, Plus, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { csrfFetch } from '@workspace/api-client-react';
 
 interface User {
   id: number;
@@ -43,7 +44,7 @@ export function DmGroupModal({ isOpen, onClose, currentUserId, friends, onCreate
     if (!name.trim() || selected.size === 0) return;
     setCreating(true);
     try {
-      const res = await fetch(`${BASE}/api/dm-groups`, {
+      const res = await csrfFetch(`${BASE}/api/dm-groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

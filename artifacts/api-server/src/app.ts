@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import session from "express-session";
+import cookieParser from "cookie-parser";
 import ConnectPgSimple from "connect-pg-simple";
 import path from "path";
 import router from "./routes";
@@ -10,6 +11,8 @@ import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { authRateLimit, inviteRateLimit, messageRateLimit } from "./middleware/rate-limit";
 import { finalErrorHandler } from "./middleware/errors";
+import { csrfProtection } from "./middleware/csrf";
+import { SESSION_MAX_AGE_MS } from "./lib/csrf";
 
 const PgSession = ConnectPgSimple(session);
 
@@ -139,6 +142,7 @@ app.use(
   })
 );
 
+app.use(cookieParser());
 app.use(
   session({
     store: sessionStore,
@@ -148,7 +152,7 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: SESSION_MAX_AGE_MS,
       sameSite: "lax",
     },
   })
@@ -156,6 +160,7 @@ app.use(
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(csrfProtection);
 
 app.post("/api/auth/login", authRateLimit);
 app.post("/api/auth/register", authRateLimit);

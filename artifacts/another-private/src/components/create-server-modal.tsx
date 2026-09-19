@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { X, Shield, Upload } from 'lucide-react';
-import { useCreateServer } from '@workspace/api-client-react';
+import { csrfFetch, useCreateServer } from '@workspace/api-client-react';
 
 interface CreateServerModalProps {
   isOpen: boolean;
@@ -40,7 +40,7 @@ export function CreateServerModal({ isOpen, onClose, onCreated }: CreateServerMo
             try {
               const form = new FormData();
               form.append('file', iconFile);
-              await fetch(`/api/servers/${server.id}/icon`, { method: 'POST', body: form });
+              await csrfFetch(`/api/servers/${server.id}/icon`, { method: 'POST', body: form });
             } catch {
               // Non-fatal: server is already created
             }

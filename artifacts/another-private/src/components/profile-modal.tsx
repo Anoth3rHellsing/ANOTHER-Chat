@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useUpdateMyProfile, getGetCurrentUserQueryKey } from '@workspace/api-client-react';
+import { csrfFetch, useUpdateMyProfile, getGetCurrentUserQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Upload, CheckCircle2, Circle, Loader2, User as UserIcon, Plus, Trash2, Instagram, Youtube, Twitch, Github, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -87,7 +87,7 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
       else setIsUploadingBanner(true);
       
       const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/api/users/me/${type}`, {
+      const res = await csrfFetch(`${baseUrl}/api/users/me/${type}`, {
         method: 'POST',
         credentials: 'include',
         body: formData
