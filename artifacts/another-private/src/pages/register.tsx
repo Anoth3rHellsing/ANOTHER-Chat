@@ -5,6 +5,20 @@ import { useToast } from '@/hooks/use-toast';
 import { Terminal, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+function getAuthErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const apiError = error as { status?: number; data?: unknown };
+    if (typeof apiError.data === 'object' && apiError.data !== null) {
+      const message = (apiError.data as { error?: unknown }).error;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    if (apiError.status === 429) {
+      return 'Demasiadas solicitudes. Inténtalo de nuevo más tarde.';
+    }
+  }
+  return 'No se pudo completar el registro. Inténtalo de nuevo más tarde.';
+}
+
 export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -22,8 +36,8 @@ export default function Register() {
         toast({ title: "Registro completado", description: "Acceso concedido." });
         setLocation('/app');
       },
-      onError: (err: any) => {
-        toast({ title: "Error de registro", description: "Código inválido o usuario existente.", variant: "destructive" });
+      onError: (error) => {
+        toast({ title: "Error de registro", description: getAuthErrorMessage(error), variant: "destructive" });
       }
     });
   };

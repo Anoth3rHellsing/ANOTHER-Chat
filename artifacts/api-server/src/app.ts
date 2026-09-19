@@ -107,23 +107,35 @@ function isLocalDevelopmentOrigin(origin: string): boolean {
 }
 
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Non-browser clients (curl, server-to-server) have no Origin header.
-      if (!origin) return callback(null, true);
-      let normalized: string | undefined;
-      try { normalized = new URL(origin).origin; } catch { /* rejected below */ }
-      const allowed = normalized === appOrigin ||
-        (process.env.NODE_ENV !== "production" && isLocalDevelopmentOrigin(origin));
-      if (allowed) {
-        callback(null, normalized);
-        return;
-      }
-      const error = new Error("Origin not allowed") as Error & { status: number };
-      error.status = 403;
-      callback(error, false);
-    },
-    credentials: true,
+  cors((req, callback) => {
+    const origin = req.get("origin");
+
+    // Non-browser clients (curl, server-to-server) have no Origin header.
+    if (!origin) {
+      callback(null, { origin: true, credentials: true });
+      return;
+    }
+
+    let parsedOrigin: URL | undefined;
+    try { parsedOrigin = new URL(origin); } catch { /* rejected below */ }
+
+    const requestHost = req.get("host");
+    const isSameOrigin = parsedOrigin !== undefined &&
+      requestHost !== undefined &&
+      parsedOrigin.protocol === `${req.protocol}:` &&
+      parsedOrigin.host === requestHost;
+    const allowed = parsedOrigin?.origin === appOrigin ||
+      isSameOrigin ||
+      (process.env.NODE_ENV !== "production" && isLocalDevelopmentOrigin(origin));
+
+    if (allowed) {
+      callback(null, { origin: parsedOrigin?.origin, credentials: true });
+      return;
+    }
+
+    const error = new Error("Origin not allowed") as Error & { status: number };
+    error.status = 403;
+    callback(error);
   })
 );
 

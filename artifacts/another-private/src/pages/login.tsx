@@ -5,6 +5,20 @@ import { useToast } from '@/hooks/use-toast';
 import { Shield, KeyRound, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+function getAuthErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const apiError = error as { status?: number; data?: unknown };
+    if (typeof apiError.data === 'object' && apiError.data !== null) {
+      const message = (apiError.data as { error?: unknown }).error;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    if (apiError.status === 429) {
+      return 'Demasiadas solicitudes. Inténtalo de nuevo más tarde.';
+    }
+  }
+  return 'No se pudo conectar. Inténtalo de nuevo más tarde.';
+}
+
 export default function Login() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -20,8 +34,8 @@ export default function Login() {
         toast({ title: "Acceso concedido", description: "Iniciando conexión segura..." });
         setLocation('/app');
       },
-      onError: () => {
-        toast({ title: "Acceso denegado", description: "Credenciales incorrectas.", variant: "destructive" });
+      onError: (error) => {
+        toast({ title: "Acceso denegado", description: getAuthErrorMessage(error), variant: "destructive" });
       }
     });
   };
