@@ -41,3 +41,7 @@ No enums, check constraints, policies, or views exist in the introspected public
 ## Verification
 
 The zero migration was applied to a fresh isolated PostgreSQL 16 cluster under `/tmp`. Canonical comparisons against the development database matched all 28 tables, 173 columns, 83 constraints, and 6 indexes. No migration, push, DDL, or DML command was run against the development database.
+
+## Development history adoption
+
+The development database predated the migration history table, so the baseline migration must never be replayed there. The first real versioned change, `0001_faithful_darwin`, was applied through Drizzle using an isolated migration folder containing only that migration. This created the history table with `0001` as its latest entry; subsequent runs with the complete migration folder skip the older baseline and report no pending migrations.

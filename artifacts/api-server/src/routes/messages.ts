@@ -129,7 +129,7 @@ router.post(
     const url = `/api/uploads/${file.filename}`;
 
     const [attachment] = await db.insert(messageAttachmentsTable).values({
-      messageId: 0, // Placeholder — updated when message is sent
+      messageId: null,
       uploadedByUserId: userId,
       channelId,
       claimed: false,

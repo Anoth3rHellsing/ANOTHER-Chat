@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, lt, desc, inArray } from "drizzle-orm";
+import { eq, and, lt, desc, inArray, isNull } from "drizzle-orm";
 import {
   db,
   channelsTable,
@@ -23,6 +23,8 @@ import { fetchFirstLinkPreview } from "../lib/link-preview";
 import { groupReactions } from "./messages";
 
 const router: IRouter = Router();
+
+class AttachmentClaimError extends Error {}
 
 function parseVisualConfig(raw: string | null | undefined): Record<string, any> {
   try { return JSON.parse(raw ?? "{}") as Record<string, any>; } catch { return {}; }
@@ -282,6 +284,7 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
   const replyMap = new Map(replyMessages.map(m => [m.id, m]));
 
   for (const a of attachments) {
+    if (a.messageId === null) continue;
     if (!attachmentMap.has(a.messageId)) attachmentMap.set(a.messageId, []);
     attachmentMap.get(a.messageId)!.push(a);
   }
@@ -370,7 +373,10 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     }
   }
 
-  const hasAttachments = Array.isArray(attachmentIds) && attachmentIds.length > 0;
+  const requestedAttachmentIds = Array.isArray(attachmentIds)
+    ? [...new Set(attachmentIds.map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, 10)
+    : [];
+  const hasAttachments = requestedAttachmentIds.length > 0;
   if ((content == null || typeof content !== "string" || content.trim().length === 0) && !hasAttachments) {
     res.status(400).json({ error: "El mensaje debe tener contenido o adjuntos" }); return;
   }
@@ -385,32 +391,40 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     if (replyMsg && replyMsg.channelId === channelId) validReplyToId = replyToId;
   }
 
-  const [msg] = await db
-    .insert(messagesTable)
-    .values({ channelId, userId, contentEncrypted: encrypted, iv, replyToId: validReplyToId })
-    .returning();
+  let msg: typeof messagesTable.$inferSelect;
+  let attachmentRows: Array<typeof messageAttachmentsTable.$inferSelect>;
+  try {
+    ({ msg, attachmentRows } = await db.transaction(async tx => {
+      const [createdMessage] = await tx
+        .insert(messagesTable)
+        .values({ channelId, userId, contentEncrypted: encrypted, iv, replyToId: validReplyToId })
+        .returning();
 
-  // Associate attachments with this message — enforce ownership
-  let attachmentRows: Array<typeof messageAttachmentsTable.$inferSelect> = [];
-  if (hasAttachments) {
-    const ids = (attachmentIds as number[]).map(Number).slice(0, 10);
-    // Fetch the candidate rows before updating
-    const candidates = await db.select().from(messageAttachmentsTable)
-      .where(inArray(messageAttachmentsTable.id, ids));
-    // Only allow attachments that belong to this user, this channel, and are unclaimed
-    const allowed = candidates.filter(a =>
-      a.uploadedByUserId === userId &&
-      a.channelId === channelId &&
-      a.claimed === false
-    );
-    if (allowed.length > 0) {
-      const allowedIds = allowed.map(a => a.id);
-      await db.update(messageAttachmentsTable)
-        .set({ messageId: msg.id, claimed: true })
-        .where(inArray(messageAttachmentsTable.id, allowedIds));
-      attachmentRows = await db.select().from(messageAttachmentsTable)
-        .where(eq(messageAttachmentsTable.messageId, msg.id));
+      const claimedAttachments = hasAttachments
+        ? await tx.update(messageAttachmentsTable)
+          .set({ messageId: createdMessage.id, claimed: true })
+          .where(and(
+            inArray(messageAttachmentsTable.id, requestedAttachmentIds),
+            eq(messageAttachmentsTable.uploadedByUserId, userId),
+            eq(messageAttachmentsTable.channelId, channelId),
+            eq(messageAttachmentsTable.claimed, false),
+            isNull(messageAttachmentsTable.messageId),
+          ))
+          .returning()
+        : [];
+
+      if (!safeContent && claimedAttachments.length === 0) {
+        throw new AttachmentClaimError();
+      }
+
+      return { msg: createdMessage, attachmentRows: claimedAttachments };
+    }));
+  } catch (error) {
+    if (error instanceof AttachmentClaimError) {
+      res.status(409).json({ error: "Los adjuntos ya no están disponibles" });
+      return;
     }
+    throw error;
   }
 
   const [author] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
