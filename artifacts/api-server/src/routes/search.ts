@@ -1,21 +1,8 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
-import crypto from "crypto";
+import { decryptChannelMessage, decryptDirectMessage } from "../lib/message-crypto";
 
 const router: IRouter = Router();
-
-const KEY = Buffer.from(process.env.MESSAGE_ENCRYPTION_KEY ?? "", "hex");
-
-function decryptMsg(encryptedHex: string, ivHex: string): string {
-  try {
-    const iv = Buffer.from(ivHex, "hex");
-    const enc = Buffer.from(encryptedHex, "hex");
-    const decipher = crypto.createDecipheriv("aes-256-cbc", KEY, iv);
-    return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
-  } catch {
-    return "";
-  }
-}
 
 async function rawQuery(text: string, values?: any[]) {
   const { pool } = await import("@workspace/db");
@@ -49,8 +36,21 @@ router.get("/channels/:channelId/search", requireAuth, async (req, res): Promise
       LIMIT 2000
     `, [channelId]);
 
-    const results = msgs.rows
-      .map(r => ({ ...r, decrypted: decryptMsg(r.content_encrypted, r.iv) }))
+    const decryptedRows = await Promise.all(msgs.rows.map(async r => {
+      try {
+        return {
+          ...r,
+          decrypted: await decryptChannelMessage({
+            id: r.id,
+            contentEncrypted: r.content_encrypted,
+            iv: r.iv,
+          }),
+        };
+      } catch {
+        return { ...r, decrypted: "" };
+      }
+    }));
+    const results = decryptedRows
       .filter(r => r.decrypted.toLowerCase().includes(q))
       .slice(0, 50)
       .map(r => ({
@@ -85,8 +85,21 @@ router.get("/servers/:serverId/search", requireAuth, async (req, res): Promise<v
       LIMIT 3000
     `, [serverId]);
 
-    const results = msgs.rows
-      .map(r => ({ ...r, decrypted: decryptMsg(r.content_encrypted, r.iv) }))
+    const decryptedRows = await Promise.all(msgs.rows.map(async r => {
+      try {
+        return {
+          ...r,
+          decrypted: await decryptChannelMessage({
+            id: r.id,
+            contentEncrypted: r.content_encrypted,
+            iv: r.iv,
+          }),
+        };
+      } catch {
+        return { ...r, decrypted: "" };
+      }
+    }));
+    const results = decryptedRows
       .filter(r => r.decrypted.toLowerCase().includes(q))
       .slice(0, 50)
       .map(r => ({
@@ -116,8 +129,21 @@ router.get("/dms/:userId/search", requireAuth, async (req, res): Promise<void> =
       LIMIT 1000
     `, [myId, otherId]);
 
-    const results = msgs.rows
-      .map(r => ({ ...r, decrypted: decryptMsg(r.content_encrypted, r.iv) }))
+    const decryptedRows = await Promise.all(msgs.rows.map(async r => {
+      try {
+        return {
+          ...r,
+          decrypted: await decryptDirectMessage({
+            id: r.id,
+            contentEncrypted: r.content_encrypted,
+            iv: r.iv,
+          }),
+        };
+      } catch {
+        return { ...r, decrypted: "" };
+      }
+    }));
+    const results = decryptedRows
       .filter(r => r.decrypted.toLowerCase().includes(q))
       .slice(0, 30)
       .map(r => ({

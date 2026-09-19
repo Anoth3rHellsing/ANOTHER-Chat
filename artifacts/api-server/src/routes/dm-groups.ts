@@ -1,28 +1,9 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
-import crypto from "crypto";
+import { encryptMessage } from "../lib/crypto";
+import { decryptGroupMessage } from "../lib/message-crypto";
 
 const router: IRouter = Router();
-
-const KEY = Buffer.from(process.env.MESSAGE_ENCRYPTION_KEY ?? "", "hex");
-
-function encrypt(text: string) {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", KEY, iv);
-  const enc = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-  return { encrypted: enc.toString("hex"), iv: iv.toString("hex") };
-}
-
-function decrypt(encryptedHex: string, ivHex: string): string {
-  try {
-    const iv = Buffer.from(ivHex, "hex");
-    const enc = Buffer.from(encryptedHex, "hex");
-    const decipher = crypto.createDecipheriv("aes-256-cbc", KEY, iv);
-    return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
-  } catch {
-    return "[mensaje cifrado]";
-  }
-}
 
 async function rawQuery(text: string, values?: any[]) {
   const { pool } = await import("@workspace/db");
@@ -133,11 +114,19 @@ router.get("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promis
     q += ` ORDER BY m.created_at DESC LIMIT 50`;
 
     const result = await rawQuery(q, params);
-    const messages = result.rows.reverse().map(r => ({
-      id: r.id, groupId: r.group_id, userId: r.user_id,
-      content: decrypt(r.content, r.iv),
-      createdAt: r.created_at,
-      author: { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url },
+    const messages = await Promise.all(result.rows.reverse().map(async r => {
+      let content = "[mensaje cifrado]";
+      try {
+        content = await decryptGroupMessage({ id: r.id, content: r.content, iv: r.iv });
+      } catch {
+        // Preserve the existing encrypted-message fallback.
+      }
+      return {
+        id: r.id, groupId: r.group_id, userId: r.user_id,
+        content,
+        createdAt: r.created_at,
+        author: { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url },
+      };
     }));
     res.json(messages);
 });
@@ -152,7 +141,7 @@ router.post("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promi
     const check = await rawQuery(`SELECT 1 FROM dm_group_members WHERE group_id=$1 AND user_id=$2`, [groupId, userId]);
     if (!check.rows.length) { res.status(403).json({ error: "Sin acceso" }); return; }
 
-    const { encrypted, iv } = encrypt(content.trim());
+    const { encrypted, iv } = encryptMessage(content.trim());
     const result = await rawQuery(
       `INSERT INTO dm_group_messages (group_id, user_id, content, iv) VALUES ($1,$2,$3,$4) RETURNING id, created_at`,
       [groupId, userId, encrypted, iv]

@@ -1,15 +1,10 @@
 ---
-name: AES-256 message encryption
-description: Messages are encrypted with AES-256-CBC before DB storage; IV stored per-row; key from MESSAGE_ENCRYPTION_KEY env var.
+name: Authenticated message encryption
+description: Messages use versioned AES-256-GCM; legacy CBC rows migrate after successful reads or through a manual batch script
 ---
 
-**Implementation:** `artifacts/api-server/src/lib/crypto.ts`
-- Algorithm: AES-256-CBC
-- Key: 32-byte hex string from `MESSAGE_ENCRYPTION_KEY` env var (64 hex chars)
-- IV: 16 random bytes per message, stored as hex in `messages.iv` column
-- Ciphertext stored in `messages.content_encrypted`
-- Encrypt on sendMessage, decrypt on listMessages (per-message, server-side only)
+**Rule:** New channel, direct, and DM-group messages must use the versioned AES-256-GCM envelope. The encryption key is mandatory and must be exactly 64 hexadecimal characters; startup must fail closed when it is absent or malformed.
 
-**Key format:** 64-char hex string = 32 bytes. Generated once at project creation via `crypto.randomBytes(32).toString('hex')`.
+**Why:** CBC did not authenticate stored content, and the former deterministic fallback could silently encrypt under an unsafe key. Conditional lazy migration preserves readable legacy rows without allowing failed decryptions or concurrent reads to overwrite data.
 
-**How to apply:** Never log or return the raw key. If rotating the key, existing messages cannot be decrypted with the new key — would need a migration script to re-encrypt.
+**How to apply:** Keep the `gcm:v1:` envelope and 12-byte IV contract stable. Legacy CBC is decrypt-only with the configured key. Rewrite only after successful decryption and only while ID, ciphertext, IV, and legacy format still match. Never log keys, plaintext, or ciphertext.

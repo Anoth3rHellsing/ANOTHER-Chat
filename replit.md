@@ -15,7 +15,7 @@ A private, invite-only Discord-style encrypted chat web application. Dark theme,
 
 - `DATABASE_URL` — Postgres connection string (managed by Replit)
 - `SESSION_SECRET` — Express session secret
-- `MESSAGE_ENCRYPTION_KEY` — 64-char hex string (32 bytes) for AES-256-CBC message encryption. Auto-generated on first build.
+- `MESSAGE_ENCRYPTION_KEY` — required 64-character hexadecimal string (32 bytes) for AES-256-GCM message encryption. The API aborts startup if it is missing or malformed.
 
 ## Stack
 
@@ -35,14 +35,15 @@ A private, invite-only Discord-style encrypted chat web application. Dark theme,
 - `lib/api-spec/fix-zod-barrel.mjs` — post-codegen script that fixes the api-zod barrel to avoid TS2308 collisions
 - `lib/db/src/schema/` — Drizzle table definitions (users, servers, channels, messages, inviteCodes)
 - `artifacts/api-server/src/routes/` — Express route handlers (auth, servers, channels, users, admin)
-- `artifacts/api-server/src/lib/crypto.ts` — AES-256-CBC encrypt/decrypt for messages
+- `artifacts/api-server/src/lib/crypto.ts` — versioned AES-256-GCM encryption and legacy AES-256-CBC decryption for messages
+- `pnpm --filter @workspace/api-server run migrate-message-encryption` — manually convert legacy channel, direct, and DM-group messages to GCM in batches; safe to rerun
 - `artifacts/api-server/src/lib/websocket.ts` — WebSocket server (real-time messaging, typing indicators, status)
 - `artifacts/api-server/src/lib/auth.ts` — requireAuth and requireAdmin middleware
 - `artifacts/another-private/src/` — React frontend (login, register, main app layout, admin panel)
 
 ## Architecture decisions
 
-- **Encrypt-then-store**: Messages are AES-256-CBC encrypted with a random IV per message before storing. IV stored alongside ciphertext in DB. Decrypted server-side before serving to authorized users.
+- **Authenticated encrypt-then-store**: New messages use AES-256-GCM with a random 12-byte IV. `content_encrypted`/`content` stores `gcm:v1:<ciphertext-hex>:<16-byte-auth-tag-hex>` and the IV column stores the 12-byte IV as hex. Legacy CBC rows are migrated after successful reads or by the manual batch script.
 - **Session-based auth**: express-session with PostgreSQL store. Session cookie (httpOnly, 30-day maxAge). No JWTs.
 - **First-user admin**: The very first registered user gets the `admin` role and doesn't need an invite code. Subsequent users require a valid single-use invite code.
 - **WebSocket path in artifact.toml**: `/ws` is listed in the api-server's `paths` array so the proxy routes WebSocket connections to it.

@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { eq, and, or, desc, gt, sql, inArray } from "drizzle-orm";
 import { db, directMessagesTable, dmReadCursorsTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
-import { encryptMessage, decryptMessage } from "../lib/crypto";
+import { encryptMessage } from "../lib/crypto";
+import { decryptDirectMessage } from "../lib/message-crypto";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -19,13 +20,23 @@ async function buildDmResponse(
   replyMsg?: typeof directMessagesTable.$inferSelect | null,
   replySender?: typeof usersTable.$inferSelect | null,
 ) {
-  const content = msg.deletedAt
-    ? "[mensaje eliminado]"
-    : (() => { try { return decryptMessage(msg.contentEncrypted, msg.iv); } catch { return "[error al descifrar]"; } })();
+  let content = "[mensaje eliminado]";
+  if (!msg.deletedAt) {
+    try {
+      content = await decryptDirectMessage(msg);
+    } catch {
+      content = "[error al descifrar]";
+    }
+  }
 
   let replyTo: { id: number; authorDisplayName: string; contentPreview: string } | null = null;
   if (replyMsg && replySender) {
-    const rc = (() => { try { return decryptMessage(replyMsg.contentEncrypted, replyMsg.iv); } catch { return ""; } })();
+    let rc = "";
+    try {
+      rc = await decryptDirectMessage(replyMsg);
+    } catch {
+      // Preserve the existing empty reply preview fallback.
+    }
     replyTo = { id: replyMsg.id, authorDisplayName: replySender.displayName, contentPreview: rc.slice(0, 100) };
   }
 

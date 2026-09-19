@@ -11,7 +11,8 @@ import {
   usersTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
-import { encryptMessage, decryptMessage } from "../lib/crypto";
+import { encryptMessage } from "../lib/crypto";
+import { decryptChannelMessage } from "../lib/message-crypto";
 import {
   getMemberPermissions,
   canAccessChannel,
@@ -298,7 +299,7 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
       const author = authorMap.get(msg.userId);
       let content = "[mensaje eliminado]";
       if (!msg.deletedAt) {
-        try { content = decryptMessage(msg.contentEncrypted, msg.iv); } catch { content = "[error al descifrar]"; }
+        try { content = await decryptChannelMessage(msg); } catch { content = "[error al descifrar]"; }
       }
 
       // Build replyTo preview
@@ -309,7 +310,7 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
           const rAuthor = replyAuthorMap.get(rMsg.userId);
           let rContent = "[mensaje eliminado]";
           if (!rMsg.deletedAt) {
-            try { rContent = decryptMessage(rMsg.contentEncrypted, rMsg.iv); } catch { rContent = "[error al descifrar]"; }
+            try { rContent = await decryptChannelMessage(rMsg); } catch { rContent = "[error al descifrar]"; }
           }
           replyTo = {
             id: rMsg.id,
@@ -437,7 +438,7 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
       const [rAuthor] = await db.select().from(usersTable).where(eq(usersTable.id, rMsg.userId));
       let rContent = "[mensaje eliminado]";
       if (!rMsg.deletedAt) {
-        try { rContent = decryptMessage(rMsg.contentEncrypted, rMsg.iv); } catch { /* ignore */ }
+        try { rContent = await decryptChannelMessage(rMsg); } catch { /* preserve existing fallback */ }
       }
       replyTo = {
         id: rMsg.id,
@@ -559,7 +560,7 @@ router.patch(
       const [replyMsg] = await db.select().from(messagesTable).where(eq(messagesTable.id, updated.replyToId));
       if (replyMsg) {
         const [replyAuthor] = await db.select().from(usersTable).where(eq(usersTable.id, replyMsg.userId));
-        const replyContent = decryptMessage(replyMsg.contentEncrypted, replyMsg.iv);
+        const replyContent = await decryptChannelMessage(replyMsg);
         replyPreview = {
           id: replyMsg.id,
           authorDisplayName: replyAuthor?.displayName ?? "Usuario",
