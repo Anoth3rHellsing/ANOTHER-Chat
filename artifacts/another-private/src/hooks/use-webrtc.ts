@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { safeCloseAudioContext, videoConstraintsFromQuality, type VideoQuality } from '@/lib/settings-utils';
 import { playVoiceJoinSound, playVoiceLeaveSound } from '@/lib/voice-sounds';
 import { csrfFetch } from '@workspace/api-client-react';
+import {
+  useRealtimeMessages,
+  useRealtimeTransport,
+} from '@/providers/realtime-transport';
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -35,6 +39,21 @@ export interface AudioVideoSettings {
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connected';
 
+const SIGNALING_MESSAGE_TYPES = [
+  'voice:member_join',
+  'voice:member_leave',
+  'voice:offer',
+  'voice:answer',
+  'voice:ice-candidate',
+  'dm:call-invite',
+  'dm:call-accepted',
+  'dm:call-offer',
+  'dm:call-sdp-answer',
+  'dm:call-ice-candidate',
+  'dm:call-reject',
+  'dm:call-end',
+] as const;
+
 interface IncomingCall {
   callerId: number;
   callerName: string;
@@ -46,14 +65,16 @@ export function useWebRTC(options: {
   settings: AudioVideoSettings;
 }) {
   const { currentUserId, settings } = options;
+  const { send, retainChannel } = useRealtimeTransport();
 
-  const ws = useRef<WebSocket | null>(null);
   const peerConnections = useRef<Map<number, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const speakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const activeVoiceChannelIdRef = useRef<number | null>(null);
+  const voiceSubscriptionReleaseRef = useRef<(() => void) | null>(null);
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<number, MediaStream>>(new Map());
@@ -68,44 +89,13 @@ export function useWebRTC(options: {
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [dmCallUserId, setDmCallUserId] = useState<number | null>(null);
 
-  // WS connection setup (persistent)
-  useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-    const wsUrl = `${protocol}//${host}${baseUrl}/ws`;
-
-    const connect = () => {
-      const socket = new WebSocket(wsUrl);
-      ws.current = socket;
-
-      socket.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          handleSignalingMessage(msg);
-        } catch {}
-      };
-
-      socket.onclose = () => {
-        // Reconnect after 3s
-        setTimeout(connect, 3000);
-      };
-    };
-
-    connect();
-
-    return () => {
-      ws.current?.close();
-      cleanupAll();
-    };
-  }, []);
-
   // ── Signaling handler ──────────────────────────────────────────────────────
 
   const handleSignalingMessage = useCallback(async (msg: any) => {
     switch (msg.type) {
       case 'voice:member_join': {
         const { member, channelId } = msg.data;
+        if (channelId !== activeVoiceChannelIdRef.current) break;
         if (member.userId === currentUserId) break;
         setVoiceMembers(prev => {
           if (prev.some(m => m.userId === member.userId)) return prev;
@@ -117,7 +107,8 @@ export function useWebRTC(options: {
       }
 
       case 'voice:member_leave': {
-        const { userId } = msg.data;
+        const { userId, channelId } = msg.data;
+        if (channelId !== activeVoiceChannelIdRef.current) break;
         setVoiceMembers(prev => prev.filter(m => m.userId !== userId));
         closePeerConnection(userId);
         // Play sound for other members leaving the channel
@@ -216,6 +207,8 @@ export function useWebRTC(options: {
     }
   }, [currentUserId]);
 
+  useRealtimeMessages(SIGNALING_MESSAGE_TYPES, handleSignalingMessage);
+
   // ── Peer connection management ──────────────────────────────────────────────
 
   function getOrCreatePC(peerId: number): RTCPeerConnection {
@@ -271,11 +264,9 @@ export function useWebRTC(options: {
     });
   }
 
-  function sendWS(msg: object) {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(msg));
-    }
-  }
+  const sendWS = useCallback((msg: object) => {
+    send(msg);
+  }, [send]);
 
   // ── Local media ───────────────────────────────────────────────────────────
 
@@ -364,6 +355,12 @@ export function useWebRTC(options: {
     setRemoteStreams(new Map());
   }, [stopLocalMedia]);
 
+  useEffect(() => () => {
+    voiceSubscriptionReleaseRef.current?.();
+    voiceSubscriptionReleaseRef.current = null;
+    cleanupAll();
+  }, [cleanupAll]);
+
   // ── Voice channel controls ─────────────────────────────────────────────────
 
   const joinVoiceChannel = useCallback(async (channelId: number, currentMembers: VoiceMember[]) => {
@@ -376,14 +373,15 @@ export function useWebRTC(options: {
     const members: VoiceMember[] = await res.json();
 
     setActiveVoiceChannelId(channelId);
+    activeVoiceChannelIdRef.current = channelId;
     setIsInVoiceChannel(true);
     setVoiceMembers(members.filter(m => m.userId !== currentUserId));
 
     // Play join sound for ourselves
     playVoiceJoinSound();
 
-    // Subscribe to channel voice events
-    sendWS({ type: 'subscribe', channel: `channel:${channelId}` });
+    voiceSubscriptionReleaseRef.current?.();
+    voiceSubscriptionReleaseRef.current = retainChannel(`channel:${channelId}`);
 
     const stream = await startLocalMedia(false);
     if (!stream) return;
@@ -403,7 +401,7 @@ export function useWebRTC(options: {
       await pc.setLocalDescription(offer);
       sendWS({ type: 'voice:offer', targetUserId: member.userId, sdp: offer.sdp });
     }
-  }, [currentUserId, startLocalMedia]);
+  }, [currentUserId, retainChannel, startLocalMedia]);
 
   const leaveVoiceChannel = useCallback(async () => {
     if (!activeVoiceChannelId) return;
@@ -424,9 +422,11 @@ export function useWebRTC(options: {
     setRemoteStreams(new Map());
     setIsInVoiceChannel(false);
     setActiveVoiceChannelId(null);
+    activeVoiceChannelIdRef.current = null;
     setVoiceMembers([]);
     setActiveSpeakerId(null);
-    sendWS({ type: 'unsubscribe', channel: `channel:${chId}` });
+    voiceSubscriptionReleaseRef.current?.();
+    voiceSubscriptionReleaseRef.current = null;
   }, [activeVoiceChannelId, stopLocalMedia]);
 
   // ── DM call controls ───────────────────────────────────────────────────────

@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
+import { RealtimeTransportProvider } from '@/providers/realtime-transport';
 
 import Login from '@/pages/login';
 import Register from '@/pages/register';
@@ -12,7 +13,8 @@ import AdminPanel from '@/pages/admin-panel';
 const queryClient = new QueryClient();
 
 function Router() {
-  return (
+  const [location] = useLocation();
+  const routes = (
     <Switch>
       <Route path="/" component={Login} />
       <Route path="/register" component={Register} />
@@ -21,6 +23,10 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+
+  return location.startsWith('/app')
+    ? <RealtimeTransportProvider>{routes}</RealtimeTransportProvider>
+    : routes;
 }
 
 function App() {
