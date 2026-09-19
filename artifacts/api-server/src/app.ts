@@ -13,6 +13,7 @@ import { authRateLimit, inviteRateLimit, messageRateLimit } from "./middleware/r
 import { finalErrorHandler } from "./middleware/errors";
 import { csrfProtection } from "./middleware/csrf";
 import { SESSION_MAX_AGE_MS } from "./lib/csrf";
+import { SESSION_SECRET } from "./lib/session-config";
 
 const PgSession = ConnectPgSimple(session);
 
@@ -146,7 +147,7 @@ app.use(cookieParser());
 app.use(
   session({
     store: sessionStore,
-    secret: process.env.SESSION_SECRET ?? "dev-secret-change-in-production",
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {

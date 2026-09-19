@@ -356,10 +356,14 @@ export function useWebRTC(options: {
   }, [stopLocalMedia]);
 
   useEffect(() => () => {
+    const channelId = activeVoiceChannelIdRef.current;
+    if (channelId !== null) {
+      sendWS({ type: 'voice:unbind', channelId });
+    }
     voiceSubscriptionReleaseRef.current?.();
     voiceSubscriptionReleaseRef.current = null;
     cleanupAll();
-  }, [cleanupAll]);
+  }, [cleanupAll, sendWS]);
 
   // ── Voice channel controls ─────────────────────────────────────────────────
 
@@ -376,6 +380,7 @@ export function useWebRTC(options: {
     activeVoiceChannelIdRef.current = channelId;
     setIsInVoiceChannel(true);
     setVoiceMembers(members.filter(m => m.userId !== currentUserId));
+    sendWS({ type: 'voice:bind', channelId });
 
     // Play join sound for ourselves
     playVoiceJoinSound();
@@ -411,6 +416,7 @@ export function useWebRTC(options: {
     playVoiceLeaveSound();
 
     const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+    sendWS({ type: 'voice:unbind', channelId: chId });
     await csrfFetch(`${baseUrl}/api/channels/${chId}/voice/leave`, {
       method: 'POST',
       credentials: 'include',

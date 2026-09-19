@@ -1,10 +1,10 @@
 ---
-name: Voice WS close handler
-description: Why voice auto-leave must check for other open WS connections before evicting a user from voice
+name: Connection-bound voice membership
+description: Why voice membership and cleanup must track concrete WebSocket connections rather than user-wide socket counts
 ---
 
-**Rule:** In `artifacts/api-server/src/lib/websocket.ts` close handler, before calling `leaveVoiceChannel`, check `wss.clients` for any other open socket with the same `userId`. Only auto-leave if none exist.
+**Rule:** Track voice membership by channel, user, and bound WebSocket connection ID. Unbind or close removes only that connection; publish member leave only when the user has no bound connections left in that channel.
 
-**Why:** Multiple WS connections are open per user simultaneously — `use-webrtc.ts` opens one persistent connection and `use-chat-websocket.ts` opens another that reconnects whenever `channelId` changes. When the chat hook reconnects (e.g. user switches channels), the old socket closes, triggering the close handler. Without the check, this closes the voice session for the user even while they're still in a voice channel via the other socket.
+**Why:** A user can have multiple simultaneous tabs or transports. User-wide cleanup either evicts an active voice tab when an unrelated socket closes or keeps a stale voice tab alive merely because another non-voice socket remains open.
 
-**How to apply:** Pattern: `Array.from(wss!.clients).some(c => c !== client && c.readyState === WebSocket.OPEN && c.userId === client.userId)`. Only proceed with eviction if `hasOtherConnections` is false.
+**How to apply:** Require an authenticated HTTP join reservation before WebSocket bind. Treat bind/unbind and socket close as connection-scoped. HTTP leave may cancel an empty reservation but must not delete live sibling bindings.

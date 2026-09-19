@@ -64,24 +64,16 @@ router.post("/channels/:channelId/voice/join", requireAuth, async (req, res) => 
   const prevChannels = getAllVoiceChannelsForUser(userId);
   for (const prevChId of prevChannels) {
     if (prevChId !== channelId) {
-      leaveVoiceChannel(prevChId, userId);
-      broadcast(`channel:${prevChId}`, {
-        type: "voice:member_leave",
-        data: { channelId: prevChId, userId },
-      });
+      if (leaveVoiceChannel(prevChId, userId)) {
+        broadcast(`channel:${prevChId}`, {
+          type: "voice:member_leave",
+          data: { channelId: prevChId, userId },
+        });
+      }
     }
   }
 
   joinVoiceChannel(channelId, userId);
-
-  // Broadcast join event with user profile
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  if (user) {
-    broadcast(`channel:${channelId}`, {
-      type: "voice:member_join",
-      data: { channelId, member: serializeVoiceMember(user) },
-    });
-  }
 
   // Return current member list
   const memberUserIds = Array.from(getVoiceChannelMembers(channelId));
@@ -93,11 +85,12 @@ router.post("/channels/:channelId/voice/leave", requireAuth, async (req, res) =>
   const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
   const userId = (req.session as any).userId as number;
 
-  leaveVoiceChannel(channelId, userId);
-  broadcast(`channel:${channelId}`, {
-    type: "voice:member_leave",
-    data: { channelId, userId },
-  });
+  if (leaveVoiceChannel(channelId, userId)) {
+    broadcast(`channel:${channelId}`, {
+      type: "voice:member_leave",
+      data: { channelId, userId },
+    });
+  }
 
   res.status(204).send();
 });
