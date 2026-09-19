@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
-import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -26,7 +25,6 @@ async function rawQuery(text: string, values?: any[]) {
 
 // GET /channels/:channelId/search?q=term — search messages in a channel
 router.get("/channels/:channelId/search", requireAuth, async (req, res): Promise<void> => {
-  try {
     const channelId = parseInt(req.params.channelId as string, 10);
     const userId = req.session.userId!;
     const q = (req.query.q as string ?? "").trim().toLowerCase();
@@ -62,15 +60,10 @@ router.get("/channels/:channelId/search", requireAuth, async (req, res): Promise
       }));
 
     res.json(results);
-  } catch (err) {
-    logger.error({ err }, "Error searching channel messages");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /servers/:serverId/search?q=term — global search across a server
 router.get("/servers/:serverId/search", requireAuth, async (req, res): Promise<void> => {
-  try {
     const serverId = parseInt(req.params.serverId as string, 10);
     const userId = req.session.userId!;
     const q = (req.query.q as string ?? "").trim().toLowerCase();
@@ -103,15 +96,10 @@ router.get("/servers/:serverId/search", requireAuth, async (req, res): Promise<v
       }));
 
     res.json(results);
-  } catch (err) {
-    logger.error({ err }, "Error searching server messages");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /dms/:userId/search?q=term — search DM history
 router.get("/dms/:userId/search", requireAuth, async (req, res): Promise<void> => {
-  try {
     const myId = req.session.userId!;
     const otherId = parseInt(req.params.userId as string, 10);
     const q = (req.query.q as string ?? "").trim().toLowerCase();
@@ -139,10 +127,6 @@ router.get("/dms/:userId/search", requireAuth, async (req, res): Promise<void> =
       }));
 
     res.json(results);
-  } catch (err) {
-    logger.error({ err }, "Error searching DMs");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 export default router;

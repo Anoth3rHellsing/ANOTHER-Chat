@@ -3,7 +3,6 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { requireAuth } from "../lib/auth";
-import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -35,7 +34,6 @@ async function rawQuery(text: string, values?: any[]) {
 
 // GET /servers/:serverId/clips
 router.get("/servers/:serverId/clips", requireAuth, async (req, res): Promise<void> => {
-  try {
     const serverId = parseInt(req.params.serverId as string, 10);
     const userId = req.session.userId!;
 
@@ -64,15 +62,10 @@ router.get("/servers/:serverId/clips", requireAuth, async (req, res): Promise<vo
       liked: r.liked,
       commentCount: Number(r.comment_count),
     })));
-  } catch (err) {
-    logger.error({ err }, "Error fetching clips");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /servers/:serverId/clips
 router.post("/servers/:serverId/clips", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
-  try {
     const serverId = parseInt(req.params.serverId as string, 10);
     const userId = req.session.userId!;
     const { title } = req.body;
@@ -86,15 +79,10 @@ router.post("/servers/:serverId/clips", requireAuth, upload.single("file"), asyn
       [serverId, userId, title.trim(), videoUrl]
     );
     res.status(201).json(result.rows[0]);
-  } catch (err) {
-    logger.error({ err }, "Error creating clip");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /clips/:clipId/like — toggle like
 router.post("/clips/:clipId/like", requireAuth, async (req, res): Promise<void> => {
-  try {
     const clipId = parseInt(req.params.clipId as string, 10);
     const userId = req.session.userId!;
 
@@ -109,15 +97,10 @@ router.post("/clips/:clipId/like", requireAuth, async (req, res): Promise<void> 
       await rawQuery(`INSERT INTO clip_likes (clip_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [clipId, userId]);
       res.json({ liked: true });
     }
-  } catch (err) {
-    logger.error({ err }, "Error toggling clip like");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /clips/:clipId/comments
 router.get("/clips/:clipId/comments", requireAuth, async (req, res): Promise<void> => {
-  try {
     const clipId = parseInt(req.params.clipId as string, 10);
     const result = await rawQuery(`
       SELECT cc.id, cc.content, cc.created_at, cc.user_id,
@@ -135,15 +118,10 @@ router.get("/clips/:clipId/comments", requireAuth, async (req, res): Promise<voi
       userId: r.user_id,
       author: { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url },
     })));
-  } catch (err) {
-    logger.error({ err }, "Error fetching clip comments");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /clips/:clipId/comments
 router.post("/clips/:clipId/comments", requireAuth, async (req, res): Promise<void> => {
-  try {
     const clipId = parseInt(req.params.clipId as string, 10);
     const userId = req.session.userId!;
     const { content } = req.body;
@@ -162,15 +140,10 @@ router.post("/clips/:clipId/comments", requireAuth, async (req, res): Promise<vo
       userId: result.rows[0].user_id,
       author: { username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url },
     });
-  } catch (err) {
-    logger.error({ err }, "Error creating clip comment");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // DELETE /clips/:clipId
 router.delete("/clips/:clipId", requireAuth, async (req, res): Promise<void> => {
-  try {
     const clipId = parseInt(req.params.clipId as string, 10);
     const userId = req.session.userId!;
     const result = await rawQuery(
@@ -179,10 +152,6 @@ router.delete("/clips/:clipId", requireAuth, async (req, res): Promise<void> => 
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Clip no encontrado" }); return; }
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error deleting clip");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 export default router;

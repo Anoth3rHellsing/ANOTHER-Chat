@@ -5,7 +5,6 @@ import fs from "fs";
 import { eq, and, gt, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
-import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -38,7 +37,6 @@ async function rawQuery(text: string, values?: any[]) {
 
 // GET /stories — get active stories grouped by user
 router.get("/stories", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const result = await rawQuery(`
       SELECT s.id, s.user_id, s.media_url, s.media_type, s.expires_at, s.created_at,
@@ -85,15 +83,10 @@ router.get("/stories", requireAuth, async (req, res): Promise<void> => {
     });
 
     res.json(groups);
-  } catch (err) {
-    logger.error({ err }, "Error fetching stories");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /stories — upload a new story
 router.post("/stories", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     if (!req.file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
 
@@ -106,15 +99,10 @@ router.post("/stories", requireAuth, upload.single("file"), async (req, res): Pr
       [userId, mediaUrl, mediaType]
     );
     res.status(201).json(result.rows[0]);
-  } catch (err) {
-    logger.error({ err }, "Error creating story");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /stories/:storyId/view — mark a story as viewed
 router.post("/stories/:storyId/view", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const storyId = parseInt(req.params.storyId as string, 10);
     await rawQuery(
@@ -122,15 +110,10 @@ router.post("/stories/:storyId/view", requireAuth, async (req, res): Promise<voi
       [storyId, userId]
     );
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error marking story viewed");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /stories/:storyId/viewers — get viewer list (author only)
 router.get("/stories/:storyId/viewers", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const storyId = parseInt(req.params.storyId as string, 10);
 
@@ -153,15 +136,10 @@ router.get("/stories/:storyId/viewers", requireAuth, async (req, res): Promise<v
       avatarUrl: r.avatar_url,
       viewedAt: r.viewed_at,
     })));
-  } catch (err) {
-    logger.error({ err }, "Error fetching story viewers");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // DELETE /stories/:storyId — delete your own story
 router.delete("/stories/:storyId", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const storyId = parseInt(req.params.storyId as string, 10);
     const result = await rawQuery(
@@ -170,10 +148,6 @@ router.delete("/stories/:storyId", requireAuth, async (req, res): Promise<void> 
     );
     if (!result.rows[0]) { res.status(404).json({ error: "Historia no encontrada" }); return; }
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error deleting story");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 export default router;

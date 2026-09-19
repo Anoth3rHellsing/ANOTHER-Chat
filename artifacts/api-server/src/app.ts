@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import pinoHttp from "pino-http";
 import session from "express-session";
 import ConnectPgSimple from "connect-pg-simple";
@@ -7,6 +8,8 @@ import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
+import { authRateLimit, inviteRateLimit, messageRateLimit } from "./middleware/rate-limit";
+import { finalErrorHandler } from "./middleware/errors";
 
 const PgSession = ConnectPgSimple(session);
 
@@ -49,6 +52,7 @@ const sessionStore = new PgSession({
 (globalThis as any).__sessionStore = sessionStore;
 
 const app: Express = express();
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -70,9 +74,55 @@ app.use(
   }),
 );
 
+// The API does not serve browser documents, so Helmet's CSP is intentionally
+// disabled. Uploads below set their own stricter, route-specific headers.
+app.use(helmet({ contentSecurityPolicy: false }));
+
+const configuredOrigin = process.env.APP_URL;
+let appOrigin: string | undefined;
+if (configuredOrigin) {
+  try {
+    const parsed = new URL(configuredOrigin);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password ||
+        parsed.pathname !== "/" && parsed.pathname !== "" || parsed.search || parsed.hash) {
+      throw new Error("APP_URL must be an http(s) origin without a path, query, or fragment");
+    }
+    appOrigin = parsed.origin;
+  } catch (err) {
+    throw new Error(`Malformed APP_URL: ${configuredOrigin}. Expected an http(s) origin.`);
+  }
+} else {
+  logger.warn("APP_URL is not configured; production browser CORS requests will be rejected");
+}
+
+function isLocalDevelopmentOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return ["http:", "https:"].includes(parsed.protocol) &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") &&
+      (!parsed.port || (Number(parsed.port) >= 1 && Number(parsed.port) <= 65535));
+  } catch {
+    return false;
+  }
+}
+
 app.use(
   cors({
-    origin: true,
+    origin: (origin, callback) => {
+      // Non-browser clients (curl, server-to-server) have no Origin header.
+      if (!origin) return callback(null, true);
+      let normalized: string | undefined;
+      try { normalized = new URL(origin).origin; } catch { /* rejected below */ }
+      const allowed = normalized === appOrigin ||
+        (process.env.NODE_ENV !== "production" && isLocalDevelopmentOrigin(origin));
+      if (allowed) {
+        callback(null, normalized);
+        return;
+      }
+      const error = new Error("Origin not allowed") as Error & { status: number };
+      error.status = 403;
+      callback(error, false);
+    },
     credentials: true,
   })
 );
@@ -87,13 +137,20 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      sameSite: "lax",
     },
   })
 );
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+app.post("/api/auth/login", authRateLimit);
+app.post("/api/auth/register", authRateLimit);
+app.post("/api/auth/register", inviteRateLimit);
+app.post("/api/servers/join-by-invite", inviteRateLimit);
+app.post("/api/channels/:channelId/messages", messageRateLimit);
+app.post("/api/dms/:userId", messageRateLimit);
 
 // Serve uploaded files — hardened headers to prevent XSS
 app.use("/api/uploads", (req, res, next) => {
@@ -111,5 +168,6 @@ app.use("/api/uploads", (req, res, next) => {
 }, express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api", router);
+app.use(finalErrorHandler);
 
 export default app;

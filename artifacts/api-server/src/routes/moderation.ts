@@ -25,7 +25,6 @@ async function addAuditLog(serverId: number, actorId: number | null, targetUserI
 
 // GET /servers/:serverId/audit-log
 router.get("/servers/:serverId/audit-log", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
 
@@ -51,10 +50,6 @@ router.get("/servers/:serverId/audit-log", requireAuth, async (req, res): Promis
       actor: r.actor_username ? { username: r.actor_username, displayName: r.actor_name, avatarUrl: r.actor_avatar } : null,
       target: r.target_username ? { username: r.target_username, displayName: r.target_name } : null,
     })));
-  } catch (err) {
-    logger.error({ err }, "Error fetching audit log");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // Export addAuditLog for use in other routes
@@ -64,7 +59,6 @@ export { addAuditLog };
 
 // GET /servers/:serverId/mutes — list active mutes
 router.get("/servers/:serverId/mutes", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const memberRes = await rawQuery(`SELECT role FROM server_members WHERE server_id=$1 AND user_id=$2`, [serverId, userId]);
@@ -86,15 +80,10 @@ router.get("/servers/:serverId/mutes", requireAuth, async (req, res): Promise<vo
       user: { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url },
       mutedByUsername: r.muted_by_username,
     })));
-  } catch (err) {
-    logger.error({ err }, "Error listing mutes");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /servers/:serverId/mutes — mute a user
 router.post("/servers/:serverId/mutes", requireAuth, async (req, res): Promise<void> => {
-  try {
     const actorId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const { userId: targetId, durationMinutes, reason } = req.body;
@@ -115,15 +104,11 @@ router.post("/servers/:serverId/mutes", requireAuth, async (req, res): Promise<v
 
     await addAuditLog(serverId, actorId, targetId, 'member_muted', { durationMinutes: dur, reason });
     res.json({ expiresAt: expiresAt.toISOString() });
-  } catch (err) {
-    logger.error({ err }, "Error muting user");
-    res.status(500).json({ error: "Error interno" });
-  }
+ 
 });
 
 // DELETE /servers/:serverId/mutes/:muteId — unmute
 router.delete("/servers/:serverId/mutes/:muteId", requireAuth, async (req, res): Promise<void> => {
-  try {
     const actorId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const muteId = parseInt(req.params.muteId as string, 10);
@@ -136,15 +121,10 @@ router.delete("/servers/:serverId/mutes/:muteId", requireAuth, async (req, res):
       await addAuditLog(serverId, actorId, muteRes.rows[0].user_id, 'member_unmuted', {});
     }
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error removing mute");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /servers/:serverId/mute-status — check if current user is muted
 router.get("/servers/:serverId/mute-status", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const result = await rawQuery(
@@ -156,17 +136,12 @@ router.get("/servers/:serverId/mute-status", requireAuth, async (req, res): Prom
     } else {
       res.json({ muted: false });
     }
-  } catch (err) {
-    logger.error({ err }, "Error checking mute status");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // ─────────────── MESSAGE REPORTS ─────────
 
 // POST /messages/:messageId/report
 router.post("/messages/:messageId/report", requireAuth, async (req, res): Promise<void> => {
-  try {
     const reporterId = req.session.userId!;
     const messageId = parseInt(req.params.messageId as string, 10);
     const { reason, serverId } = req.body;
@@ -176,15 +151,10 @@ router.post("/messages/:messageId/report", requireAuth, async (req, res): Promis
       INSERT INTO message_reports (message_id, reporter_id, server_id, reason) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING
     `, [messageId, reporterId, serverId ?? null, reason.trim()]);
     res.status(201).json({ reported: true });
-  } catch (err) {
-    logger.error({ err }, "Error reporting message");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /servers/:serverId/reports — admin: pending reports
 router.get("/servers/:serverId/reports", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const memberRes = await rawQuery(`SELECT role FROM server_members WHERE server_id=$1 AND user_id=$2`, [serverId, userId]);
@@ -208,15 +178,10 @@ router.get("/servers/:serverId/reports", requireAuth, async (req, res): Promise<
       reporter: { username: r.reporter_username },
       messageAuthor: { id: r.msg_user_id, username: r.msg_username, displayName: r.msg_display_name },
     })));
-  } catch (err) {
-    logger.error({ err }, "Error fetching reports");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // PATCH /reports/:reportId — resolve report
 router.patch("/reports/:reportId", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const reportId = parseInt(req.params.reportId as string, 10);
     const { action } = req.body; // 'dismiss' | 'delete_message'
@@ -240,17 +205,12 @@ router.patch("/reports/:reportId", requireAuth, async (req, res): Promise<void> 
     }
 
     res.json({ resolved: true });
-  } catch (err) {
-    logger.error({ err }, "Error resolving report");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // ─────────────── WORD FILTERS ────────────
 
 // GET /servers/:serverId/word-filters
 router.get("/servers/:serverId/word-filters", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const memberRes = await rawQuery(`SELECT role FROM server_members WHERE server_id=$1 AND user_id=$2`, [serverId, userId]);
@@ -259,15 +219,10 @@ router.get("/servers/:serverId/word-filters", requireAuth, async (req, res): Pro
     }
     const result = await rawQuery(`SELECT id, word, created_at FROM word_filters WHERE server_id=$1 ORDER BY word`, [serverId]);
     res.json(result.rows);
-  } catch (err) {
-    logger.error({ err }, "Error fetching word filters");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /servers/:serverId/word-filters
 router.post("/servers/:serverId/word-filters", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const { word } = req.body;
@@ -281,15 +236,10 @@ router.post("/servers/:serverId/word-filters", requireAuth, async (req, res): Pr
       [serverId, word.trim().toLowerCase(), userId]
     );
     res.status(201).json(result.rows[0] ?? { duplicate: true });
-  } catch (err) {
-    logger.error({ err }, "Error adding word filter");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // DELETE /servers/:serverId/word-filters/:filterId
 router.delete("/servers/:serverId/word-filters/:filterId", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const filterId = parseInt(req.params.filterId as string, 10);
@@ -299,25 +249,16 @@ router.delete("/servers/:serverId/word-filters/:filterId", requireAuth, async (r
     }
     await rawQuery(`DELETE FROM word_filters WHERE id=$1 AND server_id=$2`, [filterId, serverId]);
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error removing word filter");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /servers/:serverId/word-filters/check — internal: get list for frontend censoring
 router.get("/servers/:serverId/word-filters/list", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const serverId = parseInt(req.params.serverId as string, 10);
     const memberRes = await rawQuery(`SELECT 1 FROM server_members WHERE server_id=$1 AND user_id=$2`, [serverId, userId]);
     if (!memberRes.rows.length) { res.status(403).json({ error: "Sin acceso" }); return; }
     const result = await rawQuery(`SELECT word FROM word_filters WHERE server_id=$1`, [serverId]);
     res.json(result.rows.map(r => r.word));
-  } catch (err) {
-    logger.error({ err }, "Error fetching word list");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 export default router;

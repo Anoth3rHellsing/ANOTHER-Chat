@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
-import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -33,7 +32,6 @@ async function rawQuery(text: string, values?: any[]) {
 
 // GET /dm-groups — list my DM groups
 router.get("/dm-groups", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const result = await rawQuery(`
       SELECT dg.id, dg.name, dg.owner_id, dg.created_at,
@@ -46,15 +44,10 @@ router.get("/dm-groups", requireAuth, async (req, res): Promise<void> => {
     res.json(result.rows.map(r => ({
       id: r.id, name: r.name, ownerId: r.owner_id, createdAt: r.created_at, memberCount: Number(r.member_count)
     })));
-  } catch (err) {
-    logger.error({ err }, "Error listing DM groups");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /dm-groups — create group
 router.post("/dm-groups", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const { name, memberIds } = req.body;
     if (!name?.trim()) { res.status(400).json({ error: "Nombre requerido" }); return; }
@@ -70,15 +63,10 @@ router.post("/dm-groups", requireAuth, async (req, res): Promise<void> => {
     }
 
     res.status(201).json({ id: groupId, name: name.trim(), ownerId: userId, memberCount: allMembers.length });
-  } catch (err) {
-    logger.error({ err }, "Error creating DM group");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /dm-groups/:groupId/members
 router.get("/dm-groups/:groupId/members", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const groupId = parseInt(req.params.groupId as string, 10);
     // verify membership
@@ -94,15 +82,10 @@ router.get("/dm-groups/:groupId/members", requireAuth, async (req, res): Promise
       id: r.id, username: r.username, displayName: r.display_name,
       avatarUrl: r.avatar_url, status: r.status, customStatus: r.custom_status, statusEmoji: r.status_emoji
     })));
-  } catch (err) {
-    logger.error({ err }, "Error getting group members");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /dm-groups/:groupId/members — add member
 router.post("/dm-groups/:groupId/members", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const groupId = parseInt(req.params.groupId as string, 10);
     const { userId: newUserId } = req.body;
@@ -113,15 +96,10 @@ router.post("/dm-groups/:groupId/members", requireAuth, async (req, res): Promis
     }
     await rawQuery(`INSERT INTO dm_group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [groupId, newUserId]);
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error adding group member");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // DELETE /dm-groups/:groupId/members/:memberId — remove member (owner or self-leave)
 router.delete("/dm-groups/:groupId/members/:memberId", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const groupId = parseInt(req.params.groupId as string, 10);
     const memberId = parseInt(req.params.memberId as string, 10);
@@ -133,15 +111,10 @@ router.delete("/dm-groups/:groupId/members/:memberId", requireAuth, async (req, 
     }
     await rawQuery(`DELETE FROM dm_group_members WHERE group_id=$1 AND user_id=$2`, [groupId, memberId]);
     res.sendStatus(204);
-  } catch (err) {
-    logger.error({ err }, "Error removing group member");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // GET /dm-groups/:groupId/messages
 router.get("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const groupId = parseInt(req.params.groupId as string, 10);
     const before = req.query.before ? parseInt(req.query.before as string, 10) : undefined;
@@ -167,15 +140,10 @@ router.get("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promis
       author: { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url },
     }));
     res.json(messages);
-  } catch (err) {
-    logger.error({ err }, "Error getting group messages");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 // POST /dm-groups/:groupId/messages
 router.post("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promise<void> => {
-  try {
     const userId = req.session.userId!;
     const groupId = parseInt(req.params.groupId as string, 10);
     const { content } = req.body;
@@ -202,10 +170,6 @@ router.post("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promi
     broadcast(`dm_group:${groupId}`, { type: "dm_group:message", data: msg });
 
     res.status(201).json(msg);
-  } catch (err) {
-    logger.error({ err }, "Error sending group message");
-    res.status(500).json({ error: "Error interno" });
-  }
 });
 
 export default router;
