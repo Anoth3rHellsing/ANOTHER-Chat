@@ -130,11 +130,11 @@ function getVoiceTargetConnection(
   sourceUserId: number,
   sourceConnectionId: string,
   targetUserId: number,
-): string | null {
+): { connectionId: string; channelId: number } | null {
   for (const channelId of getVoiceChannelsForConnection(sourceUserId, sourceConnectionId)) {
     const targetConnections = voiceChannelMembersMap.get(channelId)?.get(targetUserId);
     const targetConnectionId = targetConnections?.values().next().value;
-    if (targetConnectionId) return targetConnectionId;
+    if (targetConnectionId) return { connectionId: targetConnectionId, channelId };
   }
   return null;
 }
@@ -341,6 +341,15 @@ export function initWebSocket(server: HttpServer): void {
               }));
               break;
             }
+            client.send(JSON.stringify({
+              type: "voice:bound",
+              data: {
+                channelId,
+                userIds: [...(voiceChannelMembersMap.get(channelId)?.entries() ?? [])]
+                  .filter(([, connections]) => connections.size > 0)
+                  .map(([userId]) => userId),
+              },
+            }));
             if (binding.firstConnection && user) {
               broadcast(`channel:${channelId}`, {
                 type: "voice:member_join",
@@ -687,13 +696,19 @@ function sendVoiceSignal(
   payload: object,
 ): boolean {
   if (!source.userId) return false;
-  const targetConnectionId = getVoiceTargetConnection(
+  const target = getVoiceTargetConnection(
     source.userId,
     source.connectionId,
     targetUserId,
   );
-  return targetConnectionId
-    ? sendToConnection(targetConnectionId, payload)
+  return target
+    ? sendToConnection(target.connectionId, {
+      ...payload,
+      data: {
+        ...(payload as { data: Record<string, unknown> }).data,
+        channelId: target.channelId,
+      },
+    })
     : false;
 }
 

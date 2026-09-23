@@ -16,6 +16,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { useDmWebSocket } from '@/hooks/use-dm-websocket';
 import { useWebRTC } from '@/hooks/use-webrtc';
+import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
 import { ProfileModal } from '@/components/profile-modal';
 import { SettingsModal } from '@/components/settings-modal';
 import { loadSettings, saveSettings, type AudioVideoSettings } from '@/lib/settings-utils';
@@ -1620,6 +1621,7 @@ export default function AppLayout() {
         </div>
       )}
 
+      <RemoteAudioStreams streams={webrtc.remoteStreams} />
       {/* ── In-call overlay (voice/video) ────────────────────────────────── */}
       {(webrtc.callState === 'connected' || (webrtc.isInVoiceChannel && webrtc.remoteStreams.size > 0)) && (
         <div className="fixed inset-0 z-40 bg-black/95 flex flex-col">
@@ -1672,12 +1674,7 @@ export default function AppLayout() {
                 const isActive = webrtc.activeSpeakerId === peerId;
                 return (
                   <div key={peerId} className={`rounded-2xl overflow-hidden bg-secondary border relative ${isActive ? 'border-green-400 shadow-[0_0_12px_rgba(74,222,128,0.4)]' : 'border-white/10'}`}>
-                    <video
-                      autoPlay
-                      playsInline
-                      className="w-full h-full object-cover"
-                      ref={el => { if (el) el.srcObject = stream; }}
-                    />
+                    <RemoteVideo stream={stream} />
                     <div className="absolute bottom-2 left-3 text-xs text-white/80 font-mono bg-black/60 px-2 py-0.5 rounded-md">
                       {peerMember?.displayName ?? `Usuario ${peerId}`}
                     </div>

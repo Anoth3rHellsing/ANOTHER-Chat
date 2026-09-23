@@ -17,6 +17,11 @@ A private, invite-only Discord-style encrypted chat web application. Dark theme,
 - `SESSION_SECRET` — Express session secret
 - `MESSAGE_ENCRYPTION_KEY` — required 64-character hexadecimal string (32 bytes) for AES-256-GCM message encryption. The API aborts startup if it is missing or malformed.
 
+## Voice connectivity (frontend build environment)
+
+- `VITE_ICE_SERVERS` — optional JSON array replacing the entire ICE server list, e.g. `[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:example.net:3478","username":"name","credential":"password"}]`. Without it, three public STUN servers are used; no TURN relay is configured. Browser Vite variables are public in the built client: do not put private TURN credentials in this variable. Use ephemeral client credentials if a relay is added later.
+- `VITE_VOICE_DEBUG=true` enables per-peer negotiation/ICE logs at build time. For a single browser without rebuilding, run `localStorage.setItem('voiceDebug','true')` then reload; disable with `localStorage.removeItem('voiceDebug')` and reload. Logs include candidate counts/types and selected route types/protocol, never addresses.
+
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9

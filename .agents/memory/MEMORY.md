@@ -3,5 +3,6 @@
 - [AES-256 message encryption](message-encryption.md) — messages encrypted before DB insert; IV stored per-row; MESSAGE_ENCRYPTION_KEY env var
 - [Permissions system](permissions-system.md) — bitmask roles, schema tables, key files, why PERM consts must be in a separate .ts file
 - [Connection-bound voice membership](voice-ws-close.md) — voice presence follows bound connection IDs; never evict sibling tabs by user ID
+- [Voice bind readiness](voice-bind-readiness.md) — HTTP membership can precede WS binding; negotiate only with confirmed bound peers
 - [Complete database baseline](stories-clips-raw-sql.md) — raw-SQL feature tables are now declared in Drizzle and covered by a verified zero migration
 - [CSRF token re-emission](csrf-token-reemission.md) — /auth/me reemits the session token instead of rotating it, avoiding concurrent-load mismatches
