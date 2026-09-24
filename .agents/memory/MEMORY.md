@@ -13,3 +13,4 @@
 - [Private realtime recipients](private-realtime-recipients.md) — targeted alerts need authenticated direct delivery, not an unsubscribed or public topic
 - [Notification preference scope](notification-preference-scope.md) — notification choices are account-keyed in this browser, not synchronized across devices
 - [Soundboard local playback](soundboard-local-playback.md) — call clips travel as scoped realtime triggers; each client plays audio locally with an independent mute and gain
+- [Realtime session mutations](realtime-session-mutations.md) — after asynchronous lookups, recheck membership and read the latest session before mutating shared in-memory state

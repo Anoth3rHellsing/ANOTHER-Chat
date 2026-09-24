@@ -20,6 +20,9 @@ import { loadNotificationSettings, saveNotificationSettings, type NotificationSe
 import { isNotificationsMuted } from '@/lib/notification-rules';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { useSoundboardPlayback } from '@/hooks/use-soundboard-playback';
+import { useWatchSession } from '@/hooks/use-watch-session';
+import { WatchPlayer } from '@/components/watch-player';
+import { WatchPanel } from '@/components/watch-panel';
 import { loadSoundboardSettings, saveSoundboardSettings, type SoundboardSettings } from '@/lib/soundboard-settings';
 import { SoundboardPanel, type Clip as SoundboardClip } from '@/components/soundboard-panel';
 import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
@@ -42,7 +45,7 @@ import {
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
   FileText, ExternalLink, Download, MessageSquare, Play,
   Cog, Phone, PhoneOff, Mic, MicOff, Music2, Video, VideoOff, Monitor, MonitorOff,
-  PhoneIncoming, Minimize2,
+  PhoneIncoming, Minimize2, Clapperboard,
   Search, ChevronLeft, Flag, Bell, ShoppingBag
 } from 'lucide-react';
 import { SearchModal } from '@/components/search-modal';
@@ -236,6 +239,8 @@ export default function AppLayout() {
   const soundboardSettings = soundboardProfile && soundboardProfile.userId === user?.id
     ? soundboardProfile.settings : loadSoundboardSettings(user?.id ?? 0);
   const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
+  const [isWatchOpen, setIsWatchOpen] = useState(false);
+  const [localWatchVolume, setLocalWatchVolume] = useState(0.6);
   useEffect(() => {
     if (user?.id) setSoundboardProfile({ userId: user.id, settings: loadSoundboardSettings(user.id) });
   }, [user?.id]);
@@ -414,6 +419,16 @@ export default function AppLayout() {
     ? `voice:${webrtc.activeVoiceChannelId}`
     : webrtc.callState === 'connected' && webrtc.dmCallUserId
       ? `dm:${webrtc.dmCallUserId}` : null;
+  const watch = useWatchSession({
+    userId: user?.id,
+    scope: webrtc.isInVoiceChannel ? 'voice' : webrtc.callState === 'connected' ? 'dm' : null,
+    targetId: webrtc.isInVoiceChannel ? webrtc.activeVoiceChannelId : webrtc.dmCallUserId,
+    enabled: isCallActive,
+  });
+  const isWatchVisible = isCallActive && (isWatchOpen || !!watch.session);
+  useEffect(() => {
+    if (!isCallActive) setIsWatchOpen(false);
+  }, [isCallActive]);
   const currentCallKeyRef = useRef(currentCallKey);
   currentCallKeyRef.current = currentCallKey;
   const triggerSoundboardClip = async (clip: SoundboardClip) => {
@@ -781,6 +796,12 @@ export default function AppLayout() {
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
   const callPeer = (dmConversations ?? []).find((convo: any) => convo.otherUser?.id === webrtc.dmCallUserId)?.otherUser;
+  const watchParticipants = webrtc.isInVoiceChannel
+    ? webrtc.voiceMembers.map(member => ({ userId: member.userId, displayName: member.displayName }))
+    : webrtc.dmCallUserId ? [{
+        userId: webrtc.dmCallUserId,
+        displayName: callPeer?.displayName ?? `Usuario ${webrtc.dmCallUserId}`,
+      }] : [];
   const callStatusBar = isCallActive ? (
     <CallStatusBar
       name={webrtc.isInVoiceChannel
@@ -796,6 +817,8 @@ export default function AppLayout() {
       onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
       onExpand={() => setIsCallMinimized(false)}
       onOpenSoundboard={() => setIsSoundboardOpen(open => !open)}
+      onOpenWatch={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => watch.session ? true : !open); }}
+      isWatching={isWatchVisible}
     />
   ) : null;
 
@@ -866,7 +889,7 @@ export default function AppLayout() {
   ];
 
   return (
-    <div className="h-screen w-full bg-background flex overflow-hidden font-sans">
+    <div className={`h-screen w-full bg-background flex overflow-hidden font-sans ${isWatchVisible && isCallMinimized ? 'pt-[55dvh] md:pt-0 md:pr-[min(520px,40vw)]' : ''}`}>
       {muteActive && (
         <button
           type="button"
@@ -2039,6 +2062,16 @@ export default function AppLayout() {
               <Music2 className="w-5 h-5" />
             </button>
             <button
+              type="button"
+              onClick={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => watch.session ? true : !open); }}
+              aria-label="Abrir visionado conjunto"
+              aria-pressed={isWatchVisible}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isWatchVisible ? 'bg-primary text-primary-foreground glow-effect' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
+              title="Ver y escuchar juntos"
+            >
+              <Clapperboard className="w-5 h-5" />
+            </button>
+            <button
               onClick={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
               className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
               title="Colgar"
@@ -2058,8 +2091,54 @@ export default function AppLayout() {
         </div>
       )}
 
+      {isWatchVisible && currentCallKey && (
+        <aside
+          aria-label="Visionado y escucha sincronizados"
+          className={`fixed right-0 top-0 bottom-[45dvh] z-[55] w-full min-w-[200px] border-l border-border bg-background shadow-2xl md:right-4 md:top-4 md:w-[min(520px,40vw)] ${isCallMinimized ? 'md:bottom-4' : 'md:bottom-24'}`}
+        >
+          <WatchPanel
+            session={watch.session}
+            localVolume={localWatchVolume}
+            onLocalVolumeChange={setLocalWatchVolume}
+            canControl={watch.canControl}
+            onStart={url => { watch.start(url); }}
+            onAdd={url => { watch.add(url); }}
+            onAction={(action, values) => { watch.control(action, values); }}
+            error={watch.error}
+            active={webrtc.isInVoiceChannel ? 'voice' : 'dm'}
+            participants={watchParticipants}
+            currentUserId={user?.id}
+            onClose={() => setIsWatchOpen(false)}
+            player={watch.session?.current ? (
+              <WatchPlayer
+                current={watch.session.current}
+                playing={watch.session.playing}
+                positionMs={watch.session.positionMs}
+                updatedAtMs={watch.session.updatedAtMs}
+                durationMs={watch.session.current.durationMs}
+                localVolume={localWatchVolume}
+                canControl={watch.canControl}
+                sessionKey={currentCallKey}
+                onVolumeChange={setLocalWatchVolume}
+                onPlay={() => { watch.control('play'); }}
+                onPause={() => { watch.control('pause'); }}
+                onSeek={positionMs => { watch.control('seek', { positionMs }); }}
+                onEnded={() => { watch.control('ended', { itemId: watch.session?.current?.id }); }}
+                onMetadata={({ title, durationMs }) => {
+                  const current = watch.session?.current;
+                  if (!watch.isController || !current) return;
+                  if (current.title === title && (!durationMs || durationMs === current.durationMs)) return;
+                  watch.control('metadata', { itemId: current.id, title, ...(durationMs ? { durationMs } : {}) });
+                }}
+                onLoadError={watch.reportLoadError}
+              />
+            ) : null}
+          />
+        </aside>
+      )}
+
       {isCallActive && (
-        <div className="fixed bottom-24 right-4 z-50">
+        <div className={`fixed bottom-24 z-50 ${isWatchVisible ? 'left-4' : 'right-4'}`}>
           <SoundboardPanel
             isOpen={isSoundboardOpen}
             onClose={() => setIsSoundboardOpen(false)}

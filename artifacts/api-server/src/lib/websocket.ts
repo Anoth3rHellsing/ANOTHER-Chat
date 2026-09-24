@@ -9,6 +9,20 @@ import { logger } from "./logger";
 import { randomUUID } from "crypto";
 import cookieParser from "cookie-parser";
 import { SESSION_SECRET } from "./session-config";
+import {
+  WatchSessionStore,
+  advanceWatchCursor,
+  canControlWatchAction,
+  createWatchItem,
+  getExpectedWatchPosition,
+  isWatchPosition,
+  normalizeWatchLink,
+  isActiveWatchCallParticipant,
+  MAX_WATCH_QUEUE_SIZE,
+  type WatchScope,
+  type WatchSession,
+  type WatchControlAction,
+} from "./watch-sessions";
 
 const MAX_PENDING_AUTH_MESSAGES = 100;
 const MAX_PENDING_AUTH_BYTES = 1_000_000;
@@ -70,7 +84,12 @@ export function leaveVoiceChannel(channelId: number, userId: number): boolean {
   if (!members || !connections || connections.size > 0) return false;
   clearVoiceBindReservation(channelId, userId);
   members.delete(userId);
-  if (members.size === 0) voiceChannelMembersMap.delete(channelId);
+  if (members.size === 0) {
+    voiceChannelMembersMap.delete(channelId);
+    watchSessions.end("voice", channelId);
+  } else {
+    handOffWatchControllerOnVoiceLeave(channelId, userId);
+  }
   return true;
 }
 
@@ -114,7 +133,12 @@ function unbindVoiceConnection(
   if (connections.size > 0) return false;
   members.delete(userId);
   clearVoiceBindReservation(channelId, userId);
-  if (members.size === 0) voiceChannelMembersMap.delete(channelId);
+  if (members.size === 0) {
+    voiceChannelMembersMap.delete(channelId);
+    watchSessions.end("voice", channelId);
+  } else {
+    handOffWatchControllerOnVoiceLeave(channelId, userId);
+  }
   return true;
 }
 
@@ -149,6 +173,7 @@ type DmCallRoute = {
 };
 
 const dmCallRoutes = new Map<string, DmCallRoute>();
+const watchSessions = new WatchSessionStore();
 
 function dmCallKey(userA: number, userB: number): string {
   return userA < userB ? `${userA}:${userB}` : `${userB}:${userA}`;
@@ -170,7 +195,13 @@ function setDmCallRoute(
   dmCallRoutes.set(key, {
     ...route,
     active,
-    expiryTimer: setTimeout(() => clearDmCallRoute(key), ttlMs),
+    expiryTimer: setTimeout(() => {
+      const current = dmCallRoutes.get(key);
+      if (!current || current.callerConnectionId !== route.callerConnectionId
+        || current.recipientConnectionId !== route.recipientConnectionId) return;
+      endDmWatchSession(current);
+      clearDmCallRoute(key);
+    }, ttlMs),
   });
 }
 
@@ -184,6 +215,334 @@ function markDmCallRouteActive(userA: number, userB: number): void {
     recipientUserId: route.recipientUserId,
     recipientConnectionId: route.recipientConnectionId,
   }, DM_CALL_ACTIVE_TTL_MS, true);
+}
+
+function getActiveDmRouteForClient(client: AuthedWebSocket, peerId: number): DmCallRoute | null {
+  if (!client.userId || peerId === client.userId) return null;
+  const route = dmCallRoutes.get(dmCallKey(client.userId, peerId));
+  if (!route?.active) return null;
+  const isCallerConnection = route.callerUserId === client.userId
+    && route.callerConnectionId === client.connectionId
+    && route.recipientUserId === peerId;
+  const isRecipientConnection = route.recipientUserId === client.userId
+    && route.recipientConnectionId === client.connectionId
+    && route.callerUserId === peerId;
+  return isCallerConnection || isRecipientConnection ? route : null;
+}
+
+function isWatchMemberConnection(client: AuthedWebSocket, scope: WatchScope, targetId: number): boolean {
+  if (!client.userId || !Number.isSafeInteger(targetId) || targetId <= 0) return false;
+  if (scope === "voice") {
+    return voiceChannelMembersMap.get(targetId)?.get(client.userId)?.has(client.connectionId) ?? false;
+  }
+  return getActiveDmRouteForClient(client, targetId) !== null;
+}
+
+function sendWatchStateToConnection(
+  client: AuthedWebSocket,
+  scope: WatchScope,
+  targetId: number,
+): void {
+  if (!client.userId || client.readyState !== WebSocket.OPEN) return;
+  const snapshot = watchSessions.snapshot(scope, targetId, Date.now(), client.userId);
+  client.send(JSON.stringify({
+    type: "watch:state",
+    data: { scope, targetId, session: snapshot },
+  }));
+}
+
+function broadcastWatchState(
+  scope: WatchScope,
+  targetId: number,
+  peerId?: number,
+): void {
+  if (scope === "voice") {
+    const members = voiceChannelMembersMap.get(targetId);
+    if (!members) return;
+    for (const [userId, connectionIds] of members) {
+      for (const connectionId of connectionIds) {
+        const client = findOpenConnection(connectionId, userId);
+        if (client) sendWatchStateToConnection(client, scope, targetId);
+      }
+    }
+    return;
+  }
+
+  if (peerId === undefined || !wss) return;
+  const route = dmCallRoutes.get(dmCallKey(targetId, peerId));
+  if (!route?.active) return;
+  const caller = findOpenConnection(route.callerConnectionId, route.callerUserId);
+  if (caller) sendWatchStateToConnection(caller, "dm", route.recipientUserId);
+  const recipient = findOpenConnection(route.recipientConnectionId, route.recipientUserId);
+  if (recipient) sendWatchStateToConnection(recipient, "dm", route.callerUserId);
+}
+
+function handOffWatchControllerOnVoiceLeave(channelId: number, departedUserId: number): void {
+  const session = watchSessions.get("voice", channelId);
+  if (!session || session.controllerUserId !== departedUserId) return;
+  const members = voiceChannelMembersMap.get(channelId);
+  const nextController = [...(members?.entries() ?? [])].find(([userId, connections]) =>
+    userId !== departedUserId
+    && [...connections].some(connectionId => findOpenConnection(connectionId, userId) !== null),
+  );
+  if (!nextController) {
+    watchSessions.end("voice", channelId);
+    return;
+  }
+  session.controllerUserId = nextController[0];
+  watchSessions.save("voice", channelId, session);
+  broadcastWatchState("voice", channelId);
+}
+
+function dropWatchSessionWhenVoiceEmpty(channelId: number): void {
+  const members = voiceChannelMembersMap.get(channelId);
+  const hasConnectedMember = members && [...members.values()].some(connections => connections.size > 0);
+  if (!hasConnectedMember) watchSessions.end("voice", channelId);
+}
+
+function endDmWatchSession(route: DmCallRoute): void {
+  if (!route.active || !watchSessions.end("dm", route.callerUserId, route.recipientUserId)) return;
+  const caller = findOpenConnection(route.callerConnectionId, route.callerUserId);
+  if (caller) sendWatchStateToConnection(caller, "dm", route.recipientUserId);
+  const recipient = findOpenConnection(route.recipientConnectionId, route.recipientUserId);
+  if (recipient) sendWatchStateToConnection(recipient, "dm", route.callerUserId);
+}
+
+function sendWatchError(
+  client: AuthedWebSocket,
+  message: string,
+  scope?: WatchScope,
+  targetId?: number,
+): void {
+  if (client.readyState !== WebSocket.OPEN) return;
+  client.send(JSON.stringify({
+    type: "watch:error",
+    data: {
+      message,
+      ...(scope ? { scope } : {}),
+      ...(targetId !== undefined ? { targetId } : {}),
+    },
+  }));
+}
+
+async function getWatchActorName(userId: number): Promise<string> {
+  const [user] = await db.select({ displayName: usersTable.displayName })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+  if (!user) throw new Error("No se encontró el perfil de quien añadió el contenido.");
+  return user.displayName;
+}
+
+function isWatchParticipant(
+  scope: WatchScope,
+  targetId: number,
+  userId: number,
+  actorUserId?: number,
+): boolean {
+  if (scope === "voice") {
+    return [...(voiceChannelMembersMap.get(targetId)?.get(userId) ?? [])]
+      .some(connectionId => findOpenConnection(connectionId, userId) !== null);
+  }
+  if (actorUserId === undefined) return false;
+  const route = dmCallRoutes.get(dmCallKey(actorUserId, targetId));
+  if (!route || !isActiveWatchCallParticipant(route, userId, actorUserId, targetId)) return false;
+  if (route.callerUserId === userId) {
+    return findOpenConnection(route.callerConnectionId, userId) !== null;
+  }
+  if (route.recipientUserId === userId) {
+    return findOpenConnection(route.recipientConnectionId, userId) !== null;
+  }
+  return false;
+}
+
+function validateWatchPosition(position: unknown, current: WatchSession["current"]): number {
+  if (!isWatchPosition(position) || !Number.isSafeInteger(position)) {
+    throw new Error("La posición de reproducción no es válida.");
+  }
+  return current?.durationMs === undefined
+    ? position
+    : Math.min(position, current.durationMs);
+}
+
+async function processWatchMessage(client: AuthedWebSocket, msg: Record<string, unknown>): Promise<void> {
+  const scope = msg.scope === "voice" || msg.scope === "dm" ? msg.scope : null;
+  const targetId = msg.targetId;
+  if (!client.userId || !scope || !Number.isSafeInteger(targetId) || Number(targetId) <= 0) {
+    sendWatchError(client, "La sesión o llamada indicada no es válida.");
+    return;
+  }
+  const id = Number(targetId);
+  if (client.readyState !== WebSocket.OPEN || !isWatchMemberConnection(client, scope, id)) {
+    sendWatchError(client, "Debes estar conectado a esa llamada para usar la sesión compartida.", scope, id);
+    return;
+  }
+  try {
+    if (msg.type === "watch:sync") {
+      sendWatchStateToConnection(client, scope, id);
+      return;
+    }
+
+    if (msg.type === "watch:start") {
+      const link = normalizeWatchLink(msg.url);
+      const actorName = await getWatchActorName(client.userId);
+      if (client.readyState !== WebSocket.OPEN || !isWatchMemberConnection(client, scope, id)) {
+        throw new Error("Debes seguir conectado a esa llamada para iniciar una sesión compartida.");
+      }
+      if (watchSessions.has(scope, id, client.userId)) {
+        throw new Error("Ya hay una sesión compartida activa; puedes añadir contenido a su cola.");
+      }
+      const item = createWatchItem(link, client.userId, actorName);
+      watchSessions.start(scope, id, client.userId, item, Date.now(), client.userId);
+      broadcastWatchState(scope, id, client.userId);
+      return;
+    }
+
+    if (msg.type === "watch:add") {
+      const link = normalizeWatchLink(msg.url);
+      const actorName = await getWatchActorName(client.userId);
+      if (client.readyState !== WebSocket.OPEN || !isWatchMemberConnection(client, scope, id)) {
+        throw new Error("Debes seguir conectado a esa llamada para añadir contenido.");
+      }
+      const existing = watchSessions.get(scope, id, client.userId);
+      if (!existing) throw new Error("No hay una sesión compartida activa.");
+      if (existing.queue.length >= MAX_WATCH_QUEUE_SIZE) {
+        throw new Error(`La cola compartida admite como máximo ${MAX_WATCH_QUEUE_SIZE} elementos.`);
+      }
+      advanceWatchCursor(existing, Date.now());
+      existing.queue.push(createWatchItem(link, client.userId, actorName));
+      watchSessions.save(scope, id, existing, client.userId);
+      broadcastWatchState(scope, id, client.userId);
+      return;
+    }
+
+    const existing = watchSessions.get(scope, id, client.userId);
+    if (!existing) throw new Error("No hay una sesión compartida activa.");
+
+    if (msg.type !== "watch:control" || typeof msg.action !== "string") {
+      throw new Error("La acción de la sesión compartida no es válida.");
+    }
+    const actions: readonly WatchControlAction[] = [
+      "play", "pause", "seek", "skip", "reorder", "remove", "transfer",
+      "everyone", "end", "ended", "metadata",
+    ];
+    if (!actions.includes(msg.action as WatchControlAction)) {
+      throw new Error("La acción de la sesión compartida no está admitida.");
+    }
+    const action = msg.action as WatchControlAction;
+    if (!canControlWatchAction(existing, client.userId, action)) {
+      throw new Error("No tienes el control de esta sesión compartida.");
+    }
+    const now = Date.now();
+    advanceWatchCursor(existing, now);
+    switch (action) {
+      case "play":
+        if (!existing.current) throw new Error("No hay contenido actual para reproducir.");
+        existing.positionMs = msg.positionMs === undefined
+          ? getExpectedWatchPosition(existing, now)
+          : validateWatchPosition(msg.positionMs, existing.current);
+        existing.playing = true;
+        existing.updatedAtMs = now;
+        break;
+      case "pause":
+        if (!existing.current) throw new Error("No hay contenido actual para pausar.");
+        existing.positionMs = getExpectedWatchPosition(existing, now);
+        existing.playing = false;
+        existing.updatedAtMs = now;
+        break;
+      case "seek":
+        if (!existing.current) throw new Error("No hay contenido actual para desplazarse.");
+        existing.positionMs = validateWatchPosition(msg.positionMs, existing.current);
+        existing.updatedAtMs = now;
+        break;
+      case "skip":
+        existing.current = existing.queue.shift() ?? null;
+        existing.positionMs = 0;
+        existing.updatedAtMs = now;
+        if (!existing.current) existing.playing = false;
+        break;
+      case "ended":
+        if (!existing.current || msg.itemId !== existing.current.id) return;
+        existing.current = existing.queue.shift() ?? null;
+        existing.positionMs = 0;
+        existing.playing = existing.current !== null;
+        existing.updatedAtMs = now;
+        break;
+      case "reorder": {
+        const fromIndex = existing.queue.findIndex(item => item.id === msg.itemId);
+        if (fromIndex < 0) throw new Error("Ese elemento ya no está en la cola.");
+        if (!Number.isSafeInteger(msg.toIndex) || Number(msg.toIndex) < 0
+          || Number(msg.toIndex) >= existing.queue.length) {
+          throw new Error("La nueva posición en la cola no es válida.");
+        }
+        const [item] = existing.queue.splice(fromIndex, 1);
+        existing.queue.splice(Number(msg.toIndex), 0, item);
+        break;
+      }
+      case "remove": {
+        const queueIndex = existing.queue.findIndex(item => item.id === msg.itemId);
+        if (queueIndex >= 0) {
+          existing.queue.splice(queueIndex, 1);
+        } else if (existing.current?.id === msg.itemId) {
+          existing.current = existing.queue.shift() ?? null;
+          existing.positionMs = 0;
+          if (!existing.current) existing.playing = false;
+          existing.updatedAtMs = now;
+        } else {
+          throw new Error("Ese elemento ya no está en la sesión.");
+        }
+        break;
+      }
+      case "transfer":
+        if (!Number.isSafeInteger(msg.userId) || Number(msg.userId) <= 0
+          || !isWatchParticipant(scope, id, Number(msg.userId), client.userId)) {
+          throw new Error("Solo puedes ceder el control a alguien conectado a esta llamada.");
+        }
+        existing.controllerUserId = Number(msg.userId);
+        break;
+      case "everyone":
+        if (typeof msg.allowEveryone !== "boolean") {
+          throw new Error("Indica si quieres permitir controles a todos.");
+        }
+        existing.allowEveryone = msg.allowEveryone;
+        break;
+      case "end":
+        watchSessions.end(scope, id, client.userId);
+        broadcastWatchState(scope, id, client.userId);
+        return;
+      case "metadata": {
+        if (!existing.current || msg.itemId !== existing.current.id) {
+          throw new Error("El reproductor ya no muestra ese contenido.");
+        }
+        if (msg.title !== undefined) {
+          if (typeof msg.title !== "string" || !msg.title.trim() || msg.title.length > 200) {
+            throw new Error("El título informado no es válido.");
+          }
+          existing.current.title = msg.title.trim();
+        }
+        if (msg.durationMs !== undefined) {
+          if (!Number.isSafeInteger(msg.durationMs) || Number(msg.durationMs) <= 0
+            || Number(msg.durationMs) > 604_800_000) {
+            throw new Error("La duración informada no es válida.");
+          }
+          existing.current.durationMs = Number(msg.durationMs);
+          existing.positionMs = Math.min(existing.positionMs, existing.current.durationMs);
+        }
+        break;
+      }
+      default:
+        throw new Error("La acción de la sesión compartida no está admitida.");
+    }
+    existing.updatedAtMs = now;
+    watchSessions.save(scope, id, existing, client.userId);
+    broadcastWatchState(scope, id, client.userId);
+  } catch (error) {
+    sendWatchError(
+      client,
+      error instanceof Error ? error.message : "No se pudo actualizar la sesión compartida.",
+      scope,
+      id,
+    );
+  }
 }
 
 export function initWebSocket(server: HttpServer): void {
@@ -316,6 +675,13 @@ export function initWebSocket(server: HttpServer): void {
             client.send(JSON.stringify({ type: "pong" }));
             break;
 
+          case "watch:start":
+          case "watch:add":
+          case "watch:sync":
+          case "watch:control":
+            await processWatchMessage(client, msg as Record<string, unknown>);
+            break;
+
           case "voice:bind": {
             const channelId = Number(msg.channelId);
             if (!client.userId || !Number.isInteger(channelId)) break;
@@ -353,6 +719,7 @@ export function initWebSocket(server: HttpServer): void {
                   .map(([userId]) => userId),
               },
             }));
+            sendWatchStateToConnection(client, "voice", channelId);
             if (binding.firstConnection && user) {
               broadcast(`channel:${channelId}`, {
                 type: "voice:member_join",
@@ -429,6 +796,8 @@ export function initWebSocket(server: HttpServer): void {
           // ── DM call signaling ────────────────────────────────────────────
           case "dm:call-invite":
             if (client.userId && msg.recipientId) {
+              const previousRoute = dmCallRoutes.get(dmCallKey(client.userId, msg.recipientId));
+              if (previousRoute) endDmWatchSession(previousRoute);
               const recipientConnection = findUserConnection(msg.recipientId);
               if (!recipientConnection) break;
               setDmCallRoute({
@@ -459,6 +828,7 @@ export function initWebSocket(server: HttpServer): void {
                 },
               });
               if (sent) markDmCallRouteActive(client.userId, msg.callerId);
+              if (sent) broadcastWatchState("dm", client.userId, msg.callerId);
             }
             break;
 
@@ -503,21 +873,27 @@ export function initWebSocket(server: HttpServer): void {
 
           case "dm:call-reject":
             if (client.userId && msg.callerId) {
+              const key = dmCallKey(client.userId, msg.callerId);
+              const route = dmCallRoutes.get(key);
+              if (route) endDmWatchSession(route);
               sendDmCallSignal(client, msg.callerId, {
                 type: "dm:call-reject",
                 data: { fromUserId: client.userId },
               });
-              clearDmCallRoute(dmCallKey(client.userId, msg.callerId));
+              clearDmCallRoute(key);
             }
             break;
 
           case "dm:call-end":
             if (client.userId && msg.targetUserId) {
+              const key = dmCallKey(client.userId, msg.targetUserId);
+              const route = dmCallRoutes.get(key);
+              if (route) endDmWatchSession(route);
               sendDmCallSignal(client, msg.targetUserId, {
                 type: "dm:call-end",
                 data: { fromUserId: client.userId },
               });
-              clearDmCallRoute(dmCallKey(client.userId, msg.targetUserId));
+              clearDmCallRoute(key);
             }
             break;
         }
@@ -635,6 +1011,7 @@ export function initWebSocket(server: HttpServer): void {
               data: { channelId, userId: client.userId },
             });
           }
+          dropWatchSessionWhenVoiceEmpty(channelId);
         }
 
         for (const [key, route] of dmCallRoutes) {
@@ -644,6 +1021,7 @@ export function initWebSocket(server: HttpServer): void {
           const otherConnectionId = isCaller
             ? route.recipientConnectionId
             : route.callerConnectionId;
+          endDmWatchSession(route);
           sendToConnection(otherConnectionId, {
             type: "dm:call-end",
             data: { fromUserId: client.userId },

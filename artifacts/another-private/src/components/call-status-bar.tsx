@@ -1,4 +1,4 @@
-import { Maximize2, Mic, MicOff, Music2, PhoneOff, Volume2 } from 'lucide-react';
+import { Maximize2, Mic, MicOff, Music2, PhoneOff, Volume2, Clapperboard } from 'lucide-react';
 
 interface CallStatusBarProps {
   name: string;
@@ -10,10 +10,12 @@ interface CallStatusBarProps {
   onHangUp: () => void;
   onExpand: () => void;
   onOpenSoundboard: () => void;
+  onOpenWatch: () => void;
+  isWatching: boolean;
 }
 
 export function CallStatusBar({
-  name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand, onOpenSoundboard,
+  name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand, onOpenSoundboard, onOpenWatch, isWatching,
 }: CallStatusBarProps) {
   return (
     <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
@@ -30,6 +32,16 @@ export function CallStatusBar({
         aria-label="Abrir soundboard"
       >
         <Music2 className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onOpenWatch}
+        className={`p-1 rounded transition-colors ${isWatching ? 'text-primary bg-primary/15' : 'text-primary hover:bg-primary/15'}`}
+        title="Abrir visionado conjunto"
+        aria-label="Abrir visionado conjunto"
+        aria-pressed={isWatching}
+      >
+        <Clapperboard className="w-3.5 h-3.5" />
       </button>
       <button
         type="button"
