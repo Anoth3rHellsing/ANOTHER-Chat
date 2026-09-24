@@ -23,6 +23,7 @@ import {
   hasPerm,
 } from "../lib/permissions";
 import { fetchFirstLinkPreview } from "../lib/link-preview";
+import { isMalformedGiphyMessage, parseGiphyMessage } from "../lib/giphy";
 import { groupReactions } from "../lib/reactions";
 import { removePrivateFile } from "../lib/channel-file-storage";
 
@@ -141,7 +142,7 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
   const restrictedRolesJson = JSON.stringify(
     Array.isArray(restrictedRoles) ? restrictedRoles.map(Number) : []
   );
-  const validType = ["text", "voice", "media"].includes(channelType) ? channelType : "text";
+  const validType = ["text", "voice", "media", "calendar"].includes(channelType) ? channelType : "text";
   const visualConfigJson = visualConfig ? JSON.stringify(visualConfig) : "{}";
 
   const [channel] = await db
@@ -172,7 +173,7 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
 
   const updates: Record<string, any> = {};
   if (req.body.name) updates.name = req.body.name;
-  if (req.body.channelType && ["text", "voice", "media"].includes(req.body.channelType)) {
+  if (req.body.channelType && ["text", "voice", "media", "calendar"].includes(req.body.channelType)) {
     updates.channelType = req.body.channelType;
   }
   if (req.body.restrictedRoles !== undefined) {
@@ -331,7 +332,7 @@ router.get("/channels/:channelId/messages", requireAuth, async (req, res): Promi
 
       // Link preview — only for non-deleted messages (fire-and-forget cached)
       let linkPreview = null;
-      if (!msg.deletedAt && content) {
+      if (!msg.deletedAt && content && !parseGiphyMessage(content)) {
         linkPreview = await fetchFirstLinkPreview(content);
       }
 
@@ -355,6 +356,10 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
   const userId = req.session.userId!;
   const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
   const { content, replyToId, attachmentIds } = req.body;
+  if (isMalformedGiphyMessage(content)) {
+    res.status(400).json({ error: "La dirección del GIF no pertenece a un servidor multimedia de GIPHY admitido." });
+    return;
+  }
 
   const [channelCheck] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
   if (!channelCheck) { res.status(404).json({ error: "Canal no encontrado" }); return; }
@@ -459,7 +464,7 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
 
   // Link preview (non-blocking — fire and forget inline since it's cached)
   let linkPreview = null;
-  if (safeContent) {
+  if (safeContent && !parseGiphyMessage(safeContent)) {
     linkPreview = await fetchFirstLinkPreview(safeContent);
   }
 
@@ -561,7 +566,7 @@ router.patch(
     ]);
 
     let linkPreview = null;
-    if (content) linkPreview = await fetchFirstLinkPreview(content);
+    if (content && !parseGiphyMessage(content)) linkPreview = await fetchFirstLinkPreview(content);
 
     // Preserve reply context if the message had a replyToId
     let replyPreview: { id: number; authorDisplayName: string; contentPreview: string } | null = null;

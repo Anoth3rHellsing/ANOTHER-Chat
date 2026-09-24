@@ -270,7 +270,9 @@ router.post("/channels/:channelId/events", requireAuth, async (req, res): Promis
     res.status(400).json({ error: "originalTimeZone must be a valid IANA time zone" }); return;
   }
 
-  const [author] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const [author] = channel.channelType === "calendar"
+    ? [undefined]
+    : await db.select().from(usersTable).where(eq(usersTable.id, userId));
   const announcement = (eventId: number) => `Nueva actividad: ${title}\n[event:${eventId}]`;
   const { event, message } = await db.transaction(async tx => {
     const [createdEvent] = await tx.insert(channelEventsTable).values({
@@ -282,6 +284,10 @@ router.post("/channels/:channelId/events", requireAuth, async (req, res): Promis
       endsAt,
       originalTimeZone: body.originalTimeZone,
     }).returning();
+    // Text channels have a message timeline for event announcements; calendar
+    // channels present events as their main content and do not store an unseen
+    // encrypted message that would otherwise inflate their unread count.
+    if (channel.channelType === "calendar") return { event: createdEvent, message: null };
     const { encrypted, iv } = encryptMessage(announcement(createdEvent.id));
     const [createdMessage] = await tx.insert(messagesTable).values({
       channelId,
@@ -295,34 +301,36 @@ router.post("/channels/:channelId/events", requireAuth, async (req, res): Promis
 
   const response = await serializeEvent(event, userId);
   broadcastEvent("event:created", event, channel.serverId);
-  broadcast(`channel:${channelId}`, {
-    type: "message:new",
-    data: {
-      id: message.id,
-      channelId,
-      userId,
-      content: announcement(event.id),
-      replyToId: null,
-      editedAt: null,
-      deletedAt: null,
-      createdAt: message.createdAt,
-      author: author ? {
-        id: author.id,
-        username: author.username,
-        displayName: author.displayName,
-        bio: author.bio,
-        avatarUrl: author.avatarUrl,
-        bannerUrl: author.bannerUrl,
-        status: author.status,
-        role: author.role,
-        createdAt: author.createdAt,
-      } : null,
-      attachments: [],
-      reactions: [],
-      replyTo: null,
-      linkPreview: null,
-    },
-  });
+  if (message) {
+    broadcast(`channel:${channelId}`, {
+      type: "message:new",
+      data: {
+        id: message.id,
+        channelId,
+        userId,
+        content: announcement(event.id),
+        replyToId: null,
+        editedAt: null,
+        deletedAt: null,
+        createdAt: message.createdAt,
+        author: author ? {
+          id: author.id,
+          username: author.username,
+          displayName: author.displayName,
+          bio: author.bio,
+          avatarUrl: author.avatarUrl,
+          bannerUrl: author.bannerUrl,
+          status: author.status,
+          role: author.role,
+          createdAt: author.createdAt,
+        } : null,
+        attachments: [],
+        reactions: [],
+        replyTo: null,
+        linkPreview: null,
+      },
+    });
+  }
   res.status(201).json(response);
 });
 

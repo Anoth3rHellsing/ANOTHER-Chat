@@ -67,6 +67,9 @@ function isolatedEnvironment(databaseUrl) {
     MESSAGE_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
     SESSION_SECRET: randomBytes(48).toString("base64url"),
     NODE_ENV: "development", LOG_LEVEL: "fatal",
+    STORY_CLEANUP_ENABLED: "true",
+    STORY_CLEANUP_INTERVAL_MS: "1000",
+    STORY_CLEANUP_GRACE_MS: "0",
     PORT: String(apiPort), APP_URL: `http://127.0.0.1:${apiPort}`,
   };
 }
@@ -234,6 +237,7 @@ try {
     firstStories.push(story);
   }
   const firstIds = firstStories.map(story => story.id);
+  const firstMediaPath = new URL(firstStories[0].media_url, `http://127.0.0.1:${apiPort}`).pathname;
   assert.equal(new Set(firstIds).size, 3, "three consecutive story uploads create separate records");
   for (const story of firstStories) {
     const lifetime = new Date(story.expires_at).getTime() - new Date(story.created_at).getTime();
@@ -245,6 +249,18 @@ try {
     .stories.map(story => story.id), firstIds, "stories list in sequential creation order");
   assert.equal(firstListing.find(group => group.userId === firstStories[0].user_id).hasUnviewed, true);
   console.log("PASS three separate stories remain active, ordered, and independently expire after 24 hours");
+
+  const activeMedia = expectStatus(await viewer.request(firstMediaPath), 200,
+    "authenticated viewer can fetch an active story file by its saved URL");
+  assert.match(activeMedia, /synthetic story media story-1\.png/,
+    "active story media bytes are delivered");
+  const unauthenticated = await fetch(`http://127.0.0.1:${apiPort}${firstMediaPath}`);
+  assert.equal(unauthenticated.status, 401,
+    "a copied story URL cannot be used without an authenticated session");
+  const unrelatedFileRequest = await viewer.request("/api/uploads/story-999999-unknown.png");
+  assert.equal(unrelatedFileRequest.status, 404,
+    "a story-prefixed upload without a live database row is denied");
+  console.log("PASS active story media URL checks authentication and a matching live story row");
 
   for (const storyId of firstIds.slice(0, 2)) {
     expectStatus(await viewer.request(`/api/stories/${storyId}/view`, { method: "POST" }), 204,
@@ -275,7 +291,34 @@ try {
     "expired story leaves the active feed independently");
   assert.deepEqual(afterExpiration.find(group => group.userId === firstStories[0].user_id)
     .stories.map(story => story.id), firstIds.slice(1));
-  console.log("PASS expiring one temporary story leaves its two unexpired siblings active");
+  expectStatus(await viewer.request(firstMediaPath), 404,
+    "the very same story URL stops delivering bytes after expiry");
+  const temporaryUploadsDir = path.join(tempRoot, "api", "uploads");
+  const expiredStoryFile = path.join(temporaryUploadsDir, path.basename(firstMediaPath));
+  const cleanupDeadline = Date.now() + 8_000;
+  let expiredStoryRows = 1;
+  while (Date.now() < cleanupDeadline && expiredStoryRows !== 0) {
+    const rows = run(path.join(pgBin, "psql"), [
+      "-h", "127.0.0.1", "-p", String(pgPort), "-U", pgUser, "-d", database,
+      "-X", "-q", "-t", "-A", "-c",
+      `SELECT COUNT(*) FROM stories WHERE id = ${firstIds[0]}`,
+    ], { env });
+    expiredStoryRows = Number(rows.trim());
+    if (expiredStoryRows !== 0) await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(expiredStoryRows, 0, "periodic cleanup removes the expired story row after its expiry");
+  assert.equal(existsSync(expiredStoryFile), false, "periodic cleanup removes the corresponding physical file");
+  const expiredViews = run(path.join(pgBin, "psql"), [
+    "-h", "127.0.0.1", "-p", String(pgPort), "-U", pgUser, "-d", database,
+    "-X", "-q", "-t", "-A", "-c",
+    `SELECT COUNT(*) FROM story_views WHERE story_id = ${firstIds[0]}`,
+  ], { env });
+  assert.equal(Number(expiredViews.trim()), 0, "deleting an expired story cascades to its view records");
+  const activeSiblingMedia = expectStatus(await viewer.request(new URL(firstStories[1].media_url,
+    `http://127.0.0.1:${apiPort}`).pathname), 200,
+  "a still-live sibling story remains accessible after cleanup");
+  assert.match(activeSiblingMedia, /synthetic story media story-2\.png/);
+  console.log("PASS expiry denies the old URL immediately; cleanup removes only that story, its views, and its file");
 
   const acceptedRest = [];
   for (let index = 3; index < 10; index++) {
@@ -293,8 +336,8 @@ try {
   console.log("PASS concurrent over-limit upload rejected with a clear 429 message and per-user locking");
   const tenActive = expectStatus(await creator.request("/api/stories"), 200, "creator sees ten active stories at limit");
   assert.equal(tenActive.find(group => group.userId === firstStories[0].user_id).stories.length, 10);
-  const uploadedFiles = await readdir(path.join(tempRoot, "api", "uploads"));
-  assert.equal(uploadedFiles.length, 11, "one expired upload plus ten accepted active uploads; rejected bytes removed");
+  const uploadedFiles = await readdir(temporaryUploadsDir);
+  assert.equal(uploadedFiles.length, 10, "ten active stories remain; expired and rejected upload bytes were removed");
   console.log("PASS the rejected upload left no orphaned file; all synthetic records/files are under /tmp");
 } finally {
   await cleanup();

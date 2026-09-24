@@ -2,11 +2,11 @@
 // temporary test output live under a disposable directory in /tmp.
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -86,7 +86,9 @@ function isolatedEnvironment(databaseUrl) {
     if (/^PG(?:HOST|HOSTADDR|PORT|DATABASE|USER|PASSWORD|SERVICE|SERVICEFILE|OPTIONS|SSLMODE|SSLROOTCERT|SSLCERT|SSLKEY)$/.test(key)) {
       delete env[key];
     }
+    if (/^GIPHY/i.test(key)) delete env[key];
   }
+  delete env.Giphy;
   return {
     ...env,
     DATABASE_URL: databaseUrl,
@@ -272,6 +274,27 @@ try {
   const pgUser = os.userInfo().username;
   const databaseUrl = `postgresql://${encodeURIComponent(pgUser)}@127.0.0.1:${pgPort}/${database}`;
   const env = isolatedEnvironment(databaseUrl);
+  const giphyFetchMarker = path.join(tempRoot, "giphy-outbound-fetches.log");
+  const giphyFetchGuard = path.join(tempRoot, "block-giphy-fetch.cjs");
+  await writeFile(giphyFetchGuard, `
+const fs = require("node:fs");
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (input, ...args) => {
+  let url;
+  try {
+    url = new URL(typeof input === "string" ? input : input.url);
+  } catch {
+    return originalFetch(input, ...args);
+  }
+  if (url.hostname === "giphy.com" || url.hostname.endsWith(".giphy.com")) {
+    fs.appendFileSync(process.env.GIPHY_TEST_OUTBOUND_MARKER, url.href + "\\n");
+    throw new Error("All outgoing GIPHY requests are disabled in this isolated test");
+  }
+  return originalFetch(input, ...args);
+};
+`);
+  env.GIPHY_TEST_OUTBOUND_MARKER = giphyFetchMarker;
+  env.NODE_OPTIONS = [env.NODE_OPTIONS, `--require=${giphyFetchGuard}`].filter(Boolean).join(" ");
 
   run(path.join(pgBin, "initdb"), [
     "-D", pgData, "--no-locale", "--encoding=UTF8", "--auth-local=trust", "--auth-host=trust",
@@ -386,12 +409,65 @@ try {
     method: "POST", json: { name: "events-integration", channelType: "text" },
   }), 201, "create disposable text channel");
   const channelId = parseId(channel, "id", "channel id");
+  const calendarChannel = expectStatus(await creator.request(`/api/servers/${serverId}/channels`, {
+    method: "POST", json: { name: "calendar-integration", channelType: "calendar" },
+  }), 201, "create disposable calendar channel");
+  assert.equal(calendarChannel.channelType, "calendar",
+    "calendar channel type must survive API validation and serialization");
+  const calendarChannelId = parseId(calendarChannel, "id", "calendar channel id");
+  const memberChannels = expectStatus(await member.request(`/api/servers/${serverId}/channels`),
+    200, "member sees accessible calendar channels");
+  assert.ok(memberChannels.some(item => item.id === calendarChannelId && item.channelType === "calendar"),
+    "calendar channels must be returned to authorized server members");
+  const outsiderChannels = expectStatus(await outsider.request(`/api/servers/${serverId}/channels`),
+    200, "outsider receives only channels they can access");
+  assert.ok(!outsiderChannels.some(item => item.id === calendarChannelId),
+    "calendar channel must respect the same access filtering as other channel types");
 
   creatorWs = await connect(creator);
   memberWs = await connect(member);
   creatorWs.send(JSON.stringify({ type: "subscribe", channel: `channel:${channelId}` }));
   memberWs.send(JSON.stringify({ type: "subscribe", channel: `channel:${channelId}` }));
+  creatorWs.send(JSON.stringify({ type: "subscribe", channel: `channel:${calendarChannelId}` }));
+  memberWs.send(JSON.stringify({ type: "subscribe", channel: `channel:${calendarChannelId}` }));
   await new Promise(resolve => setTimeout(resolve, 100));
+
+  const calendarStartsAt = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);
+  const calendarEventBroadcast = waitFor(memberWs, message =>
+    message.type === "event:created" && message.data?.channelId === calendarChannelId,
+  "calendar event broadcast to its authorized member");
+  const calendarEvent = expectStatus(await creator.request(`/api/channels/${calendarChannelId}/events`, {
+    method: "POST",
+    json: {
+      title: "Calendar Channel Event",
+      description: "synthetic calendar-only event",
+      startsAt: calendarStartsAt.toISOString(),
+      endsAt: null,
+      originalTimeZone: "UTC",
+    },
+  }), 201, "create event directly in calendar channel");
+  const calendarEventId = parseId(calendarEvent, "id", "calendar event id");
+  await calendarEventBroadcast;
+  const visibleCalendarEvents = expectStatus(await member.request(`/api/channels/${calendarChannelId}/events`),
+    200, "authorized member sees events in the calendar channel");
+  assert.ok(visibleCalendarEvents.some(event => event.id === calendarEventId),
+    "calendar channel must show its created event through the shared event API");
+  const calendarRsvp = expectStatus(await member.request(
+    `/api/channels/${calendarChannelId}/events/${calendarEventId}/response`,
+    { method: "PUT", json: { status: "yes" } },
+  ), 200, "member RSVPs to a calendar-channel event");
+  assert.equal(calendarRsvp.myResponse?.status, "yes",
+    "calendar channel events must use the existing RSVP flow");
+  expectStatus(await outsider.request(`/api/channels/${calendarChannelId}/events`),
+    403, "outsider cannot list events in an inaccessible calendar channel");
+  expectStatus(await outsider.request(`/api/channels/${calendarChannelId}/events/${calendarEventId}/response`, {
+    method: "PUT", json: { status: "yes" },
+  }), 403, "outsider cannot RSVP in an inaccessible calendar channel");
+  const calendarMessages = expectStatus(await creator.request(`/api/channels/${calendarChannelId}/messages`),
+    200, "calendar event creation does not create a hidden chat announcement");
+  assert.equal(calendarMessages.length, 0,
+    "calendar channel events belong to the calendar surface rather than an invisible message stream");
+  console.log("PASS calendar channel type, shared event creation/list/RSVP, WebSocket delivery and channel access");
 
   const now = Date.now();
   const startsAt = new Date(now + 40 * 24 * 60 * 60 * 1000);
@@ -427,6 +503,74 @@ try {
   const broadcastAnnouncement = await messageToMember;
   assert.equal(broadcastAnnouncement.data.content, announcement);
   console.log("PASS event creation persists the announcement and broadcasts it into another member's message stream");
+
+  const creatorIdentity = expectStatus(await creator.request("/api/auth/me"),
+    200, "read synthetic creator identity for private-message fixtures");
+  const creatorId = parseId(creatorIdentity, "id", "synthetic creator id");
+  const memberIdentity = expectStatus(await member.request("/api/auth/me"),
+    200, "read synthetic member identity for private-message fixtures");
+  const memberId = parseId(memberIdentity, "id", "synthetic member id");
+  const giphySentinel = "[[giphy-gif]]https://media.giphy.com/media/isolated-test/giphy.gif";
+
+  const channelGifEvent = waitFor(memberWs, message =>
+    message.type === "message:new"
+    && message.data?.channelId === channelId
+    && message.data?.content === giphySentinel,
+  "GIPHY sentinel broadcast to the second channel account");
+  const sentChannelGif = expectStatus(await creator.request(`/api/channels/${channelId}/messages`, {
+    method: "POST", json: { content: giphySentinel },
+  }), 201, "send a GIPHY sentinel through the channel message endpoint");
+  assert.equal(sentChannelGif.content, giphySentinel);
+  assert.deepEqual(sentChannelGif.attachments, [], "URL-only GIF messages must not create message attachments");
+  assert.equal((await channelGifEvent).data.content, giphySentinel,
+    "channel realtime payload must carry the exact sentinel");
+  const memberChannelHistory = expectStatus(await member.request(`/api/channels/${channelId}/messages`),
+    200, "read the second account's channel history after the GIF broadcast");
+  assert.ok(memberChannelHistory.some(message => message.id === sentChannelGif.id && message.content === giphySentinel),
+    "channel history must return the exact persisted sentinel");
+  assert.equal(existsSync(giphyFetchMarker), false,
+    "sending and reading a valid channel GIF sentinel must make zero outbound GIPHY requests");
+
+  const dmGifEvent = waitFor(memberWs, message =>
+    message.type === "dm_message"
+    && message.data?.senderId === creatorId
+    && message.data?.recipientId === memberId
+    && message.data?.content === giphySentinel,
+  "GIPHY sentinel delivered to the second direct-message account");
+  const sentDmGif = expectStatus(await creator.request(`/api/dms/${memberId}`, {
+    method: "POST", json: { content: giphySentinel },
+  }), 201, "send a GIPHY sentinel through the direct-message endpoint");
+  assert.equal(sentDmGif.content, giphySentinel);
+  assert.equal((await dmGifEvent).data.content, giphySentinel,
+    "direct-message realtime payload must carry the exact sentinel");
+  const memberDmHistory = expectStatus(await member.request(`/api/dms/${creatorId}`),
+    200, "read the second account's direct-message history after the GIF delivery");
+  assert.ok(memberDmHistory.some(message => message.id === sentDmGif.id && message.content === giphySentinel),
+    "direct-message history must return the exact persisted sentinel");
+
+  const group = expectStatus(await creator.request("/api/dm-groups", {
+    method: "POST", json: { name: "Temporary GIPHY Integration Group", memberIds: [memberId] },
+  }), 201, "create a two-account disposable group conversation");
+  const groupId = parseId(group, "id", "disposable group id");
+  const groupGifEvent = waitFor(memberWs, message =>
+    message.type === "dm_group:message"
+    && message.data?.groupId === groupId
+    && message.data?.content === giphySentinel,
+  "GIPHY sentinel delivered to the second group-DM account");
+  const sentGroupGif = expectStatus(await creator.request(`/api/dm-groups/${groupId}/messages`, {
+    method: "POST", json: { content: giphySentinel },
+  }), 201, "send a GIPHY sentinel through the group-DM endpoint");
+  assert.equal(sentGroupGif.content, giphySentinel);
+  assert.equal((await groupGifEvent).data.content, giphySentinel,
+    "group-DM realtime payload must carry the exact sentinel");
+  const memberGroupHistory = expectStatus(await member.request(`/api/dm-groups/${groupId}/messages`),
+    200, "read the second account's group-DM history after the GIF delivery");
+  assert.ok(memberGroupHistory.some(message => message.id === sentGroupGif.id && message.content === giphySentinel),
+    "group-DM history must return the exact persisted sentinel");
+  const giphyFetches = existsSync(giphyFetchMarker) ? readFileSync(giphyFetchMarker, "utf8") : "";
+  assert.equal(giphyFetches, "",
+    `channel, DM, and group-DM URL-only messages must make zero outbound GIPHY requests: ${giphyFetches}`);
+  console.log("PASS URL-only GIPHY sentinel round-trips through channel, direct-message, and group-DM REST history plus second-account WebSocket delivery without downloading media");
 
   expectStatus(await outsider.request(`/api/channels/${channelId}/events`),
     403, "outsider cannot list events in a private server channel");

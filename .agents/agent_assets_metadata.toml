@@ -98,3 +98,59 @@ mtime_ms = 1790266699392
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/c9fc59db-4339-4c97-bca7-4ab500354683/54f70604-3c37-4af8-bb74-c731a7a9b8dd"
 storage_version_token = "1790266712699674"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "pMgAAvM-gidlDz2U5m4q3"
+uri = "file://screenshots/calendar-channel-create.jpg"
+type = "image"
+title = "Nuevo tipo Calendario"
+description = "El formulario de canal muestra Calendario y describe voz como función disponible."
+logical_id = "31d0f93a-6349-4f1b-a0da-86fec169f229"
+content_hash = "sha256:0c26b83ab8d3902779440ab6494c1661b860b59a7aa407371d7e8066056007d1"
+size = 38116
+mtime_ms = 1790268480866
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/31d0f93a-6349-4f1b-a0da-86fec169f229/a5e2f364-252f-42a7-b8b3-4bb0294e48a4"
+storage_version_token = "1790268609327665"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "pCKJh1s5TLft4pKg-9OMY"
+uri = "file://screenshots/calendar-channel-main.jpg"
+type = "image"
+title = "Calendario como contenido principal"
+description = "Vista de próximos, pasados y creación de eventos en un canal calendario aislado."
+logical_id = "b439735a-5be1-4792-bcbe-9b7c76c2cd0e"
+content_hash = "sha256:61907f48f9c03cca32b890d4b5755c332974031ee7d3eb3677b376185b563871"
+size = 25866
+mtime_ms = 1790268482626
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/b439735a-5be1-4792-bcbe-9b7c76c2cd0e/f11b9957-366b-4f8f-aae3-70c06370dbed"
+storage_version_token = "1790268609926428"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "8kc_xW7ggGJXBiovaLq8O"
+uri = "file://screenshots/giphy-picker-trending.jpg"
+type = "image"
+title = "Selector GIF y atribución"
+description = "Selector real con tendencias simuladas y atribución visible a GIPHY."
+logical_id = "4ff0038c-431b-4f87-8501-7eb99d76f95a"
+content_hash = "sha256:6e9887318e2d7cc1af26980bf221955d337b9f6d8eff933216334bd6208dd602"
+size = 24928
+mtime_ms = 1790268484454
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/4ff0038c-431b-4f87-8501-7eb99d76f95a/0ec17c16-f961-47dc-a701-f65191469cbb"
+storage_version_token = "1790268610503693"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "k59yLkSfwUX-xuSuJ7ufD"
+uri = "file://screenshots/giphy-picker-unavailable.jpg"
+type = "image"
+title = "Selector sin clave"
+description = "Estado explicativo cuando falta la clave, sin romper el campo de escritura."
+logical_id = "d9d0dfa5-8030-42a4-be98-485359acb08b"
+content_hash = "sha256:b3998df68232460583df7430c6ead29d000c20f802690810a0341ee824095aad"
+size = 26797
+mtime_ms = 1790268486522
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/d9d0dfa5-8030-42a4-be98-485359acb08b/fd1d7916-29f6-4fd0-981a-9d24178b8db6"
+storage_version_token = "1790268611114144"
+content_type = "image/jpeg"

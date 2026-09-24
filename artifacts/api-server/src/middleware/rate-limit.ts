@@ -51,3 +51,12 @@ export const channelFileVerifyRateLimit = rateLimit({
   keyGenerator: keyBySessionOrIp,
   message: { error: "File verification requests are limited to 4 per minute." },
 });
+
+export const giphySearchRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyBySessionOrIp,
+  message: { error: "Demasiadas búsquedas de GIF. Espera un minuto e inténtalo de nuevo." },
+});

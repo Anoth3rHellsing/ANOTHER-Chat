@@ -1991,7 +1991,7 @@ components:
           type: string
         channelType:
           type: string
-          enum: [text, voice, media]
+          enum: [text, voice, media, calendar]
         restrictedRoles:
           type: array
           items:
@@ -2429,7 +2429,7 @@ components:
           maxLength: 100
         channelType:
           type: string
-          enum: [text, voice, media]
+          enum: [text, voice, media, calendar]
         restrictedRoles:
           type: array
           items:
@@ -2446,7 +2446,7 @@ components:
           maxLength: 100
         channelType:
           type: string
-          enum: [text, voice, media]
+          enum: [text, voice, media, calendar]
         restrictedRoles:
           type: array
           items:

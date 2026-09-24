@@ -67,6 +67,9 @@ import { MentionList, useMentionAutocomplete } from '@/components/mention-autoco
 import { DmGroupModal } from '@/components/dm-group-modal';
 import { DmGroupConversation } from '@/components/dm-group-conversation';
 import { EmojiPicker, QUICK_EMOJIS, insertEmojiAtCursor } from '@/components/emoji-picker';
+import { GifPicker } from '@/components/gif-picker';
+import { GifMessage } from '@/components/gif-message';
+import { parseGiphyMessage, serializeGiphyMessage } from '@/lib/giphy';
 import { ReactionIndicators } from '@/components/reaction-indicators';
 import { updateChannelReactions, updateDmReactions, type MessageReaction } from '@/lib/reactions';
 import { format } from 'date-fns';
@@ -76,6 +79,13 @@ const CHANNEL_TYPE_ICON = {
   text: Hash,
   voice: Volume2,
   media: ImageIcon,
+  calendar: Calendar,
+} as const;
+const CHANNEL_TYPE_LABEL = {
+  text: 'Texto',
+  voice: 'Voz',
+  media: 'Media',
+  calendar: 'Calendario',
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -330,6 +340,7 @@ export default function AppLayout() {
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
   const [dmEmojiPickerMsgId, setDmEmojiPickerMsgId] = useState<number | null>(null);
   const [composerEmojiPicker, setComposerEmojiPicker] = useState<'channel' | 'dm' | null>(null);
+  const [composerGifPicker, setComposerGifPicker] = useState<'channel' | 'dm' | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(new Set());
 
   // Dismissed link previews (by message id)
@@ -389,7 +400,10 @@ export default function AppLayout() {
   }, [channels, activeServerId, activeChannelId]);
 
   const { data: members } = useGetServerMembers(activeServerId as number, { query: { enabled: !!activeServerId } as any });
-  const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
+  const selectedChannelType = channels?.find(channel => channel.id === activeChannelId)?.channelType ?? 'text';
+  const { data: messages } = useListMessages(activeChannelId as number, {}, {
+    query: { enabled: !!activeChannelId && selectedChannelType !== 'calendar' } as any,
+  });
   
   useEventRealtime();
 
@@ -695,10 +709,9 @@ export default function AppLayout() {
     typingTimeoutRef.current = setTimeout(() => sendTypingStop(), 2000);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    const hasContent = messageInput.trim().length > 0;
-    const hasAttachments = pendingAttachmentIds.length > 0;
+  const sendChannelContent = (content: string, isGif = false) => {
+    const hasContent = content.trim().length > 0;
+    const hasAttachments = !isGif && pendingAttachmentIds.length > 0;
     if ((!hasContent && !hasAttachments) || !activeChannelId || uploadingFile) return;
     const channelId = activeChannelId;
 
@@ -706,7 +719,7 @@ export default function AppLayout() {
       {
         channelId,
         data: {
-          content: messageInput.trim() || ' ',
+          content: content.trim() || ' ',
           ...(replyingTo ? { replyToId: replyingTo.id } : {}),
           ...(hasAttachments ? { attachmentIds: pendingAttachmentIds } : {}),
         },
@@ -721,14 +734,20 @@ export default function AppLayout() {
               return [...old, newMessage];
             }
           );
-          setMessageInput('');
+          if (!isGif) setMessageInput('');
           setReplyingTo(null);
-          setPendingFiles([]);
-          setPendingAttachmentIds([]);
+          if (!isGif) {
+            setPendingFiles([]);
+            setPendingAttachmentIds([]);
+          }
           sendTypingStop();
         }
       }
     );
+  };
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendChannelContent(messageInput);
   };
 
   const handleEditMessage = (e: React.FormEvent) => {
@@ -750,12 +769,11 @@ export default function AppLayout() {
     dmTypingTimeoutRef.current = setTimeout(() => activeDmUserId && sendDmTypingStop(activeDmUserId), 2000);
   };
 
-  const handleSendDm = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!dmInput.trim() || !activeDmUserId) return;
+  const sendDmContent = (content: string, isGif = false) => {
+    if (!content.trim() || !activeDmUserId) return;
     const recipientId = activeDmUserId;
     sendDm.mutate(
-      { userId: recipientId, data: { content: dmInput.trim(), ...(dmReplyingTo ? { replyToId: dmReplyingTo.id } : {}) } },
+      { userId: recipientId, data: { content: content.trim(), ...(dmReplyingTo ? { replyToId: dmReplyingTo.id } : {}) } },
       {
         onSuccess: (msg: any) => {
           queryClient.setQueriesData(
@@ -767,12 +785,16 @@ export default function AppLayout() {
             }
           );
           queryClient.invalidateQueries({ predicate: q => q.queryKey[0] === '/api/dms' });
-          setDmInput('');
+          if (!isGif) setDmInput('');
           setDmReplyingTo(null);
           if (activeDmUserId) sendDmTypingStop(activeDmUserId);
         }
       }
     );
+  };
+  const handleSendDm = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendDmContent(dmInput);
   };
 
   const handleJoinByCode = (e: React.FormEvent) => {
@@ -854,6 +876,8 @@ export default function AppLayout() {
 
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
+  const activeChannelType = (activeChannel as any)?.channelType ?? 'text';
+  const ActiveChannelIcon = CHANNEL_TYPE_ICON[activeChannelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
   const callPeer = (dmConversations ?? []).find((convo: any) => convo.otherUser?.id === webrtc.dmCallUserId)?.otherUser;
   const watchParticipantCandidates = webrtc.isInVoiceChannel
     ? [
@@ -1272,7 +1296,14 @@ export default function AppLayout() {
                 return (
                   <button
                     key={channel.id}
-                    onClick={() => { setActiveChannelId(channel.id); setShowClips(false); setMobilePanelDepth(2); }}
+                    onClick={() => {
+                      setActiveChannelId(channel.id);
+                      setShowClips(false);
+                      if (channelType === 'calendar') setShowMembers(false);
+                      setMobilePanelDepth(2);
+                    }}
+                    data-testid={`channel-item-${channel.id}`}
+                    aria-label={`${CHANNEL_TYPE_LABEL[channelType as keyof typeof CHANNEL_TYPE_LABEL] ?? 'Canal'}: ${channel.name}`}
                     className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : channelUnread || mentions ? 'bg-primary/5 text-foreground font-semibold hover:bg-primary/10' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                     style={hasVisual && vc.kind === 'gradient'
                       ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
@@ -1437,7 +1468,7 @@ export default function AppLayout() {
                         <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-normal min-w-0">
                           {msg.deletedAt
                             ? <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
-                            : msg.content}
+                            : <GifMessage content={msg.content} />}
                         </div>
                         {!msg.deletedAt && isOwn && (
                           <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
@@ -1510,10 +1541,12 @@ export default function AppLayout() {
                 onSubmit={handleSendDm}
                 className={`relative flex items-center bg-card border border-white/10 ${dmReplyingTo ? 'rounded-b-xl rounded-t-none border-t-0' : 'rounded-xl'}`}
               >
-                <button type="button" onClick={() => setComposerEmojiPicker(composerEmojiPicker === 'dm' ? null : 'dm')} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
+                <button type="button" onClick={() => { setComposerGifPicker(null); setComposerEmojiPicker(composerEmojiPicker === 'dm' ? null : 'dm'); }} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
                   <Smile className="w-5 h-5" />
                 </button>
                 {composerEmojiPicker === 'dm' && <EmojiPicker onSelect={emoji => insertEmojiAtCursor(dmInputRef.current, dmInput, emoji, setDmInput)} onClose={() => setComposerEmojiPicker(null)} />}
+                <button type="button" data-testid="button-dm-gif" onClick={() => { setComposerEmojiPicker(null); setComposerGifPicker(composerGifPicker === 'dm' ? null : 'dm'); }} className="p-2 text-xs font-semibold text-muted-foreground hover:text-primary" title="Buscar GIF" aria-label="Buscar GIF">GIF</button>
+                {composerGifPicker === 'dm' && <GifPicker onSelect={gif => sendDmContent(serializeGiphyMessage(gif.url), true)} onClose={() => setComposerGifPicker(null)} />}
                 <input
                   ref={dmInputRef}
                   type="text"
@@ -1552,10 +1585,12 @@ export default function AppLayout() {
             <div className="p-4 pt-0">
               <div className="h-6" />
               <form onSubmit={handleSendDm} className="relative flex items-center bg-card border border-white/10 rounded-xl">
-                <button type="button" onClick={() => setComposerEmojiPicker(composerEmojiPicker === 'dm' ? null : 'dm')} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
+                <button type="button" onClick={() => { setComposerGifPicker(null); setComposerEmojiPicker(composerEmojiPicker === 'dm' ? null : 'dm'); }} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
                   <Smile className="w-5 h-5" />
                 </button>
                 {composerEmojiPicker === 'dm' && <EmojiPicker onSelect={emoji => insertEmojiAtCursor(dmInputRef.current, dmInput, emoji, setDmInput)} onClose={() => setComposerEmojiPicker(null)} />}
+                <button type="button" data-testid="button-new-dm-gif" onClick={() => { setComposerEmojiPicker(null); setComposerGifPicker(composerGifPicker === 'dm' ? null : 'dm'); }} className="p-2 text-xs font-semibold text-muted-foreground hover:text-primary" title="Buscar GIF" aria-label="Buscar GIF">GIF</button>
+                {composerGifPicker === 'dm' && <GifPicker onSelect={gif => sendDmContent(serializeGiphyMessage(gif.url), true)} onClose={() => setComposerGifPicker(null)} />}
                 <input
                   ref={dmInputRef}
                   type="text"
@@ -1603,21 +1638,21 @@ export default function AppLayout() {
                 <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)}>
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <Hash className="w-5 h-5 text-muted-foreground" />
+                <ActiveChannelIcon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                 <span className="truncate">{activeChannel.name}</span>
                 {(activeChannel as any).restrictedRoles?.length > 0 && (
                   <span className="text-xs text-primary/60 font-mono">🔒 restringido</span>
                 )}
               </div>
               <div className="flex items-center gap-1">
-                <button
+                {activeChannelType !== 'calendar' && <button
                   onClick={() => setShowSearch(true)}
                   className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/5 rounded-md transition-colors"
                   title="Buscar mensajes"
                 >
                   <Search className="w-4 h-4" />
-                </button>
-                {(activeChannel as any).channelType === 'text' && <ChannelEventsEntry
+                </button>}
+                {activeChannelType === 'text' && <ChannelEventsEntry
                   channelName={activeChannel.name}
                   open={showEvents}
                   onClick={() => {
@@ -1640,7 +1675,16 @@ export default function AppLayout() {
               </div>
             </div>
 
-            {(activeChannel as any).channelType === 'media' ? (
+            {activeChannelType === 'calendar' ? (
+              <ChannelEventsPanel
+                key={activeChannel.id}
+                channelId={activeChannel.id}
+                onClose={() => {}}
+                currentUser={user}
+                userPermissions={myPermissions}
+                layout="main"
+              />
+            ) : activeChannelType === 'media' ? (
               <ChannelFilesPanel
                 channelId={activeChannel.id}
                 currentUser={user}
@@ -1657,7 +1701,7 @@ export default function AppLayout() {
 
                 let contentToRender = msg.content;
                 let announcedEventId: number | null = null;
-                if (contentToRender && !msg.deletedAt) {
+                if (contentToRender && !msg.deletedAt && !parseGiphyMessage(contentToRender)) {
                   const match = contentToRender.match(/\[event:(\d+)\]/);
                   if (match) {
                     announcedEventId = parseInt(match[1], 10);
@@ -1715,7 +1759,7 @@ export default function AppLayout() {
                               <div className="flex flex-col gap-1">
                                 {contentToRender && contentToRender.trim() !== '' && (
                                   <div>
-                                    {contentToRender}
+                                     <GifMessage content={contentToRender} />
                                     {msg.editedAt && <span className="text-[10px] text-muted-foreground ml-2 font-mono">(editado)</span>}
                                   </div>
                                 )}
@@ -1923,7 +1967,7 @@ export default function AppLayout() {
                   <Paperclip className="w-5 h-5" />
                 </button>
 
-                <button type="button" onClick={() => setComposerEmojiPicker(composerEmojiPicker === 'channel' ? null : 'channel')} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
+                <button type="button" onClick={() => { setComposerGifPicker(null); setComposerEmojiPicker(composerEmojiPicker === 'channel' ? null : 'channel'); }} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
                   <Smile className="w-5 h-5" />
                 </button>
                 {composerEmojiPicker === 'channel' && (
@@ -1935,6 +1979,8 @@ export default function AppLayout() {
                     onClose={() => setComposerEmojiPicker(null)}
                   />
                 )}
+                <button type="button" data-testid="button-channel-gif" onClick={() => { setComposerEmojiPicker(null); setComposerGifPicker(composerGifPicker === 'channel' ? null : 'channel'); }} className="p-2 text-xs font-semibold text-muted-foreground hover:text-primary" title="Buscar GIF" aria-label="Buscar GIF">GIF</button>
+                {composerGifPicker === 'channel' && <GifPicker onSelect={gif => sendChannelContent(serializeGiphyMessage(gif.url), true)} onClose={() => setComposerGifPicker(null)} />}
                 <input 
                   ref={msgInputRef}
                   type="text"
@@ -2032,7 +2078,7 @@ export default function AppLayout() {
       )}
 
       {/* 5. EVENTS LIST COLUMN — only in server mode */}
-      {activeView === 'servers' && showEvents && activeChannel && (activeChannel as any).channelType === 'text' && (
+      {activeView === 'servers' && showEvents && activeChannel && activeChannelType === 'text' && (
         <ChannelEventsPanel
           key={activeChannel.id}
           channelId={activeChannel.id}

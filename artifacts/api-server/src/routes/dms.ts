@@ -10,6 +10,7 @@ import {
 import { requireAuth } from "../lib/auth";
 import { encryptMessage } from "../lib/crypto";
 import { decryptDirectMessage } from "../lib/message-crypto";
+import { isMalformedGiphyMessage } from "../lib/giphy";
 import { logger } from "../lib/logger";
 import {
   groupReactions,
@@ -376,6 +377,10 @@ router.post("/dms/:userId", requireAuth, async (req, res): Promise<void> => {
   if (!recipient) { res.status(404).json({ error: "Usuario no encontrado" }); return; }
 
   const { content, replyToId } = req.body;
+  if (isMalformedGiphyMessage(content)) {
+    res.status(400).json({ error: "La dirección del GIF no pertenece a un servidor multimedia de GIPHY admitido." });
+    return;
+  }
   if (!content || typeof content !== "string" || content.trim().length === 0) {
     res.status(400).json({ error: "El contenido no puede estar vacío" }); return;
   }

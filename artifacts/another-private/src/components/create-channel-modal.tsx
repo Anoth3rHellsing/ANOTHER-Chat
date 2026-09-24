@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Hash, Volume2, Image as ImageIcon } from 'lucide-react';
+import { X, Hash, Volume2, Image as ImageIcon, CalendarDays } from 'lucide-react';
 import { useCreateChannel } from '@workspace/api-client-react';
 
 interface CreateChannelModalProps {
@@ -20,7 +20,7 @@ const CHANNEL_TYPES = [
     type: 'voice',
     icon: Volume2,
     label: 'Voz',
-    description: 'Canal de voz. (Próximamente)',
+    description: 'Canal para llamadas de voz en tiempo real.',
   },
   {
     type: 'media',
@@ -28,10 +28,16 @@ const CHANNEL_TYPES = [
     label: 'Media',
     description: 'Comparte archivos e imágenes con vista previa visual.',
   },
+  {
+    type: 'calendar',
+    icon: CalendarDays,
+    label: 'Calendario',
+    description: 'Crea eventos, consulta próximos y pasados, y responde si asistirás.',
+  },
 ] as const;
 
 export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: CreateChannelModalProps) {
-  const [channelType, setChannelType] = useState<'text' | 'voice' | 'media'>('text');
+  const [channelType, setChannelType] = useState<'text' | 'voice' | 'media' | 'calendar'>('text');
   const [name, setName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
 
@@ -84,8 +90,9 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
             <button
               onClick={onClose}
               className="p-1 text-muted-foreground hover:text-white transition-colors"
+              aria-label="Cerrar creación de canal"
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -102,6 +109,8 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
                   key={type}
                   type="button"
                   onClick={() => setChannelType(type)}
+                  aria-pressed={channelType === type}
+                  data-testid={`channel-type-${type}`}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all text-left ${
                     channelType === type
                       ? 'border-primary/40 bg-primary/10 text-foreground glow-effect'
@@ -134,6 +143,7 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
               <Hash className="w-4 h-4 text-muted-foreground ml-3 flex-shrink-0" />
               <input
                 type="text"
+                data-testid="input-channel-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="nuevo-canal"
@@ -179,6 +189,7 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
             </button>
             <button
               type="submit"
+              data-testid="button-create-channel"
               disabled={!normalizedName.trim() || createChannel.isPending}
               className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
             >

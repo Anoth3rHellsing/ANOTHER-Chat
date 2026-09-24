@@ -536,7 +536,7 @@ export const ListChannelsResponseItem = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
-  "channelType": zod.enum(['text', 'voice', 'media']),
+  "channelType": zod.enum(['text', 'voice', 'media', 'calendar']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
   "createdAt": zod.coerce.date()
@@ -557,7 +557,7 @@ export const createChannelBodyNameMax = 100;
 
 export const CreateChannelBody = zod.object({
   "name": zod.string().min(1).max(createChannelBodyNameMax),
-  "channelType": zod.enum(['text', 'voice', 'media']).optional(),
+  "channelType": zod.enum(['text', 'voice', 'media', 'calendar']).optional(),
   "restrictedRoles": zod.array(zod.number()).optional(),
   "visualConfig": zod.record(zod.unknown()).optional()
 })
@@ -566,7 +566,7 @@ export const CreateChannelResponse = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
-  "channelType": zod.enum(['text', 'voice', 'media']),
+  "channelType": zod.enum(['text', 'voice', 'media', 'calendar']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
   "createdAt": zod.coerce.date()
@@ -586,7 +586,7 @@ export const updateChannelBodyNameMax = 100;
 
 export const UpdateChannelBody = zod.object({
   "name": zod.string().min(1).max(updateChannelBodyNameMax).optional(),
-  "channelType": zod.enum(['text', 'voice', 'media']).optional(),
+  "channelType": zod.enum(['text', 'voice', 'media', 'calendar']).optional(),
   "restrictedRoles": zod.array(zod.number()).optional(),
   "visualConfig": zod.record(zod.unknown()).optional()
 })
@@ -595,7 +595,7 @@ export const UpdateChannelResponse = zod.object({
   "id": zod.number(),
   "serverId": zod.number(),
   "name": zod.string(),
-  "channelType": zod.enum(['text', 'voice', 'media']),
+  "channelType": zod.enum(['text', 'voice', 'media', 'calendar']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
   "createdAt": zod.coerce.date()

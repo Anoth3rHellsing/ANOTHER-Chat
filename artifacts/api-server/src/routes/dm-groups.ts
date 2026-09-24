@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { encryptMessage } from "../lib/crypto";
 import { decryptGroupMessage } from "../lib/message-crypto";
+import { isMalformedGiphyMessage } from "../lib/giphy";
 import {
   groupReactions,
   isSingleEmoji,
@@ -289,6 +290,10 @@ router.post("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promi
     const userId = req.session.userId!;
     const groupId = parseInt(req.params.groupId as string, 10);
     const { content } = req.body;
+    if (isMalformedGiphyMessage(content)) {
+      res.status(400).json({ error: "La dirección del GIF no pertenece a un servidor multimedia de GIPHY admitido." });
+      return;
+    }
     if (!content?.trim()) { res.status(400).json({ error: "Contenido requerido" }); return; }
 
     const check = await rawQuery(`SELECT 1 FROM dm_group_members WHERE group_id=$1 AND user_id=$2`, [groupId, userId]);

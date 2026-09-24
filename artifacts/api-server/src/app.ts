@@ -15,6 +15,7 @@ import { csrfProtection } from "./middleware/csrf";
 import { soundboardUploadSecurity } from "./middleware/soundboard-upload-security";
 import { SESSION_MAX_AGE_MS } from "./lib/csrf";
 import { SESSION_SECRET } from "./lib/session-config";
+import { authorizeStoryMedia } from "./routes/stories";
 
 const PgSession = ConnectPgSimple(session);
 
@@ -172,7 +173,7 @@ app.post("/api/channels/:channelId/messages", messageRateLimit);
 app.post("/api/dms/:userId", messageRateLimit);
 
 // Serve uploaded files — hardened headers to prevent XSS
-app.use("/api/uploads", soundboardUploadSecurity, express.static(path.join(process.cwd(), "uploads")));
+app.use("/api/uploads", soundboardUploadSecurity, authorizeStoryMedia, express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api", router);
 app.use(finalErrorHandler);

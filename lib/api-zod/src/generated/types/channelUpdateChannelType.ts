@@ -13,4 +13,5 @@ export const ChannelUpdateChannelType = {
   text: 'text',
   voice: 'voice',
   media: 'media',
+  calendar: 'calendar',
 } as const;

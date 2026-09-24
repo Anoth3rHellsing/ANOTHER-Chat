@@ -18,6 +18,7 @@ import moderationRouter from "./moderation";
 import soundboardRouter from "./soundboard";
 import eventsRouter from "./events";
 import channelFilesRouter from "./channel-files";
+import giphyRouter from "./giphy";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(moderationRouter);
 router.use(soundboardRouter);
 router.use(eventsRouter);
 router.use(channelFilesRouter);
+router.use(giphyRouter);
 
 export default router;

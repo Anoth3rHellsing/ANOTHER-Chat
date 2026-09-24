@@ -123,12 +123,14 @@ export function ChannelEventsPanel({
   channelId, 
   onClose,
   currentUser,
-  userPermissions
+  userPermissions,
+  layout = 'panel',
 }: { 
   channelId: number, 
   onClose: () => void,
   currentUser: any,
-  userPermissions: number
+  userPermissions: number,
+  layout?: 'panel' | 'main',
 }) {
   const { data: events, isLoading } = useListChannelEvents(channelId, {
     query: { queryKey: getListChannelEventsQueryKey(channelId) }
@@ -152,12 +154,20 @@ export function ChannelEventsPanel({
     return events.filter(e => e.canceledAt || new Date(e.startsAt) < new Date()).sort((a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime());
   }, [events]);
 
+  const isMainLayout = layout === 'main';
+
   return (
-    <div id="channel-events-panel" className="w-80 max-w-[85vw] absolute inset-y-0 right-0 z-20 md:static bg-card/95 md:bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0 shadow-2xl md:shadow-none">
+    <div
+      id={isMainLayout ? 'channel-events-calendar' : 'channel-events-panel'}
+      data-testid={isMainLayout ? 'channel-calendar-content' : 'channel-events-panel'}
+      className={isMainLayout
+        ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-background'
+        : 'w-80 max-w-[85vw] absolute inset-y-0 right-0 z-20 md:static bg-card/95 md:bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0 shadow-2xl md:shadow-none'}
+    >
       <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between flex-shrink-0 bg-card/30 backdrop-blur-sm">
         <div className="flex items-center gap-2 text-foreground font-medium">
           <Calendar className="w-4 h-4 text-primary" />
-          <span>Eventos</span>
+          <span>{isMainLayout ? 'Calendario de eventos' : 'Eventos'}</span>
         </div>
         <div className="flex items-center gap-1">
           {view === 'list' && (
@@ -165,17 +175,23 @@ export function ChannelEventsPanel({
               onClick={() => setView('create')}
               className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
               title="Crear evento"
+              aria-label="Crear evento"
+              data-testid="button-create-event"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               <span>Crear evento</span>
             </button>
           )}
-          <button 
-            onClick={onClose}
-            className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/5 rounded-md transition-colors"
-          >
-            <XIcon className="w-4 h-4" />
-          </button>
+          {!isMainLayout && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/5 rounded-md transition-colors"
+              aria-label="Cerrar eventos"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -276,7 +292,10 @@ function EventItem({ event, channelId, canManage, onEdit }: { event: any, channe
   const isPast = new Date(event.startsAt) < new Date();
   
   return (
-    <div className={`bg-secondary/40 border ${event.canceledAt ? 'border-destructive/30' : 'border-white/10'} rounded-lg overflow-hidden flex flex-col`}>
+    <div
+      data-testid={`event-item-${event.id}`}
+      className={`bg-secondary/40 border ${event.canceledAt ? 'border-destructive/30' : 'border-white/10'} rounded-lg overflow-hidden flex flex-col`}
+    >
       <div 
         className="p-3 cursor-pointer hover:bg-white/5 transition-colors group focus:outline-none focus:ring-2 focus:ring-primary/50"
         onClick={() => setExpanded(!expanded)}
@@ -341,6 +360,7 @@ function EventItem({ event, channelId, canManage, onEdit }: { event: any, channe
                 <button 
                   onClick={() => handleRSVP('yes')}
                   aria-label="Responder Asistiré"
+                  data-testid={`button-rsvp-yes-${event.id}`}
                   className={`flex-1 py-1.5 text-xs rounded transition-colors ${event.myResponse?.status === 'yes' ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-white/5 text-muted-foreground hover:bg-white/10'}`}
                 >
                   Asistiré
@@ -348,6 +368,7 @@ function EventItem({ event, channelId, canManage, onEdit }: { event: any, channe
                 <button 
                   onClick={() => handleRSVP('maybe')}
                   aria-label="Responder Tal vez"
+                  data-testid={`button-rsvp-maybe-${event.id}`}
                   className={`flex-1 py-1.5 text-xs rounded transition-colors ${event.myResponse?.status === 'maybe' ? 'bg-secondary text-foreground border border-white/20' : 'bg-white/5 text-muted-foreground hover:bg-white/10'}`}
                 >
                   Tal vez
@@ -355,6 +376,7 @@ function EventItem({ event, channelId, canManage, onEdit }: { event: any, channe
                 <button 
                   onClick={() => handleRSVP('no')}
                   aria-label="Responder No asistiré"
+                  data-testid={`button-rsvp-no-${event.id}`}
                   className={`flex-1 py-1.5 text-xs rounded transition-colors ${event.myResponse?.status === 'no' ? 'bg-destructive/20 text-destructive border border-destructive/30' : 'bg-white/5 text-muted-foreground hover:bg-white/10'}`}
                 >
                   No
@@ -574,6 +596,7 @@ function EventForm({ channelId, event, onCancel, onSuccess }: { channelId: numbe
         <label className="text-xs font-medium text-foreground">Título</label>
         <input 
           type="text" 
+          data-testid="input-event-title"
           value={title}
           onChange={e => setTitle(e.target.value)}
           maxLength={120}
@@ -586,6 +609,7 @@ function EventForm({ channelId, event, onCancel, onSuccess }: { channelId: numbe
         <label className="text-xs font-medium text-foreground">Inicio</label>
         <input 
           type="datetime-local" 
+          data-testid="input-event-starts-at"
           value={startsAt}
           onChange={e => setStartsAt(e.target.value)}
           className="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary transition-colors [color-scheme:dark]"
@@ -624,6 +648,7 @@ function EventForm({ channelId, event, onCancel, onSuccess }: { channelId: numbe
         </button>
         <button 
           type="submit"
+          data-testid="button-save-event"
           disabled={isPending}
           className="flex-1 py-2 rounded text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors disabled:opacity-50"
         >

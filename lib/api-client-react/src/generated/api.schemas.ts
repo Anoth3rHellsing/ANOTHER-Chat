@@ -166,6 +166,7 @@ export const ChannelChannelType = {
   text: 'text',
   voice: 'voice',
   media: 'media',
+  calendar: 'calendar',
 } as const;
 
 /**
@@ -539,6 +540,7 @@ export const ChannelInputChannelType = {
   text: 'text',
   voice: 'voice',
   media: 'media',
+  calendar: 'calendar',
 } as const;
 
 export type ChannelInputVisualConfig = { [key: string]: unknown };
@@ -561,6 +563,7 @@ export const ChannelUpdateChannelType = {
   text: 'text',
   voice: 'voice',
   media: 'media',
+  calendar: 'calendar',
 } as const;
 
 export type ChannelUpdateVisualConfig = { [key: string]: unknown };

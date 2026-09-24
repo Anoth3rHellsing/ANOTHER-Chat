@@ -1,9 +1,12 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, MessageSquare, Send, Smile, Users as UsersIcon } from 'lucide-react';
+import { ChevronLeft, ImagePlus, MessageSquare, Send, Smile, Users as UsersIcon } from 'lucide-react';
 import { csrfFetch } from '@workspace/api-client-react';
 import { EmojiPicker, insertEmojiAtCursor, QUICK_EMOJIS } from '@/components/emoji-picker';
+import { GifMessage } from '@/components/gif-message';
+import { GifPicker } from '@/components/gif-picker';
 import { ReactionIndicators } from '@/components/reaction-indicators';
+import { serializeGiphyMessage } from '@/lib/giphy';
 import type { MessageReaction } from '@/lib/reactions';
 import { useRealtimeMessages } from '@/providers/realtime-transport';
 
@@ -40,6 +43,7 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [reactionError, setReactionError] = useState<string | null>(null);
@@ -123,8 +127,8 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
       }
       return response.json() as Promise<GroupMessage>;
     },
-    onSuccess: async () => {
-      setMessage('');
+    onSuccess: async (_data, content) => {
+      if (message.trim() === content) setMessage('');
       setSendError(null);
       setEmojiPickerOpen(false);
       await queryClient.invalidateQueries({ queryKey: messagesQueryKey });
@@ -255,7 +259,9 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
                     </div>
                   )}
                   <div className="relative">
-                    <div className="whitespace-pre-wrap break-words text-sm leading-normal text-foreground/90">{msg.content}</div>
+                    <div className="text-sm leading-normal text-foreground/90">
+                      <GifMessage content={msg.content} />
+                    </div>
                     <div className="absolute -top-2 right-0 z-10 flex items-center gap-1 rounded-md border border-border bg-card p-1 shadow-lg md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                       <div className="flex items-center gap-0.5" role="group" aria-label="Reacciones rápidas">
                         {QUICK_EMOJIS.slice(0, 4).map(emoji => (
@@ -315,10 +321,26 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
             type="button"
             aria-label="Insertar emoji"
             title="Emoji"
-            onClick={() => setEmojiPickerOpen(open => !open)}
+            onClick={() => {
+              setGifPickerOpen(false);
+              setEmojiPickerOpen(open => !open);
+            }}
             className="p-3 text-muted-foreground transition-colors hover:text-primary"
           >
             <Smile className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Insertar GIF"
+            title="GIF"
+            onClick={() => {
+              setEmojiPickerOpen(false);
+              setGifPickerOpen(open => !open);
+            }}
+            disabled={sendMessage.isPending}
+            className="p-3 text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
+          >
+            <ImagePlus className="h-5 w-5" />
           </button>
           <input
             ref={inputRef}
@@ -345,6 +367,16 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
                 onClose={() => setEmojiPickerOpen(false)}
               />
             </div>
+          )}
+          {gifPickerOpen && (
+            <GifPicker
+              onSelect={gif => {
+                setGifPickerOpen(false);
+                setSendError(null);
+                sendMessage.mutate(serializeGiphyMessage(gif.url));
+              }}
+              onClose={() => setGifPickerOpen(false)}
+            />
           )}
         </form>
       </div>

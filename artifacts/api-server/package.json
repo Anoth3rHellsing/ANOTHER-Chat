@@ -8,6 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "migrate-message-encryption": "pnpm run build && node --enable-source-maps ./dist/scripts/migrate-message-encryption.mjs",
+    "test:giphy": "node ./tests/giphy-proxy.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
