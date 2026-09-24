@@ -61,6 +61,8 @@ export function WatchPanel({
 }: WatchPanelProps) {
   const [startUrl, setStartUrl] = useState('');
   const [addUrl, setAddUrl] = useState('');
+  const lastAudibleVolume = useRef(localVolume > 0 ? localVolume : 0.6);
+  if (localVolume > 0) lastAudibleVolume.current = localVolume;
 
   const [showWarning, setShowWarning] = useState(() => {
     try {
@@ -314,7 +316,7 @@ export function WatchPanel({
               
               <div className="flex items-center gap-1.5">
                 <button 
-                  onClick={() => onLocalVolumeChange(localVolume === 0 ? 1 : 0)}
+                  onClick={() => onLocalVolumeChange(localVolume === 0 ? lastAudibleVolume.current : 0)}
                   className="text-muted-foreground hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded p-1"
                   aria-label={localVolume === 0 ? 'Activar volumen local' : 'Silenciar volumen local'}
                   title="Volumen local"

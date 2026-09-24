@@ -14,3 +14,4 @@
 - [Notification preference scope](notification-preference-scope.md) — notification choices are account-keyed in this browser, not synchronized across devices
 - [Soundboard local playback](soundboard-local-playback.md) — call clips travel as scoped realtime triggers; each client plays audio locally with an independent mute and gain
 - [Realtime session mutations](realtime-session-mutations.md) — after asynchronous lookups, recheck membership and read the latest session before mutating shared in-memory state
+- [SoundCloud audio activation](soundcloud-audio-activation.md) — positive widget volume and brief progress do not prove audible autoplay; offer a local user gesture

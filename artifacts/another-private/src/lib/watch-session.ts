@@ -218,6 +218,16 @@ export function clampWatchVolume(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.7;
 }
 
+// UI state is normalized to [0, 1]. Both official player APIs currently use
+// integer percentages, but keep platform conversions at their respective boundaries.
+export function toYouTubePlayerVolume(normalized: number): number {
+  return Math.round(clampWatchVolume(normalized) * 100);
+}
+
+export function toSoundCloudWidgetVolume(normalized: number): number {
+  return Math.round(clampWatchVolume(normalized) * 100);
+}
+
 export const WATCH_DRIFT_CORRECTION_THRESHOLD_MS = 2_000;
 
 export function shouldCorrectWatchDrift(expectedMs: number, actualMs: number): boolean {

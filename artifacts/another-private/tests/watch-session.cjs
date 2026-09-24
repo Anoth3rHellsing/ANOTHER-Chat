@@ -19,6 +19,8 @@ const {
   isWatchStateMessage,
   normalizeWatchUrl,
   shouldCorrectWatchDrift,
+  toSoundCloudWidgetVolume,
+  toYouTubePlayerVolume,
 } = compiledModule.exports;
 
 const youtube = normalizeWatchUrl('https://youtu.be/aqz-KE-bpKQ?t=12');
@@ -77,6 +79,12 @@ for (const url of [
 assert.equal(clampWatchVolume(-1), 0);
 assert.equal(clampWatchVolume(1.5), 1);
 assert.equal(clampWatchVolume(Number.NaN), 0.7);
+for (const value of [0, 0.01, 0.25, 0.6, 0.75, 1]) {
+  assert.equal(toYouTubePlayerVolume(value), Math.round(value * 100));
+  assert.equal(toSoundCloudWidgetVolume(value), Math.round(value * 100));
+}
+assert.equal(toSoundCloudWidgetVolume(-1), 0);
+assert.equal(toSoundCloudWidgetVolume(2), 100);
 
 const session = {
   controllerUserId: 4,

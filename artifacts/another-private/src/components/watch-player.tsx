@@ -4,6 +4,8 @@ import {
   clampWatchVolume,
   expectedWatchPosition,
   shouldCorrectWatchDrift,
+  toSoundCloudWidgetVolume,
+  toYouTubePlayerVolume,
   type WatchItem,
   type WatchPlatform,
   type WatchSessionState,
@@ -37,6 +39,7 @@ interface YouTubePlayer {
   getCurrentTime: () => number;
   getDuration: () => number;
   getPlayerState: () => number;
+  isMuted: () => boolean;
   setVolume: (volume: number) => void;
   mute: () => void;
   unMute: () => void;
@@ -83,6 +86,7 @@ interface SoundCloudWidget {
   pause: () => void;
   seekTo: (positionMs: number) => void;
   setVolume: (volume: number) => void;
+  getVolume: (callback: (volume: number) => void) => void;
   getPosition: (callback: (positionMs: number) => void) => void;
   getDuration: (callback: (durationMs: number) => void) => void;
   getCurrentSound: (callback: (sound: SoundCloudSound | null) => void) => void;
@@ -241,6 +245,7 @@ export function WatchPlayer({
   const lastLoadedKeyRef = useRef('');
   const endedKeyRef = useRef('');
   const programmaticSoundCloudCommandRef = useRef(false);
+  const audioActivatedRef = useRef(false);
   const localVolumeRef = useRef({ localVolume, muted });
   localVolumeRef.current = { localVolume, muted };
 
@@ -258,14 +263,32 @@ export function WatchPlayer({
 
   const applyLocalVolume = useCallback(() => {
     const latest = localVolumeRef.current;
-    const level = latest.muted ? 0 : Math.round(clampWatchVolume(latest.localVolume) * 100);
+    const normalized = latest.muted ? 0 : clampWatchVolume(latest.localVolume);
     const player = youtubePlayerRef.current;
     if (player) {
-      player.setVolume(level);
-      if (level === 0) player.mute();
+      player.setVolume(toYouTubePlayerVolume(normalized));
+      if (normalized === 0) player.mute();
       else player.unMute();
     }
-    soundCloudWidgetRef.current?.setVolume(level);
+    soundCloudWidgetRef.current?.setVolume(toSoundCloudWidgetVolume(normalized));
+  }, []);
+
+  const confirmSoundCloudVolume = useCallback((widget: SoundCloudWidget) => {
+    widget.getVolume(actual => {
+      if (widget !== soundCloudWidgetRef.current) return;
+      const { localVolume: requested, muted: isMuted } = localVolumeRef.current;
+      const desired = toSoundCloudWidgetVolume(isMuted ? 0 : requested);
+      if (Number.isFinite(actual) && Math.round(actual) !== desired) {
+        // Loading a new widget can reset its own volume independently of the
+        // user's local preference. Never change it in the seek/drift path.
+        widget.setVolume(desired);
+        widget.getVolume(confirmed => {
+          if (widget !== soundCloudWidgetRef.current || Math.round(confirmed) === desired) return;
+          setPlaybackBlocked(true);
+          setPlayerError('SoundCloud no confirmó el volumen local. Pulsa Reproducir en este dispositivo.');
+        });
+      }
+    });
   }, []);
 
   const getExpectedPosition = useCallback(() => {
@@ -295,6 +318,7 @@ export function WatchPlayer({
   }, []);
 
   const playLocal = useCallback((fromUserGesture = false) => {
+    if (fromUserGesture) audioActivatedRef.current = true;
     setPlaybackBlocked(false);
     setPlayerError(null);
     if (currentRef.current.current?.platform === 'youtube' && youtubePlayerRef.current) {
@@ -303,21 +327,27 @@ export function WatchPlayer({
     }
     const widget = soundCloudWidgetRef.current;
     if (widget) {
-      programmaticSoundCloudCommandRef.current = !fromUserGesture;
+      programmaticSoundCloudCommandRef.current = true;
       widget.play();
       window.setTimeout(() => { programmaticSoundCloudCommandRef.current = false; }, 1200);
-      if (!fromUserGesture) {
-        window.setTimeout(() => {
-          widget.isPaused(paused => {
-            if (paused && currentRef.current.playing) {
-              setPlaybackBlocked(true);
-              setPlayerError('Tu navegador requiere que pulses Reproducir para activar el contenido.');
-            }
-          });
-        }, 1200);
-      }
+      window.setTimeout(() => {
+        if (widget !== soundCloudWidgetRef.current || !currentRef.current.playing) return;
+        confirmSoundCloudVolume(widget);
+        widget.isPaused(paused => {
+          if (widget !== soundCloudWidgetRef.current || !currentRef.current.playing) return;
+          if (paused) {
+            setPlaybackBlocked(true);
+            setPlayerError('Tu navegador requiere que pulses Reproducir para activar el contenido.');
+          } else if (!fromUserGesture && !audioActivatedRef.current) {
+            // The widget can advance while the browser suppresses audio. Its
+            // getVolume() reports its slider, not the browser's audio output.
+            setPlaybackBlocked(true);
+            setPlayerError('Si la pista avanza sin sonido, pulsa Reproducir en este dispositivo para activar el audio.');
+          }
+        });
+      }, 1200);
     }
-  }, []);
+  }, [confirmSoundCloudVolume]);
 
   const pauseLocal = useCallback(() => {
     if (currentRef.current.current?.platform === 'youtube' && youtubePlayerRef.current) {
@@ -399,6 +429,15 @@ export function WatchPlayer({
                 propsRef.current.onEnded();
               }
               if (event.data === youtube.PlayerState.PLAYING) {
+                if (localVolumeRef.current.localVolume > 0 && !localVolumeRef.current.muted
+                  && event.target.isMuted()) {
+                  setPlaybackBlocked(true);
+                  setPlayerError('YouTube está silenciado. Pulsa Reproducir en este dispositivo para activar el audio.');
+                } else if (!audioActivatedRef.current && localVolumeRef.current.localVolume > 0
+                  && !localVolumeRef.current.muted) {
+                  setPlaybackBlocked(true);
+                  setPlayerError('Si el vídeo avanza sin sonido, pulsa Reproducir en este dispositivo para activar el audio.');
+                }
                 const title = event.target.getVideoData()?.title;
                 const durationValue = Math.round(event.target.getDuration() * 1000);
                 if (title || durationValue > 0) {
@@ -440,6 +479,7 @@ export function WatchPlayer({
           playerReadyRef.current = true;
           setPlayerReady(true);
           applyLocalVolume();
+          confirmSoundCloudVolume(widget);
           const latest = currentRef.current;
           const position = expectedWatchPosition(sessionSnapshot(latest as WatchPlayerProps), Date.now());
           if (latest.playing) {
@@ -489,15 +529,8 @@ export function WatchPlayer({
             if (Number.isFinite(position)) propsRef.current.onSeek(Math.max(0, position));
           });
         });
-        widget.load(current.canonicalUrl, {
-          auto_play: false,
-          visual: true,
-          hide_related: true,
-          show_comments: false,
-          show_user: true,
-          show_reposts: false,
-          single_active: true,
-        });
+        // The keyed iframe already contains this URL. Reloading it here can
+        // replace the frame after Widget(frame) has bound to it.
       }).catch(error => {
         if (!disposed) setError(error instanceof Error ? error.message : 'No se pudo iniciar el reproductor de SoundCloud.');
       });
@@ -519,7 +552,7 @@ export function WatchPlayer({
       playerReadyRef.current = false;
       lastLoadedKeyRef.current = '';
     };
-  }, [current?.id, current?.platform, current?.contentId, sessionKey, applyLocalVolume, clearError, playLocal, setError]);
+  }, [current?.id, current?.platform, current?.contentId, sessionKey, applyLocalVolume, confirmSoundCloudVolume, clearError, playLocal, setError]);
 
   useEffect(() => {
     if (!playerReady || !current || !itemKey || lastLoadedKeyRef.current === itemKey) return;
@@ -544,6 +577,8 @@ export function WatchPlayer({
         show_reposts: false,
         single_active: true,
         callback: () => {
+          applyLocalVolume();
+          confirmSoundCloudVolume(widget);
           widget.seekTo(expected);
           if (playing) playLocal();
           else pauseLocal();
@@ -551,7 +586,7 @@ export function WatchPlayer({
       });
     }
   }, [current, current?.platform, current?.contentId, current?.canonicalUrl, itemKey, playerReady,
-    playing, durationMs, getExpectedPosition, playLocal, pauseLocal]);
+    playing, durationMs, getExpectedPosition, applyLocalVolume, confirmSoundCloudVolume, playLocal, pauseLocal]);
 
   useEffect(() => {
     if (playerReadyRef.current) applyLocalVolume();
@@ -581,8 +616,7 @@ export function WatchPlayer({
       }
       if (currentRef.current.playing && currentRef.current.current?.platform === 'soundcloud') {
         soundCloudWidgetRef.current?.isPaused(paused => {
-          if (!paused || !propsRef.current.canControl) return;
-          propsRef.current.onPlay();
+          if (!paused) return;
           setPlaybackBlocked(true);
           setPlayerError('Tu navegador puede haber bloqueado la reproducción. Pulsa Reproducir para activarla.');
         });
@@ -595,8 +629,17 @@ export function WatchPlayer({
     if (!playerReady || !current) return;
     if (playing) return;
     if (current.platform === 'soundcloud' && soundCloudWidgetRef.current) {
-      soundCloudWidgetRef.current.getPosition(actual => {
+      const widget = soundCloudWidgetRef.current;
+      widget.getPosition(actual => {
+        if (currentRef.current.playing || widget !== soundCloudWidgetRef.current) return;
         if (shouldCorrectWatchDrift(positionMs, actual)) seekLocal(positionMs);
+        // SoundCloud may resume after seekTo even if the session remains paused.
+        widget.isPaused(paused => {
+          if (paused || currentRef.current.playing || widget !== soundCloudWidgetRef.current) return;
+          programmaticSoundCloudCommandRef.current = true;
+          widget.pause();
+          window.setTimeout(() => { programmaticSoundCloudCommandRef.current = false; }, 1200);
+        });
       });
       return;
     }
@@ -631,8 +674,10 @@ export function WatchPlayer({
   };
 
   const onRetryClick = () => {
+    audioActivatedRef.current = true;
     setPlaybackBlocked(false);
     setPlayerError(null);
+    applyLocalVolume();
     playLocal(true);
   };
 
