@@ -19,6 +19,9 @@ import { useMessageNotifications } from '@/hooks/use-message-notifications';
 import { loadNotificationSettings, saveNotificationSettings, type NotificationSettings } from '@/lib/notification-settings';
 import { isNotificationsMuted } from '@/lib/notification-rules';
 import { useWebRTC } from '@/hooks/use-webrtc';
+import { useSoundboardPlayback } from '@/hooks/use-soundboard-playback';
+import { loadSoundboardSettings, saveSoundboardSettings, type SoundboardSettings } from '@/lib/soundboard-settings';
+import { SoundboardPanel, type Clip as SoundboardClip } from '@/components/soundboard-panel';
 import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
 import { CallStatusBar } from '@/components/call-status-bar';
 import { ProfileModal } from '@/components/profile-modal';
@@ -38,7 +41,7 @@ import {
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
   FileText, ExternalLink, Download, MessageSquare, Play,
-  Cog, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff,
+  Cog, Phone, PhoneOff, Mic, MicOff, Music2, Video, VideoOff, Monitor, MonitorOff,
   PhoneIncoming, Minimize2,
   Search, ChevronLeft, Flag, Bell, ShoppingBag
 } from 'lucide-react';
@@ -229,6 +232,20 @@ export default function AppLayout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [audioVideoSettings, setAudioVideoSettings] = useState<AudioVideoSettings>(loadSettings);
+  const [soundboardProfile, setSoundboardProfile] = useState<{ userId: number; settings: SoundboardSettings } | null>(null);
+  const soundboardSettings = soundboardProfile && soundboardProfile.userId === user?.id
+    ? soundboardProfile.settings : loadSoundboardSettings(user?.id ?? 0);
+  const [isSoundboardOpen, setIsSoundboardOpen] = useState(false);
+  useEffect(() => {
+    if (user?.id) setSoundboardProfile({ userId: user.id, settings: loadSoundboardSettings(user.id) });
+  }, [user?.id]);
+  const updateSoundboardSettings = (next: SoundboardSettings) => {
+    if (!user?.id) return;
+    if (!saveSoundboardSettings(user.id, next)) {
+      toast({ title: 'No se pudieron guardar los ajustes del soundboard en este navegador', variant: 'destructive' });
+    }
+    setSoundboardProfile({ userId: user.id, settings: next });
+  };
   const [notificationProfile, setNotificationProfile] = useState<{ userId: number; settings: NotificationSettings } | null>(null);
   const notificationSettings = notificationProfile && notificationProfile.userId === user?.id
     ? notificationProfile.settings : loadNotificationSettings(user?.id ?? 0);
@@ -381,9 +398,44 @@ export default function AppLayout() {
     settings: audioVideoSettings,
   });
   const isCallActive = webrtc.isInVoiceChannel || webrtc.callState === 'connected';
+  const soundboardPlayback = useSoundboardPlayback({
+    userId: user?.id,
+    settings: soundboardSettings,
+    activeVoiceChannelId: webrtc.isInVoiceChannel ? webrtc.activeVoiceChannelId : null,
+    activeDmPeerId: !webrtc.isInVoiceChannel && webrtc.callState === 'connected' ? webrtc.dmCallUserId : null,
+  });
   useEffect(() => {
-    if (!isCallActive) setIsCallMinimized(false);
+    if (!isCallActive) {
+      setIsCallMinimized(false);
+      setIsSoundboardOpen(false);
+    }
   }, [isCallActive]);
+  const currentCallKey = webrtc.isInVoiceChannel && webrtc.activeVoiceChannelId
+    ? `voice:${webrtc.activeVoiceChannelId}`
+    : webrtc.callState === 'connected' && webrtc.dmCallUserId
+      ? `dm:${webrtc.dmCallUserId}` : null;
+  const currentCallKeyRef = useRef(currentCallKey);
+  currentCallKeyRef.current = currentCallKey;
+  const triggerSoundboardClip = async (clip: SoundboardClip) => {
+    if (!isCallActive) throw new Error('La llamada ya no está activa');
+    const callAtTrigger = currentCallKeyRef.current;
+    const call = webrtc.isInVoiceChannel
+      ? { callType: 'voice' as const, channelId: webrtc.activeVoiceChannelId }
+      : { callType: 'dm' as const, peerId: webrtc.dmCallUserId };
+    if (call.callType === 'voice' && !call.channelId ||
+        call.callType === 'dm' && !call.peerId) throw new Error('La llamada aún no está lista');
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    const response = await csrfFetch(`${base}/api/soundboard/trigger`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipId: clip.id, ...call }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.error ?? 'No se pudo disparar el sonido');
+    }
+    if (currentCallKeyRef.current === callAtTrigger) await soundboardPlayback.playLocalClip(clip);
+  };
 
   // DM data
   const { data: dmConversations, refetch: refetchDmConversations } = useListDmConversations({ query: { enabled: !!user } as any });
@@ -743,6 +795,7 @@ export default function AppLayout() {
       onToggleMute={webrtc.toggleMute}
       onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
       onExpand={() => setIsCallMinimized(false)}
+      onOpenSoundboard={() => setIsSoundboardOpen(open => !open)}
     />
   ) : null;
 
@@ -1976,6 +2029,16 @@ export default function AppLayout() {
               </span>
             )}
             <button
+              type="button"
+              onClick={() => setIsSoundboardOpen(open => !open)}
+              aria-label="Abrir soundboard"
+              aria-pressed={isSoundboardOpen}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSoundboardOpen ? 'bg-primary text-primary-foreground glow-effect' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
+              title="Soundboard"
+            >
+              <Music2 className="w-5 h-5" />
+            </button>
+            <button
               onClick={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
               className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
               title="Colgar"
@@ -1995,6 +2058,23 @@ export default function AppLayout() {
         </div>
       )}
 
+      {isCallActive && (
+        <div className="fixed bottom-24 right-4 z-50">
+          <SoundboardPanel
+            isOpen={isSoundboardOpen}
+            onClose={() => setIsSoundboardOpen(false)}
+            callType={webrtc.isInVoiceChannel ? 'voice' : 'dm'}
+            serverId={webrtc.isInVoiceChannel && webrtc.activeVoiceChannelId
+              ? channelMetadata.get(webrtc.activeVoiceChannelId)?.serverId
+                ?? channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.serverId
+              : null}
+            peerId={webrtc.isInVoiceChannel ? null : webrtc.dmCallUserId}
+            onTrigger={triggerSoundboardClip}
+            onClipsLoaded={soundboardPlayback.preloadClips}
+          />
+        </div>
+      )}
+
       {/* Modals */}
       <ProfileModal user={user} isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <SettingsModal
@@ -2004,6 +2084,8 @@ export default function AppLayout() {
         onSettingsChange={setAudioVideoSettings}
         notificationSettings={notificationSettings}
         onNotificationSettingsChange={updateNotificationSettings}
+        soundboardSettings={soundboardSettings}
+        onSoundboardSettingsChange={updateSoundboardSettings}
         serverOptions={(servers ?? []).map(server => ({ id: server.id, name: server.name }))}
         activeServerId={activeServerId}
       />

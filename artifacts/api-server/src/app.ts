@@ -12,6 +12,7 @@ import { pool } from "@workspace/db";
 import { authRateLimit, inviteRateLimit, messageRateLimit } from "./middleware/rate-limit";
 import { finalErrorHandler } from "./middleware/errors";
 import { csrfProtection } from "./middleware/csrf";
+import { soundboardUploadSecurity } from "./middleware/soundboard-upload-security";
 import { SESSION_MAX_AGE_MS } from "./lib/csrf";
 import { SESSION_SECRET } from "./lib/session-config";
 
@@ -171,19 +172,7 @@ app.post("/api/channels/:channelId/messages", messageRateLimit);
 app.post("/api/dms/:userId", messageRateLimit);
 
 // Serve uploaded files — hardened headers to prevent XSS
-app.use("/api/uploads", (req, res, next) => {
-  // Never sniff content type
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  // Isolate from app origin
-  res.setHeader("Content-Security-Policy", "default-src 'none'");
-  // Force attachment download for everything except known safe inline types
-  const ext = (req.path.split(".").pop() ?? "").toLowerCase();
-  const inlineAllowed = new Set(["jpg", "jpeg", "png", "gif", "webp", "mp4", "webm", "ogg"]);
-  if (!inlineAllowed.has(ext)) {
-    res.setHeader("Content-Disposition", "attachment");
-  }
-  next();
-}, express.static(path.join(process.cwd(), "uploads")));
+app.use("/api/uploads", soundboardUploadSecurity, express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/api", router);
 app.use(finalErrorHandler);

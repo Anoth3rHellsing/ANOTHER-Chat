@@ -6,6 +6,7 @@ export * from "./messages";
 export * from "./social";
 export * from "./ephemeralContent";
 export * from "./clips";
+export * from "./soundboard";
 export * from "./dmGroups";
 export * from "./moderation";
 export * from "./sessions";

@@ -1,4 +1,4 @@
-import { Maximize2, Mic, MicOff, PhoneOff, Volume2 } from 'lucide-react';
+import { Maximize2, Mic, MicOff, Music2, PhoneOff, Volume2 } from 'lucide-react';
 
 interface CallStatusBarProps {
   name: string;
@@ -9,10 +9,11 @@ interface CallStatusBarProps {
   onToggleMute: () => void;
   onHangUp: () => void;
   onExpand: () => void;
+  onOpenSoundboard: () => void;
 }
 
 export function CallStatusBar({
-  name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand,
+  name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand, onOpenSoundboard,
 }: CallStatusBarProps) {
   return (
     <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
@@ -21,6 +22,15 @@ export function CallStatusBar({
         <p className="text-xs text-green-400 font-medium truncate">{name}</p>
         <p className="text-[10px] text-green-400 font-mono truncate">{status} · {participants}</p>
       </div>
+      <button
+        type="button"
+        onClick={onOpenSoundboard}
+        className="p-1 text-primary hover:bg-primary/15 rounded transition-colors"
+        title="Abrir soundboard"
+        aria-label="Abrir soundboard"
+      >
+        <Music2 className="w-3.5 h-3.5" />
+      </button>
       <button
         type="button"
         onClick={onToggleMute}

@@ -1,3 +1,11 @@
+export function clampSoundVolume(volume: number): number {
+  return Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0;
+}
+
+export function createSoundContext(): AudioContext {
+  return new AudioContext();
+}
+
 /**
  * Programmatic Discord-style voice join/leave sounds using Web Audio API.
  * No audio files needed — tones are generated on the fly.
@@ -5,7 +13,7 @@
 
 function playTones(notes: Array<{ freq: number; delay: number; duration: number; volume: number }>) {
   try {
-    const ctx = new AudioContext();
+    const ctx = createSoundContext();
     notes.forEach(({ freq, delay, duration, volume }) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -45,7 +53,7 @@ export function playVoiceLeaveSound() {
 
 /** Short, low-volume message cue; follows the user's audio volume slider. */
 export function playMessageSound(volume: number) {
-  const level = Math.max(0, Math.min(1, volume));
+  const level = clampSoundVolume(volume);
   if (!level) return;
   playTones([{ freq: 784, delay: 0, duration: 0.11, volume: 0.065 * level }]);
 }

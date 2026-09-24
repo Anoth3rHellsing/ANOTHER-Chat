@@ -12,3 +12,4 @@
 - [CSRF token re-emission](csrf-token-reemission.md) — /auth/me reemits the session token instead of rotating it, avoiding concurrent-load mismatches
 - [Private realtime recipients](private-realtime-recipients.md) — targeted alerts need authenticated direct delivery, not an unsubscribed or public topic
 - [Notification preference scope](notification-preference-scope.md) — notification choices are account-keyed in this browser, not synchronized across devices
+- [Soundboard local playback](soundboard-local-playback.md) — call clips travel as scoped realtime triggers; each client plays audio locally with an independent mute and gain

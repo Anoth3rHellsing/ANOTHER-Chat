@@ -33,3 +33,12 @@ export const messageRateLimit = rateLimit({
   keyGenerator: keyBySessionOrIp,
   message,
 });
+
+export const soundboardTriggerRateLimit = rateLimit({
+  windowMs: 2 * 1000,
+  limit: 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyBySessionOrIp,
+  message: { error: "Espera 2 segundos antes de disparar otro sonido." },
+});

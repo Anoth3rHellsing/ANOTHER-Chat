@@ -15,6 +15,7 @@ import friendsRouter from "./friends";
 import searchRouter from "./search";
 import dmGroupsRouter from "./dm-groups";
 import moderationRouter from "./moderation";
+import soundboardRouter from "./soundboard";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(friendsRouter);
 router.use(searchRouter);
 router.use(dmGroupsRouter);
 router.use(moderationRouter);
+router.use(soundboardRouter);
 
 export default router;

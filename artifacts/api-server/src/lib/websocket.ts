@@ -144,6 +144,7 @@ type DmCallRoute = {
   callerConnectionId: string;
   recipientUserId: number;
   recipientConnectionId: string;
+  active: boolean;
   expiryTimer: ReturnType<typeof setTimeout>;
 };
 
@@ -160,13 +161,15 @@ function clearDmCallRoute(key: string): void {
 }
 
 function setDmCallRoute(
-  route: Omit<DmCallRoute, "expiryTimer">,
+  route: Omit<DmCallRoute, "expiryTimer" | "active">,
   ttlMs: number,
+  active = false,
 ): void {
   const key = dmCallKey(route.callerUserId, route.recipientUserId);
   clearDmCallRoute(key);
   dmCallRoutes.set(key, {
     ...route,
+    active,
     expiryTimer: setTimeout(() => clearDmCallRoute(key), ttlMs),
   });
 }
@@ -180,7 +183,7 @@ function markDmCallRouteActive(userA: number, userB: number): void {
     callerConnectionId: route.callerConnectionId,
     recipientUserId: route.recipientUserId,
     recipientConnectionId: route.recipientConnectionId,
-  }, DM_CALL_ACTIVE_TTL_MS);
+  }, DM_CALL_ACTIVE_TTL_MS, true);
 }
 
 export function initWebSocket(server: HttpServer): void {
@@ -735,6 +738,94 @@ function sendDmCallSignal(
   ) {
     return sendToConnection(route.callerConnectionId, payload);
   }
+  return false;
+}
+
+function findOpenConnection(
+  connectionId: string,
+  userId: number,
+): AuthedWebSocket | null {
+  if (!wss) return null;
+  for (const ws of wss.clients) {
+    const client = ws as AuthedWebSocket;
+    if (
+      client.readyState === WebSocket.OPEN
+      && client.connectionId === connectionId
+      && client.userId === userId
+    ) {
+      return client;
+    }
+  }
+  return null;
+}
+
+export function emitSoundboardToCall(
+  senderUserId: number,
+  callType: "voice" | "dm",
+  targetId: number,
+  event: { type: "soundboard:play"; data: unknown },
+): boolean {
+  if (
+    !wss
+    || !Number.isInteger(senderUserId)
+    || !Number.isInteger(targetId)
+    || senderUserId <= 0
+    || targetId <= 0
+  ) {
+    return false;
+  }
+
+  if (callType === "voice") {
+    const memberConnections = voiceChannelMembersMap
+      .get(targetId)
+      ?.get(senderUserId);
+    if (!memberConnections) return false;
+    const senderIsConnected = [...memberConnections].some(
+      (connectionId) => findOpenConnection(connectionId, senderUserId) !== null,
+    );
+    if (!senderIsConnected) return false;
+
+    const data = JSON.stringify(event);
+    const members = voiceChannelMembersMap.get(targetId);
+    if (!members) return false;
+    for (const [userId, connectionIds] of members) {
+      if (userId === senderUserId) continue;
+      for (const connectionId of connectionIds) {
+        const recipient = findOpenConnection(connectionId, userId);
+        if (recipient) recipient.send(data);
+      }
+    }
+    return true;
+  }
+
+  if (callType === "dm" && senderUserId !== targetId) {
+    const route = dmCallRoutes.get(dmCallKey(senderUserId, targetId));
+    if (!route?.active) return false;
+
+    let recipientConnectionId: string | null = null;
+    let recipientUserId: number | null = null;
+    if (
+      route.callerUserId === senderUserId
+      && route.recipientUserId === targetId
+    ) {
+      if (!findOpenConnection(route.callerConnectionId, senderUserId)) return false;
+      recipientConnectionId = route.recipientConnectionId;
+      recipientUserId = route.recipientUserId;
+    } else if (
+      route.recipientUserId === senderUserId
+      && route.callerUserId === targetId
+    ) {
+      if (!findOpenConnection(route.recipientConnectionId, senderUserId)) return false;
+      recipientConnectionId = route.callerConnectionId;
+      recipientUserId = route.callerUserId;
+    }
+    if (!recipientConnectionId || recipientUserId === null) return false;
+    const recipient = findOpenConnection(recipientConnectionId, recipientUserId);
+    if (!recipient) return false;
+    recipient.send(JSON.stringify(event));
+    return true;
+  }
+
   return false;
 }
 

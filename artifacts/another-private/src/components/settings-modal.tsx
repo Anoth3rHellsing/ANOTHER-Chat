@@ -20,6 +20,8 @@ interface SettingsModalProps {
   onSettingsChange: (s: AudioVideoSettings) => void;
   notificationSettings: NotificationSettings;
   onNotificationSettingsChange: (s: NotificationSettings) => void;
+  soundboardSettings: { volume: number; muted: boolean };
+  onSoundboardSettingsChange: (s: { volume: number; muted: boolean }) => void;
   serverOptions: Array<{ id: number; name: string }>;
   activeServerId?: number | null;
 }
@@ -31,6 +33,8 @@ export function SettingsModal({
   onSettingsChange,
   notificationSettings,
   onNotificationSettingsChange,
+  soundboardSettings,
+  onSoundboardSettingsChange,
   serverOptions,
   activeServerId,
 }: SettingsModalProps) {
@@ -215,6 +219,8 @@ export function SettingsModal({
                   <VoiceAudioSection
                     settings={settings}
                     update={update}
+                    soundboardSettings={soundboardSettings}
+                    updateSoundboard={patch => onSoundboardSettingsChange({ ...soundboardSettings, ...patch })}
                     inputDevices={inputDevices}
                     outputDevices={outputDevices}
                     micLevel={micLevel}
@@ -479,6 +485,8 @@ function NotificationSettingsSection({
 function VoiceAudioSection({
   settings,
   update,
+  soundboardSettings,
+  updateSoundboard,
   inputDevices,
   outputDevices,
   micLevel,
@@ -488,6 +496,8 @@ function VoiceAudioSection({
 }: {
   settings: AudioVideoSettings;
   update: (p: Partial<AudioVideoSettings>) => void;
+  soundboardSettings: { volume: number; muted: boolean };
+  updateSoundboard: (p: Partial<{ volume: number; muted: boolean }>) => void;
   inputDevices: MediaDeviceInfo[];
   outputDevices: MediaDeviceInfo[];
   micLevel: number;
@@ -583,6 +593,44 @@ function VoiceAudioSection({
           onChange={e => update({ volume: parseFloat(e.target.value) })}
           className="w-full accent-primary h-1.5 rounded-full cursor-pointer"
         />
+      </div>
+
+      {/* Soundboard */}
+      <div className="space-y-3 pt-6 border-t border-white/5">
+        <h3 className="text-sm font-semibold text-foreground">Soundboard</h3>
+
+        <div className="space-y-2">
+          <label className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase tracking-wider">
+            <span className="flex items-center gap-2">
+              <Volume2 className="w-3.5 h-3.5" />
+              Volumen
+            </span>
+            <span className="normal-case">{Math.round(soundboardSettings.volume * 100)}%</span>
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={soundboardSettings.volume}
+            onChange={e => updateSoundboard({ volume: parseFloat(e.target.value) })}
+            disabled={soundboardSettings.muted}
+            className={`w-full h-1.5 rounded-full cursor-pointer ${soundboardSettings.muted ? 'accent-muted-foreground opacity-50' : 'accent-primary'}`}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => updateSoundboard({ muted: !soundboardSettings.muted })}
+          className={`w-full flex items-center justify-between rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
+            soundboardSettings.muted
+              ? 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+              : 'border-border bg-secondary text-foreground hover:border-primary/30'
+          }`}
+        >
+          <span>Silenciar Soundboard</span>
+          <span className="text-xs font-mono">{soundboardSettings.muted ? 'Activado' : 'Desactivado'}</span>
+        </button>
       </div>
 
       <div className="rounded-lg bg-secondary/50 border border-white/5 px-4 py-3">
