@@ -17,6 +17,7 @@ import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { useDmWebSocket } from '@/hooks/use-dm-websocket';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
+import { CallStatusBar } from '@/components/call-status-bar';
 import { ProfileModal } from '@/components/profile-modal';
 import { SettingsModal } from '@/components/settings-modal';
 import { loadSettings, saveSettings, type AudioVideoSettings } from '@/lib/settings-utils';
@@ -35,7 +36,7 @@ import {
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
   FileText, ExternalLink, Download, MessageSquare, Play,
   Cog, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff,
-  PhoneIncoming,
+  PhoneIncoming, Minimize2,
   Search, ChevronLeft, Flag, Bell
 } from 'lucide-react';
 import { SearchModal } from '@/components/search-modal';
@@ -239,6 +240,8 @@ export default function AppLayout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [audioVideoSettings, setAudioVideoSettings] = useState<AudioVideoSettings>(loadSettings);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [joinedVoiceChannelName, setJoinedVoiceChannelName] = useState<string | null>(null);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [showClips, setShowClips] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
@@ -328,6 +331,10 @@ export default function AppLayout() {
     currentUserId: user?.id ?? 0,
     settings: audioVideoSettings,
   });
+  const isCallActive = webrtc.isInVoiceChannel || webrtc.callState === 'connected';
+  useEffect(() => {
+    if (!isCallActive) setIsCallMinimized(false);
+  }, [isCallActive]);
 
   // DM data
   const { data: dmConversations, refetch: refetchDmConversations } = useListDmConversations({ query: { enabled: !!user } as any });
@@ -576,6 +583,23 @@ export default function AppLayout() {
 
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
+  const callPeer = (dmConversations ?? []).find((convo: any) => convo.otherUser?.id === webrtc.dmCallUserId)?.otherUser;
+  const callStatusBar = isCallActive ? (
+    <CallStatusBar
+      name={webrtc.isInVoiceChannel
+        ? channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.name ?? joinedVoiceChannelName ?? 'Voz'
+        : `Llamada con ${callPeer?.displayName ?? `Usuario ${webrtc.dmCallUserId}`}`}
+      status="Conectado"
+      participants={webrtc.isInVoiceChannel
+        ? `${webrtc.voiceMembers.length + 1} ${webrtc.voiceMembers.length ? 'participantes' : 'participante'}`
+        : '2 participantes'}
+      isMuted={webrtc.isMuted}
+      isMinimized={isCallMinimized}
+      onToggleMute={webrtc.toggleMute}
+      onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
+      onExpand={() => setIsCallMinimized(false)}
+    />
+  ) : null;
 
   // Compute per-server unread count for server icon badges
   const serverUnread = useMemo(() => {
@@ -761,24 +785,8 @@ export default function AppLayout() {
               })}
             </div>
 
-            {/* Voice status bar (DM mode) */}
-            {webrtc.isInVoiceChannel && (
-              <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
-                <Volume2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-green-400 font-medium truncate">
-                    {channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.name ?? 'Voz'}
-                  </p>
-                  <p className="text-[10px] text-green-500/60 font-mono">Conectado</p>
-                </div>
-                <button onClick={() => webrtc.toggleMute()} className={`p-1 rounded transition-colors ${webrtc.isMuted ? 'text-red-400 bg-red-500/20' : 'text-green-400 hover:bg-green-500/20'}`} title={webrtc.isMuted ? 'Activar micrófono' : 'Silenciar'}>
-                  {webrtc.isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-                </button>
-                <button onClick={() => webrtc.leaveVoiceChannel()} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors" title="Desconectar">
-                  <PhoneOff className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            {/* Compact call indicator (DM mode) */}
+            {callStatusBar}
 
             {/* User Info Area */}
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
@@ -842,6 +850,7 @@ export default function AppLayout() {
                       isActive={activeChannelId === channel.id}
                       isJoined={webrtc.activeVoiceChannelId === channel.id}
                       onClick={() => {
+                        setJoinedVoiceChannelName(channel.name);
                         if (webrtc.activeVoiceChannelId === channel.id) {
                           setActiveChannelId(channel.id);
                         } else {
@@ -898,24 +907,8 @@ export default function AppLayout() {
               )}
             </div>
 
-            {/* Voice status bar (server mode) */}
-            {webrtc.isInVoiceChannel && (
-              <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
-                <Volume2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-green-400 font-medium truncate">
-                    {channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.name ?? 'Voz'}
-                  </p>
-                  <p className="text-[10px] text-green-500/60 font-mono">Conectado</p>
-                </div>
-                <button onClick={() => webrtc.toggleMute()} className={`p-1 rounded transition-colors ${webrtc.isMuted ? 'text-red-400 bg-red-500/20' : 'text-green-400 hover:bg-green-500/20'}`} title={webrtc.isMuted ? 'Activar micrófono' : 'Silenciar'}>
-                  {webrtc.isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-                </button>
-                <button onClick={() => webrtc.leaveVoiceChannel()} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors" title="Desconectar">
-                  <PhoneOff className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            {/* Compact call indicator (server mode) */}
+            {callStatusBar}
 
             {/* User Info Area */}
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
@@ -1621,9 +1614,10 @@ export default function AppLayout() {
         </div>
       )}
 
+      {/* Remains mounted independently of the visual call overlay. */}
       <RemoteAudioStreams streams={webrtc.remoteStreams} />
       {/* ── In-call overlay (voice/video) ────────────────────────────────── */}
-      {(webrtc.callState === 'connected' || (webrtc.isInVoiceChannel && webrtc.remoteStreams.size > 0)) && (
+      {!isCallMinimized && (webrtc.callState === 'connected' || (webrtc.isInVoiceChannel && webrtc.remoteStreams.size > 0)) && (
         <div className="fixed inset-0 z-40 bg-black/95 flex flex-col">
           {/* Video grid */}
           <div className="flex-1 p-4 overflow-hidden">
@@ -1713,6 +1707,15 @@ export default function AppLayout() {
               title="Colgar"
             >
               <PhoneOff className="w-6 h-6" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCallMinimized(true)}
+              className="w-12 h-12 rounded-full bg-secondary text-foreground hover:bg-white/10 flex items-center justify-center transition-colors"
+              title="Minimizar llamada"
+              aria-label="Minimizar llamada"
+            >
+              <Minimize2 className="w-5 h-5" />
             </button>
           </div>
         </div>
