@@ -877,6 +877,9 @@ export default function AppLayout() {
 
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
+  useEffect(() => {
+    if (webrtc.voiceEventNotice) toast({ title: webrtc.voiceEventNotice.text });
+  }, [webrtc.voiceEventNotice, toast]);
   const activeChannelType = (activeChannel as any)?.channelType ?? 'text';
   const ActiveChannelIcon = CHANNEL_TYPE_ICON[activeChannelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
   const callPeer = (dmConversations ?? []).find((convo: any) => convo.otherUser?.id === webrtc.dmCallUserId)?.otherUser;
@@ -922,7 +925,9 @@ export default function AppLayout() {
       name={webrtc.isInVoiceChannel
         ? channels?.find(c => c.id === webrtc.activeVoiceChannelId)?.name ?? joinedVoiceChannelName ?? 'Voz'
         : `Llamada con ${callPeer?.displayName ?? `Usuario ${webrtc.dmCallUserId}`}`}
-      status="Conectado"
+      status={webrtc.isInVoiceChannel && webrtc.voiceConnectionStatus !== 'connected'
+        ? webrtc.voiceConnectionStatus === 'reconnecting' ? 'Reconectando voz…' : 'Recuperando voz…'
+        : 'Conectado'}
       participants={webrtc.isInVoiceChannel
         ? `${webrtc.voiceMembers.length + 1} ${webrtc.voiceMembers.length ? 'participantes' : 'participante'}`
         : '2 participantes'}

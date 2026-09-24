@@ -54,6 +54,7 @@ const SIGNALING_MESSAGE_TYPES = [
   'voice:bound',
   'voice:member_join',
   'voice:member_leave',
+  'error',
   'voice:offer',
   'voice:answer',
   'voice:ice-candidate',
@@ -79,7 +80,7 @@ export function useWebRTC(options: {
   const { currentUserId, settings } = options;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const { send, retainChannel } = useRealtimeTransport();
+  const { send, sendIfReady, addConnectionListener, retainChannel } = useRealtimeTransport();
 
   const peerConnections = useRef<Map<number, RTCPeerConnection>>(new Map());
   const sessionsRef = useRef<Map<number, PeerSession>>(new Map());
@@ -122,6 +123,14 @@ export function useWebRTC(options: {
   const speakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const activeVoiceChannelIdRef = useRef<number | null>(null);
   const voiceSubscriptionReleaseRef = useRef<(() => void) | null>(null);
+  const voiceBoundRef = useRef(false);
+  const voiceAckRef = useRef<((accepted: boolean) => void) | null>(null);
+  const recoverVoiceRef = useRef<(() => void) | null>(null);
+  const leaveVoiceRef = useRef<(() => Promise<void>) | null>(null);
+  const recoveryInProgressRef = useRef(false);
+  const connectionReadyRef = useRef(false);
+  const voiceDisconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceMembersRef = useRef(new Map<number, VoiceMember>());
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<number, MediaStream>>(new Map());
@@ -138,6 +147,9 @@ export function useWebRTC(options: {
   const [isInVoiceChannel, setIsInVoiceChannel] = useState(false);
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState<number | null>(null);
   const [voiceMembers, setVoiceMembers] = useState<VoiceMember[]>([]);
+  voiceMembersRef.current = new Map(voiceMembers.map(member => [member.userId, member]));
+  const [voiceConnectionStatus, setVoiceConnectionStatus] = useState<'connected' | 'reconnecting' | 'recovering'>('connected');
+  const [voiceEventNotice, setVoiceEventNotice] = useState<{ id: number; text: string } | null>(null);
   const [callState, setCallState] = useState<CallState>('idle');
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [dmCallUserId, setDmCallUserId] = useState<number | null>(null);
@@ -153,6 +165,11 @@ export function useWebRTC(options: {
       case 'voice:bound': {
         const { channelId, userIds } = msg.data;
         if (channelId !== activeVoiceChannelIdRef.current) break;
+        const wasBound = voiceBoundRef.current;
+        voiceBoundRef.current = true;
+        setVoiceConnectionStatus('connected');
+        voiceAckRef.current?.(true);
+        if (wasBound) break; // A periodic check must not renegotiate audio.
         const generation = lifecycleRef.current;
         const stream = await startLocalMedia(false);
         if (!stream || channelId !== activeVoiceChannelIdRef.current ||
@@ -160,7 +177,7 @@ export function useWebRTC(options: {
         for (const userId of userIds as number[]) {
           if (userId === currentUserId || currentUserId > userId ||
               generation !== lifecycleRef.current) continue;
-          await offerPeer(userId, 'voice');
+          await offerPeer(userId, 'voice', sessionsRef.current.has(userId));
         }
         break;
       }
@@ -168,30 +185,49 @@ export function useWebRTC(options: {
         const { member, channelId } = msg.data;
         if (channelId !== activeVoiceChannelIdRef.current) break;
         if (member.userId === currentUserId) break;
+        const alreadyListed = voiceMembersRef.current.has(member.userId);
         setVoiceMembers(prev => {
           if (prev.some(m => m.userId === member.userId)) return prev;
           return [...prev, member];
         });
         // Play sound for other members entering the channel
-        playVoiceJoinSound();
+        if (!alreadyListed) playVoiceJoinSound();
         // Simultaneous joins can both receive an empty HTTP member list.
         // The lower user ID initiates when the other binding becomes visible.
         if (currentUserId < member.userId) {
           const stream = await startLocalMedia(false);
           if (stream && channelId === activeVoiceChannelIdRef.current) {
-            await offerPeer(member.userId, 'voice');
+            await offerPeer(member.userId, 'voice', sessionsRef.current.has(member.userId));
           }
         }
         break;
       }
 
       case 'voice:member_leave': {
-        const { userId, channelId } = msg.data;
+        const { userId, channelId, reason } = msg.data;
         if (channelId !== activeVoiceChannelIdRef.current) break;
+        const name = voiceMembersRef.current.get(userId)?.displayName ?? `Usuario ${userId}`;
         setVoiceMembers(prev => prev.filter(m => m.userId !== userId));
         closePeerConnection(userId);
+        if (reason === 'connection_lost') {
+          setVoiceEventNotice({ id: Date.now(), text: `${name} perdió la conexión de voz. Intentando reconectar…` });
+        }
         // Play sound for other members leaving the channel
         playVoiceLeaveSound();
+        break;
+      }
+      case 'error': {
+        if (msg.channelId !== activeVoiceChannelIdRef.current) break;
+        if (msg.code === 'VOICE_MEMBERSHIP_REQUIRED' || msg.code === 'VOICE_ACCESS_DENIED') {
+          voiceBoundRef.current = false;
+          voiceAckRef.current?.(false);
+          if (msg.code === 'VOICE_ACCESS_DENIED') {
+            setVoiceEventNotice({ id: Date.now(), text: 'Ya no tienes acceso a este canal de voz.' });
+            void leaveVoiceRef.current?.().catch(() => undefined);
+          } else {
+            recoverVoiceRef.current?.();
+          }
+        }
         break;
       }
 
@@ -1059,9 +1095,10 @@ export function useWebRTC(options: {
       lifecycleRef.current += 1;
       const channelId = activeVoiceChannelIdRef.current;
       if (channelId !== null) {
-        sendWS({ type: 'voice:unbind', channelId });
+        sendIfReady({ type: 'voice:unbind', channelId });
         activeVoiceChannelIdRef.current = null;
       }
+      if (voiceDisconnectTimerRef.current) clearTimeout(voiceDisconnectTimerRef.current);
       if (dmCallUserIdRef.current) {
         sendWS({ type: 'dm:call-end', targetUserId: dmCallUserIdRef.current });
       }
@@ -1075,7 +1112,7 @@ export function useWebRTC(options: {
       voiceSubscriptionReleaseRef.current?.();
       voiceSubscriptionReleaseRef.current = null;
     };
-  }, [cleanupAll, sendWS]);
+  }, [cleanupAll, sendWS, sendIfReady]);
 
   // ── Voice channel controls ─────────────────────────────────────────────────
 
@@ -1085,7 +1122,11 @@ export function useWebRTC(options: {
     leaveInProgressRef.current = true;
     lifecycleRef.current += 1;
     activeVoiceChannelIdRef.current = null;
-    sendWS({ type: 'voice:unbind', channelId: chId });
+    voiceBoundRef.current = false;
+    voiceAckRef.current?.(false);
+    if (voiceDisconnectTimerRef.current) clearTimeout(voiceDisconnectTimerRef.current);
+    voiceDisconnectTimerRef.current = null;
+    sendIfReady({ type: 'voice:unbind', channelId: chId });
     voiceSubscriptionReleaseRef.current?.();
     voiceSubscriptionReleaseRef.current = null;
     cleanupMode('voice');
@@ -1095,6 +1136,7 @@ export function useWebRTC(options: {
     setIsInVoiceChannel(false);
     setActiveVoiceChannelId(null);
     setVoiceMembers([]);
+    setVoiceConnectionStatus('connected');
     playVoiceLeaveSound();
     try {
       const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -1108,7 +1150,112 @@ export function useWebRTC(options: {
     } finally {
       leaveInProgressRef.current = false;
     }
-  }, [sendWS, stopLocalMedia]);
+  }, [sendIfReady, stopLocalMedia]);
+  leaveVoiceRef.current = leaveVoiceChannel;
+
+  const recoverVoice = useCallback(async () => {
+    const channelId = activeVoiceChannelIdRef.current;
+    if (channelId === null || recoveryInProgressRef.current || !connectionReadyRef.current) return;
+    recoveryInProgressRef.current = true;
+    const generation = lifecycleRef.current;
+    setVoiceConnectionStatus('recovering');
+    const current = () => mountedRef.current && generation === lifecycleRef.current &&
+      activeVoiceChannelIdRef.current === channelId;
+    try {
+      for (let attempt = 0; attempt < 3 && current() && connectionReadyRef.current; attempt += 1) {
+        try {
+          // A closed socket or a new server process may have removed the HTTP
+          // reservation. Re-establish it through the same permission-checked
+          // route used for an initial join before binding this new connection.
+          const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+          const response = await csrfFetch(`${baseUrl}/api/channels/${channelId}/voice/join`, {
+            method: 'POST', credentials: 'include',
+          });
+          if (!current()) return;
+          if (response.status === 403 || response.status === 404) throw new Error('VOICE_ACCESS_DENIED');
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const members: VoiceMember[] = await response.json();
+          if (!current()) return;
+          setVoiceMembers(members.filter(member => member.userId !== currentUserId));
+          const bound = await new Promise<boolean>(resolve => {
+            const finish = (accepted: boolean) => {
+              clearTimeout(timeout);
+              if (voiceAckRef.current === finish) voiceAckRef.current = null;
+              resolve(accepted);
+            };
+            const timeout = setTimeout(() => finish(false), 8000);
+            voiceAckRef.current = finish;
+            if (!sendIfReady({ type: 'voice:bind', channelId })) finish(false);
+          });
+          if (!current()) return;
+          if (bound) return;
+        } catch (error) {
+          if (!current()) return;
+          if ((error as Error).message === 'VOICE_ACCESS_DENIED') {
+            setVoiceEventNotice({ id: Date.now(), text: 'Ya no tienes acceso al canal de voz. Se cerró la llamada.' });
+            await leaveVoiceChannel().catch(() => undefined);
+            return;
+          }
+          console.warn('[voz] No se pudo restaurar la vinculación', error);
+        }
+        if (!connectionReadyRef.current) return;
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+      if (current() && connectionReadyRef.current) {
+        setVoiceEventNotice({ id: Date.now(), text: 'No se pudo recuperar la llamada de voz. Se cerró; puedes volver a entrar.' });
+        await leaveVoiceChannel().catch(() => undefined);
+      }
+    } finally {
+      recoveryInProgressRef.current = false;
+    }
+  }, [currentUserId, leaveVoiceChannel, sendIfReady]);
+  recoverVoiceRef.current = () => { void recoverVoice(); };
+
+  useEffect(() => {
+    const release = addConnectionListener(ready => {
+      connectionReadyRef.current = ready;
+      const channelId = activeVoiceChannelIdRef.current;
+      if (channelId === null) return;
+      if (!ready) {
+        voiceBoundRef.current = false;
+        voiceAckRef.current?.(false);
+        setVoiceConnectionStatus('reconnecting');
+        if (voiceDisconnectTimerRef.current) clearTimeout(voiceDisconnectTimerRef.current);
+        voiceDisconnectTimerRef.current = setTimeout(() => {
+          if (activeVoiceChannelIdRef.current !== channelId || connectionReadyRef.current) return;
+          setVoiceEventNotice({ id: Date.now(), text: 'Se perdió la conexión de voz. Se cerró la llamada; puedes volver a entrar.' });
+          void leaveVoiceRef.current?.().catch(() => undefined);
+        }, 60_000);
+      } else {
+        if (voiceDisconnectTimerRef.current) clearTimeout(voiceDisconnectTimerRef.current);
+        voiceDisconnectTimerRef.current = null;
+        recoverVoiceRef.current?.();
+      }
+    });
+    const heartbeat = setInterval(() => {
+      const channelId = activeVoiceChannelIdRef.current;
+      if (channelId === null || !connectionReadyRef.current ||
+          recoveryInProgressRef.current || voiceAckRef.current) return;
+      const timeout = setTimeout(() => {
+        if (voiceAckRef.current !== acknowledge) return;
+        voiceAckRef.current = null;
+        voiceBoundRef.current = false;
+        recoverVoiceRef.current?.();
+      }, 8000);
+      const acknowledge = (accepted: boolean) => {
+        clearTimeout(timeout);
+        if (voiceAckRef.current === acknowledge) voiceAckRef.current = null;
+        if (!accepted) recoverVoiceRef.current?.();
+      };
+      voiceAckRef.current = acknowledge;
+      if (!sendIfReady({ type: 'voice:bind', channelId })) acknowledge(false);
+    }, 30_000);
+    return () => {
+      release();
+      clearInterval(heartbeat);
+      if (voiceDisconnectTimerRef.current) clearTimeout(voiceDisconnectTimerRef.current);
+    };
+  }, [addConnectionListener, sendIfReady]);
 
   const joinVoiceChannel = useCallback(async (channelId: number, _currentMembers: VoiceMember[]) => {
     if (joinInProgressRef.current || leaveInProgressRef.current ||
@@ -1130,9 +1277,27 @@ export function useWebRTC(options: {
       activeVoiceChannelIdRef.current = channelId;
       setActiveVoiceChannelId(channelId);
       setIsInVoiceChannel(true);
+      voiceBoundRef.current = false;
+      setVoiceConnectionStatus('recovering');
       setVoiceMembers(members.filter(m => m.userId !== currentUserId));
       voiceSubscriptionReleaseRef.current = retainChannel(`channel:${channelId}`);
-      sendWS({ type: 'voice:bind', channelId });
+      if (!sendIfReady({ type: 'voice:bind', channelId })) {
+        // The ready listener will join and bind when the transport recovers.
+        setVoiceConnectionStatus('reconnecting');
+        if (voiceDisconnectTimerRef.current) clearTimeout(voiceDisconnectTimerRef.current);
+        voiceDisconnectTimerRef.current = setTimeout(() => {
+          if (activeVoiceChannelIdRef.current !== channelId || connectionReadyRef.current) return;
+          setVoiceEventNotice({ id: Date.now(), text: 'No se pudo conectar la llamada de voz. Puedes volver a intentarlo.' });
+          void leaveVoiceRef.current?.().catch(() => undefined);
+        }, 60_000);
+      } else {
+        setTimeout(() => {
+          if (activeVoiceChannelIdRef.current === channelId &&
+              lifecycleRef.current === generation && !voiceBoundRef.current) {
+            recoverVoiceRef.current?.();
+          }
+        }, 8000);
+      }
       playVoiceJoinSound();
       const stream = await startLocalMedia(false);
       if (!stream || generation !== lifecycleRef.current) {
@@ -1147,7 +1312,7 @@ export function useWebRTC(options: {
     } finally {
       joinInProgressRef.current = false;
     }
-  }, [currentUserId, leaveVoiceChannel, retainChannel, startLocalMedia, stopLocalMedia]);
+  }, [currentUserId, leaveVoiceChannel, retainChannel, sendIfReady, startLocalMedia, stopLocalMedia]);
 
   // ── DM call controls ───────────────────────────────────────────────────────
 
@@ -1476,6 +1641,8 @@ export function useWebRTC(options: {
     isInVoiceChannel,
     activeVoiceChannelId,
     voiceMembers,
+    voiceConnectionStatus,
+    voiceEventNotice,
     callState,
     incomingCall,
     dmCallUserId,

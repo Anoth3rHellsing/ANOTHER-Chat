@@ -109,13 +109,13 @@ function bindVoiceConnection(
   channelId: number,
   userId: number,
   connectionId: string,
-): { accepted: boolean; firstConnection: boolean } {
+): { accepted: boolean; newConnection: boolean } {
   const connections = voiceChannelMembersMap.get(channelId)?.get(userId);
-  if (!connections) return { accepted: false, firstConnection: false };
-  const firstConnection = connections.size === 0;
+  if (!connections) return { accepted: false, newConnection: false };
+  const newConnection = !connections.has(connectionId);
   connections.add(connectionId);
   clearVoiceBindReservation(channelId, userId);
-  return { accepted: true, firstConnection };
+  return { accepted: true, newConnection };
 }
 
 function hasVoiceMembership(channelId: number, userId: number): boolean {
@@ -698,10 +698,20 @@ export function initWebSocket(server: HttpServer): void {
           case "voice:bind": {
             const channelId = Number(msg.channelId);
             if (!client.userId || !Number.isInteger(channelId)) break;
+            const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
+            if (!channel || channel.channelType !== "voice" ||
+                !(await canAccessChannel(channel, client.userId, client.userRole))) {
+              client.send(JSON.stringify({
+                type: "error", code: "VOICE_ACCESS_DENIED",
+                channelId, message: "Ya no tienes acceso a este canal de voz",
+              }));
+              break;
+            }
             if (!hasVoiceMembership(channelId, client.userId)) {
               client.send(JSON.stringify({
                 type: "error",
                 code: "VOICE_MEMBERSHIP_REQUIRED",
+                channelId,
                 message: "Debes entrar al canal de voz antes de vincular la conexión",
               }));
               break;
@@ -719,6 +729,7 @@ export function initWebSocket(server: HttpServer): void {
               client.send(JSON.stringify({
                 type: "error",
                 code: "VOICE_MEMBERSHIP_REQUIRED",
+                channelId,
                 message: "La entrada al canal de voz ya no está activa",
               }));
               break;
@@ -732,8 +743,10 @@ export function initWebSocket(server: HttpServer): void {
                   .map(([userId]) => userId),
               },
             }));
-            sendWatchStateToConnection(client, "voice", channelId);
-            if (binding.firstConnection && user) {
+            if (binding.newConnection) sendWatchStateToConnection(client, "voice", channelId);
+            // A replacement connection must prompt peers to renegotiate even
+            // when the old connection has not yet timed out.
+            if (binding.newConnection && user) {
               broadcast(`channel:${channelId}`, {
                 type: "voice:member_join",
                 data: {
@@ -760,7 +773,7 @@ export function initWebSocket(server: HttpServer): void {
             ) {
               broadcast(`channel:${channelId}`, {
                 type: "voice:member_leave",
-                data: { channelId, userId: client.userId },
+                data: { channelId, userId: client.userId, reason: "left" },
               });
             }
             break;
@@ -1021,7 +1034,7 @@ export function initWebSocket(server: HttpServer): void {
           if (unbindVoiceConnection(channelId, client.userId, client.connectionId)) {
             broadcast(`channel:${channelId}`, {
               type: "voice:member_leave",
-              data: { channelId, userId: client.userId },
+              data: { channelId, userId: client.userId, reason: "connection_lost" },
             });
           }
           dropWatchSessionWhenVoiceEmpty(channelId);

@@ -557,7 +557,7 @@ try {
   memberBound.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId }));
   await boundMemberEvent;
   const unboundMemberError = waitFor(memberUnbound, message =>
-    message.type === "error" && message.code === "VOICE_MEMBERSHIP_REQUIRED",
+    message.type === "error" && message.code === "VOICE_ACCESS_DENIED",
   "unbound connection rejected from voice binding");
   memberUnbound.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId + 100000 }));
   await unboundMemberError;
@@ -565,6 +565,10 @@ try {
     message.data?.channelId === voiceChannelId, "peer voice binding acknowledgment");
   peerBound.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId }));
   await peerBoundEvent;
+  const voiceTopicBarrier = waitFor(peerBound, message => message.type === "pong", "peer voice topic subscribed");
+  peerBound.send(JSON.stringify({ type: "subscribe", channel: `channel:${voiceChannelId}` }));
+  peerBound.send(JSON.stringify({ type: "ping" }));
+  await voiceTopicBarrier;
   const peerUnboundEvents = [];
   peerUnbound.on("message", raw => {
     try { peerUnboundEvents.push(JSON.parse(raw.toString())); } catch {}
@@ -594,6 +598,68 @@ try {
     message.data?.sdp?.sdp === signal.sdp.sdp), false,
   "voice signaling is delivered only to the target's connection bound to the shared voice channel");
   console.log("PASS voice signaling is scoped to bound connections in the shared voice channel");
+
+  const lost = waitFor(peerBound, message => message.type === "voice:member_leave" &&
+    message.data?.userId === memberId && message.data?.reason === "connection_lost",
+  "peer informed of member connection loss");
+  memberBound.close();
+  await once(memberBound, "close");
+  await lost;
+  const afterLoss = expectStatus(await peer.request(`/api/channels/${voiceChannelId}/voice`),
+    200, "voice membership after disconnect");
+  assert.equal(afterLoss.some(item => item.userId === memberId), false);
+  const memberReconnected = await connect(member);
+  const rejected = waitFor(memberReconnected, message =>
+    message.type === "error" && message.code === "VOICE_MEMBERSHIP_REQUIRED" &&
+    message.channelId === voiceChannelId, "new connection cannot bind without rejoining");
+  memberReconnected.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId }));
+  await rejected;
+  expectStatus(await member.request(`/api/channels/${voiceChannelId}/voice/join`, {
+    method: "POST",
+  }), 200, "restore voice reservation after disconnect");
+  const restoredJoin = waitFor(peerBound, message => message.type === "voice:member_join" &&
+    message.data?.member?.userId === memberId, "peer sees restored voice member");
+  const restoredBound = waitFor(memberReconnected, message =>
+    message.type === "voice:bound" && message.data?.channelId === voiceChannelId,
+  "replacement socket voice binding acknowledgment");
+  memberReconnected.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId }));
+  await Promise.all([restoredBound, restoredJoin]);
+  const afterRecovery = expectStatus(await peer.request(`/api/channels/${voiceChannelId}/voice`),
+    200, "voice membership after reconnection");
+  assert.ok(afterRecovery.some(item => item.userId === memberId));
+  const restoredSignal = waitFor(peerBound, message =>
+    message.type === "voice:offer" && message.data?.sdp?.sdp === `restored-${suffix}`,
+  "voice signaling after reconnection");
+  memberReconnected.send(JSON.stringify({
+    ...signal, sdp: { type: "offer", sdp: `restored-${suffix}` },
+  }));
+  await restoredSignal;
+  console.log("PASS disconnect removes voice membership with an explicit reason; rejoin and rebind restore visibility and signaling");
+
+  // A fresh process has no in-memory membership. It must reject stale binds
+  // and permit the same authenticated clients to rejoin and bind anew.
+  apiProcess.kill("SIGTERM");
+  await apiExit;
+  apiProcess = spawn(process.execPath, [bundle], { cwd: apiCwd, env, stdio: ["ignore", "ignore", "ignore"] });
+  apiExit = once(apiProcess, "exit");
+  await waitForApiReady();
+  const freshMember = await connect(member);
+  const missingAfterRestart = waitFor(freshMember, message =>
+    message.type === "error" && message.code === "VOICE_MEMBERSHIP_REQUIRED",
+  "fresh process rejects stale voice binding");
+  freshMember.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId }));
+  await missingAfterRestart;
+  expectStatus(await member.request(`/api/channels/${voiceChannelId}/voice/join`, {
+    method: "POST",
+  }), 200, "rejoin voice after process restart");
+  const reboundAfterRestart = waitFor(freshMember, message =>
+    message.type === "voice:bound" && message.data?.channelId === voiceChannelId,
+  "voice bound after process restart");
+  freshMember.send(JSON.stringify({ type: "voice:bind", channelId: voiceChannelId }));
+  await reboundAfterRestart;
+  assert.ok(expectStatus(await member.request(`/api/channels/${voiceChannelId}/voice`),
+    200, "membership visible after process restart").some(item => item.userId === memberId));
+  console.log("PASS voice membership is explicitly restored after an isolated API process restart");
 } finally {
   await cleanup();
 }

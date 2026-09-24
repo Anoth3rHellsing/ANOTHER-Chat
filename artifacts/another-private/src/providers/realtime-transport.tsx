@@ -18,6 +18,8 @@ type RealtimeMessageHandler = (message: RealtimeMessage) => void | Promise<void>
 
 type RealtimeTransport = {
   send: (message: object) => void;
+  sendIfReady: (message: object) => boolean;
+  addConnectionListener: (listener: (ready: boolean) => void) => () => void;
   addMessageListener: (types: readonly string[], handler: RealtimeMessageHandler) => () => void;
   retainChannel: (channel: string) => () => void;
 };
@@ -40,6 +42,7 @@ function getWebSocketUrl(): string {
 export function RealtimeTransportProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef<Map<string, Set<RealtimeMessageHandler>>>(new Map());
+  const connectionListenersRef = useRef(new Set<(ready: boolean) => void>());
   const subscriptionCountsRef = useRef<Map<string, number>>(new Map());
   const queuedMessagesRef = useRef<string[]>([]);
   const reconnectAttemptRef = useRef(0);
@@ -70,6 +73,15 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
       queuedMessagesRef.current.push(serialized);
     }
   }, [sendSerialized]);
+
+  const sendIfReady = useCallback((message: object) =>
+    applicationReadyRef.current && sendSerialized(JSON.stringify(message)), [sendSerialized]);
+
+  const addConnectionListener = useCallback((listener: (ready: boolean) => void) => {
+    connectionListenersRef.current.add(listener);
+    listener(applicationReadyRef.current);
+    return () => { connectionListenersRef.current.delete(listener); };
+  }, []);
 
   const addMessageListener = useCallback((
     types: readonly string[],
@@ -148,6 +160,9 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
         if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
         applicationReadyRef.current = true;
         flushQueuedMessages(socket);
+        if (socketRef.current === socket && socket.readyState === WebSocket.OPEN) {
+          for (const listener of connectionListenersRef.current) listener(true);
+        }
       }, AUTH_SETTLE_DELAY_MS);
     };
 
@@ -229,6 +244,7 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
       socket.onclose = () => {
         if (socketRef.current === socket) socketRef.current = null;
         applicationReadyRef.current = false;
+        for (const listener of connectionListenersRef.current) listener(false);
         clearAuthReadyTimer();
         if (authRetryTimerRef.current) {
           clearTimeout(authRetryTimerRef.current);
@@ -272,9 +288,11 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
 
   const value = useMemo<RealtimeTransport>(() => ({
     send,
+    sendIfReady,
+    addConnectionListener,
     addMessageListener,
     retainChannel,
-  }), [addMessageListener, retainChannel, send]);
+  }), [addConnectionListener, addMessageListener, retainChannel, send, sendIfReady]);
 
   return (
     <RealtimeTransportContext.Provider value={value}>
