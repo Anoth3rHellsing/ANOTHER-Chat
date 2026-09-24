@@ -308,9 +308,15 @@ router.post("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promi
       reactions: [],
     };
 
-    // Broadcast via WS
-    const { broadcast } = await import("../lib/websocket");
-    broadcast(`dm_group:${groupId}`, { type: "dm_group:message", data: msg });
+    // Keep the group topic broadcast for any existing subscribers, and deliver
+    // directly to current members over the authenticated unified transport.
+    const { broadcastToUser } = await import("../lib/websocket");
+    const payload = { type: "dm_group:message", data: msg };
+    const members = await rawQuery(`SELECT user_id FROM dm_group_members WHERE group_id=$1`, [groupId]);
+    for (const member of members.rows) {
+      const memberId = Number(member.user_id);
+      if (memberId !== userId) broadcastToUser(memberId, payload);
+    }
 
     res.status(201).json(msg);
 });

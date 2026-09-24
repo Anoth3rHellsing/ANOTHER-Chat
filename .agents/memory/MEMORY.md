@@ -10,3 +10,5 @@
 - [Artifact build context](artifact-build-context.md) — ad hoc shell builds lack managed artifact environment; root preview routing is not implied by the artifact directory
 - [Complete database baseline](stories-clips-raw-sql.md) — raw-SQL feature tables are now declared in Drizzle and covered by a verified zero migration
 - [CSRF token re-emission](csrf-token-reemission.md) — /auth/me reemits the session token instead of rotating it, avoiding concurrent-load mismatches
+- [Private realtime recipients](private-realtime-recipients.md) — targeted alerts need authenticated direct delivery, not an unsubscribed or public topic
+- [Notification preference scope](notification-preference-scope.md) — notification choices are account-keyed in this browser, not synchronized across devices

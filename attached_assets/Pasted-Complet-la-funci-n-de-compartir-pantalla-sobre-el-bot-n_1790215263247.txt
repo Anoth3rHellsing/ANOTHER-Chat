@@ -1,0 +1,20 @@
+Completé la función de compartir pantalla sobre el botón de monitor que ya existía, sin crear una ruta paralela de llamadas. No cambié cifrado, esquema de base de datos, seguridad ni el tema visual; no publiqué ni borré datos.
+
+**Qué hacía el botón antes.** Abría el selector nativo y capturaba vídeo, pero pedía explícitamente `audio: false`. Intentaba enviar la pantalla sin esperar la sustitución de pista ni negociar de forma fiable una pista nueva. La vista previa mostraba la cámara en vez de la pantalla y, al detener la captura, podía dejar una pista de vídeo detenida en la conexión.
+
+**Cómo funciona ahora.** La captura solicita vídeo y audio. En el cliente, Web Audio combina el micrófono y el audio compartido en una sola pista de salida; silenciar el micrófono desactiva solo su pista original, por lo que el sonido compartido continúa. Al detener la compartición, se restaura la pista original del micrófono. La pantalla usa un emisor de vídeo separado de la cámara: su primera incorporación negocia mediante el mecanismo de ofertas existente; para detenerla o volver a usar ese emisor se prefiere `replaceTrack`, sin renegociar toda la llamada. Los receptores ven la pantalla en una zona destacada e identificada por participante; al terminar, esa zona se retira. Si el navegador no proporciona audio, el vídeo continúa y aparece un aviso discreto. Detener desde el aviso del navegador usa la misma limpieza que el botón.
+
+**Verificación realizada:**
+
+| Comprobación | Resultado |
+|---|---|
+| Tipos del monorepo y compilación | Pasan. Ambos servicios siguen funcionando. |
+| Dos participantes; vídeo y audio compartidos | **Pasa con dos pares WebRTC sintéticos en Chromium**, no con dos cuentas de la aplicación. |
+| Voz y sonido compartido simultáneos | **Pasa con fuentes sintéticas** de 440 Hz y 880 Hz, detectadas juntas en el receptor. |
+| Silenciar solo el micrófono | **Pasa con fuentes sintéticas**: desaparece la señal de voz y permanece la compartida. |
+| Detener vídeo y conservar/restaurar micrófono | **Pasa en la prueba sintética** usando `replaceTrack`. |
+| Audio al minimizar | **Pasa en la prueba sintética** con el panel oculto; en la aplicación, el reproductor de audio permanece montado fuera de la vista expandida. |
+| Captura sin audio y cancelación | **Simuladas**; vídeo y micrófono continuaron. No se abrió el selector nativo en esa prueba. |
+| Detener desde el aviso del navegador; llamadas reales de canal y DM | El código contempla ambos recorridos, pero **no pude verificarlos de extremo a extremo** sin dos cuentas de prueba aisladas. |
+
+Dejé una prueba reproducible de los medios sintéticos y propuse una verificación posterior con dos cuentas aisladas para cubrir el selector nativo, el aviso del navegador y la señalización real en ambos tipos de llamada.

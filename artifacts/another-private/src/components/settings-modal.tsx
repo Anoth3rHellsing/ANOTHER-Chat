@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Volume2, Mic, Activity, Video } from 'lucide-react';
-import { type AudioVideoSettings, loadSettings, saveSettings, safeCloseAudioContext } from '@/lib/settings-utils';
+import { X, Volume2, Mic, Activity, Video, Bell } from 'lucide-react';
+import { useListChannels } from '@workspace/api-client-react';
+import { type AudioVideoSettings, saveSettings, safeCloseAudioContext } from '@/lib/settings-utils';
+import { type NotificationLevel, type NotificationSettings } from '@/lib/notification-settings';
 
 const SECTIONS = [
   { id: 'voice', label: 'Voz y audio', icon: Volume2 },
   { id: 'video', label: 'Calidad de vídeo', icon: Video },
+  { id: 'notifications', label: 'Notificaciones', icon: Bell },
 ] as const;
 
 type SectionId = typeof SECTIONS[number]['id'];
@@ -15,38 +18,64 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: AudioVideoSettings;
   onSettingsChange: (s: AudioVideoSettings) => void;
+  notificationSettings: NotificationSettings;
+  onNotificationSettingsChange: (s: NotificationSettings) => void;
+  serverOptions: Array<{ id: number; name: string }>;
+  activeServerId?: number | null;
 }
 
-export function SettingsModal({ isOpen, onClose, settings, onSettingsChange }: SettingsModalProps) {
+export function SettingsModal({
+  isOpen,
+  onClose,
+  settings,
+  onSettingsChange,
+  notificationSettings,
+  onNotificationSettingsChange,
+  serverOptions,
+  activeServerId,
+}: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SectionId>('voice');
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
   const [micLevel, setMicLevel] = useState(0);
   const [isTesting, setIsTesting] = useState(false);
+  const [selectedServerId, setSelectedServerId] = useState<number | null>(activeServerId ?? null);
+  const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
+  const [browserPermission, setBrowserPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
   const testStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const notificationServerId = selectedServerId ?? activeServerId ?? serverOptions[0]?.id ?? null;
+  const { data: notificationChannels = [], isLoading: channelsLoading } = useListChannels(
+    notificationServerId ?? 0,
+    { query: { enabled: isOpen && notificationServerId !== null } as any },
+  );
 
-  // Enumerate devices when opened
+  useEffect(() => {
+    if (activeServerId !== undefined) {
+      setSelectedServerId(activeServerId);
+      setSelectedChannelId(null);
+    }
+  }, [activeServerId]);
+
   useEffect(() => {
     if (!isOpen) return;
+    setBrowserPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+  }, [isOpen]);
+
+  // Opening notification settings must not trigger an unrelated microphone prompt.
+  useEffect(() => {
+    if (!isOpen || activeSection !== 'voice') return;
     (async () => {
       try {
-        // Request permission first so labels are populated
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
         const devices = await navigator.mediaDevices.enumerateDevices();
         setInputDevices(devices.filter(d => d.kind === 'audioinput'));
         setOutputDevices(devices.filter(d => d.kind === 'audiooutput'));
-      } catch {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        setInputDevices(devices.filter(d => d.kind === 'audioinput'));
-        setOutputDevices(devices.filter(d => d.kind === 'audiooutput'));
-      }
+      } catch { /* Device enumeration can be unavailable without a secure context. */ }
     })();
     return () => stopMicTest();
-  }, [isOpen]);
+  }, [isOpen, activeSection]);
 
   const startMicTest = useCallback(async () => {
     try {
@@ -91,6 +120,30 @@ export function SettingsModal({ isOpen, onClose, settings, onSettingsChange }: S
     const next = { ...settings, ...patch };
     onSettingsChange(next);
     saveSettings(next);
+  };
+
+  const updateNotifications = (patch: Partial<NotificationSettings>) => {
+    onNotificationSettingsChange({ ...notificationSettings, ...patch });
+  };
+
+  const toggleBrowserNotifications = async () => {
+    if (browserPermission === 'denied' || browserPermission === 'unsupported') return;
+    if (notificationSettings.browserEnabled) {
+      updateNotifications({ browserEnabled: false });
+      return;
+    }
+
+    let permission: NotificationPermission = browserPermission;
+    if (permission === 'default') {
+      try {
+        permission = await Notification.requestPermission();
+        setBrowserPermission(permission);
+      } catch {
+        setBrowserPermission('default');
+        return;
+      }
+    }
+    updateNotifications({ browserEnabled: permission === 'granted' });
   };
 
   return (
@@ -173,12 +226,253 @@ export function SettingsModal({ isOpen, onClose, settings, onSettingsChange }: S
                 {activeSection === 'video' && (
                   <VideoQualitySection settings={settings} update={update} />
                 )}
+                {activeSection === 'notifications' && (
+                  <NotificationSettingsSection
+                    settings={notificationSettings}
+                    update={updateNotifications}
+                    serverOptions={serverOptions}
+                    serverId={notificationServerId}
+                    channels={notificationChannels}
+                    channelsLoading={channelsLoading}
+                    selectedChannelId={selectedChannelId}
+                    onServerChange={id => {
+                      setSelectedServerId(id);
+                      setSelectedChannelId(null);
+                    }}
+                    onChannelChange={setSelectedChannelId}
+                    browserPermission={browserPermission}
+                    onToggleBrowserNotifications={toggleBrowserNotifications}
+                  />
+                )}
               </div>
             </div>
           </motion.div>
         </>
       )}
     </AnimatePresence>
+  );
+}
+
+function NotificationSettingsSection({
+  settings,
+  update,
+  serverOptions,
+  serverId,
+  channels,
+  channelsLoading,
+  selectedChannelId,
+  onServerChange,
+  onChannelChange,
+  browserPermission,
+  onToggleBrowserNotifications,
+}: {
+  settings: NotificationSettings;
+  update: (patch: Partial<NotificationSettings>) => void;
+  serverOptions: Array<{ id: number; name: string }>;
+  serverId: number | null;
+  channels: Array<{ id: number; name: string }>;
+  channelsLoading: boolean;
+  selectedChannelId: number | null;
+  onServerChange: (id: number | null) => void;
+  onChannelChange: (id: number | null) => void;
+  browserPermission: 'default' | 'granted' | 'denied' | 'unsupported';
+  onToggleBrowserNotifications: () => void;
+}) {
+  const serverLevel = serverId === null
+    ? 'mentions'
+    : settings.serverLevels[String(serverId)] ?? 'mentions';
+  const channelLevel = selectedChannelId === null
+    ? ''
+    : settings.channelLevels[String(selectedChannelId)] ?? '';
+  const muteIsActive = settings.muteUntil !== null && settings.muteUntil > Date.now();
+
+  const setServerLevel = (level: NotificationLevel) => {
+    if (serverId === null) return;
+    update({ serverLevels: { ...settings.serverLevels, [String(serverId)]: level } });
+  };
+
+  const setChannelLevel = (level: NotificationLevel | '') => {
+    if (selectedChannelId === null) return;
+    const channelLevels = { ...settings.channelLevels };
+    if (level === '') delete channelLevels[String(selectedChannelId)];
+    else channelLevels[String(selectedChannelId)] = level;
+    update({ channelLevels });
+  };
+
+  const setMuteDuration = (hours: number | null) => {
+    update({ muteUntil: hours === null ? null : Date.now() + hours * 60 * 60 * 1000 });
+  };
+
+  const permissionDescription = {
+    default: 'Aún no se ha solicitado permiso del navegador.',
+    granted: 'El navegador permite las notificaciones.',
+    denied: 'El navegador bloqueó las notificaciones.',
+    unsupported: 'Este navegador no admite notificaciones.',
+  }[browserPermission];
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">Notificaciones por servidor</h3>
+        <p className="text-xs text-muted-foreground">El valor predeterminado es solo menciones. Los mensajes directos siempre notifican.</p>
+        <label className="block text-xs font-mono text-muted-foreground uppercase tracking-wider" htmlFor="notification-server">
+          Servidor
+        </label>
+        <select
+          id="notification-server"
+          data-testid="select-notification-server"
+          value={serverId ?? ''}
+          onChange={event => onServerChange(event.target.value ? Number(event.target.value) : null)}
+          className="w-full bg-secondary border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer"
+        >
+          <option value="">Elegir servidor</option>
+          {serverOptions.map(server => (
+            <option key={server.id} value={server.id}>{server.name}</option>
+          ))}
+        </select>
+        <label className="block text-xs font-mono text-muted-foreground uppercase tracking-wider" htmlFor="notification-server-level">
+          Nivel de notificación
+        </label>
+        <select
+          id="notification-server-level"
+          data-testid="select-notification-server-level"
+          value={serverLevel}
+          disabled={serverId === null}
+          onChange={event => setServerLevel(event.target.value as NotificationLevel)}
+          className="w-full bg-secondary border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+        >
+          <option value="all">Todos los mensajes</option>
+          <option value="mentions">Solo menciones</option>
+          <option value="none">Ninguno</option>
+        </select>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">Excepción por canal</h3>
+        <label className="block text-xs font-mono text-muted-foreground uppercase tracking-wider" htmlFor="notification-channel">
+          Canal
+        </label>
+        <select
+          id="notification-channel"
+          data-testid="select-notification-channel"
+          value={selectedChannelId ?? ''}
+          disabled={serverId === null || channelsLoading || channels.length === 0}
+          onChange={event => onChannelChange(event.target.value ? Number(event.target.value) : null)}
+          className="w-full bg-secondary border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+        >
+          <option value="">
+            {channelsLoading ? 'Cargando canales…' : channels.length ? 'Elegir canal' : 'No hay canales disponibles'}
+          </option>
+          {channels.map(channel => (
+            <option key={channel.id} value={channel.id}>#{channel.name}</option>
+          ))}
+        </select>
+        <label className="block text-xs font-mono text-muted-foreground uppercase tracking-wider" htmlFor="notification-channel-level">
+          Nivel del canal
+        </label>
+        <select
+          id="notification-channel-level"
+          data-testid="select-notification-channel-level"
+          value={channelLevel}
+          disabled={selectedChannelId === null}
+          onChange={event => setChannelLevel(event.target.value as NotificationLevel | '')}
+          className="w-full bg-secondary border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer disabled:opacity-50"
+        >
+          <option value="">Heredar del servidor</option>
+          <option value="all">Todos los mensajes</option>
+          <option value="mentions">Solo menciones</option>
+          <option value="none">Ninguno</option>
+        </select>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Silencio global</h3>
+        {muteIsActive ? (
+          <p data-testid="status-global-mute" className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary">
+            Notificaciones silenciadas hasta {new Date(settings.muteUntil as number).toLocaleString()}.
+          </p>
+        ) : (
+          <p data-testid="status-global-mute" className="text-xs text-muted-foreground">El silencio global está desactivado.</p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {([
+            { hours: 1, label: '1 hora' },
+            { hours: 8, label: '8 horas' },
+            { hours: 24, label: '24 horas' },
+          ] as const).map(option => (
+            <button
+              key={option.hours}
+              type="button"
+              data-testid={`button-mute-${option.hours}h`}
+              onClick={() => setMuteDuration(option.hours)}
+              className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground hover:border-primary/50 hover:text-primary transition-colors"
+            >
+              {option.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            data-testid="button-mute-off"
+            onClick={() => setMuteDuration(null)}
+            className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground hover:border-primary/50 hover:text-primary transition-colors"
+          >
+            Desactivar
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Preferencias</h3>
+        <button
+          type="button"
+          data-testid="toggle-notification-sound"
+          aria-pressed={settings.soundEnabled}
+          onClick={() => update({ soundEnabled: !settings.soundEnabled })}
+          className="w-full flex items-center justify-between rounded-lg border border-border bg-secondary px-3 py-3 text-left text-sm text-foreground hover:border-primary/30"
+        >
+          <span>Sonido de notificación</span>
+          <span className="text-xs text-muted-foreground">{settings.soundEnabled ? 'Activado' : 'Desactivado'}</span>
+        </button>
+        <button
+          type="button"
+          data-testid="toggle-notification-preview"
+          aria-pressed={settings.showPreview}
+          onClick={() => update({ showPreview: !settings.showPreview })}
+          className="w-full flex items-center justify-between rounded-lg border border-border bg-secondary px-3 py-3 text-left text-sm text-foreground hover:border-primary/30"
+        >
+          <span>Mostrar vista previa del mensaje</span>
+          <span className="text-xs text-muted-foreground">{settings.showPreview ? 'Activado' : 'Desactivado'}</span>
+        </button>
+        <p className="text-xs text-muted-foreground">Desactiva la vista previa para ocultar el contenido de los mensajes en las notificaciones.</p>
+      </div>
+
+      <div className="space-y-2 rounded-xl border border-border bg-secondary/50 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Notificaciones del navegador</h3>
+            <p data-testid="status-browser-notifications" className="mt-1 text-xs text-muted-foreground">{permissionDescription}</p>
+          </div>
+          <button
+            type="button"
+            data-testid="toggle-browser-notifications"
+            aria-pressed={settings.browserEnabled && browserPermission === 'granted'}
+            disabled={!settings.browserEnabled && (browserPermission === 'denied' || browserPermission === 'unsupported')}
+            onClick={onToggleBrowserNotifications}
+            className="shrink-0 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm text-primary hover:bg-primary/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {settings.browserEnabled ? 'Desactivar' : browserPermission === 'denied' ? 'Bloqueado' : 'Activar'}
+          </button>
+        </div>
+        {browserPermission === 'denied' && (
+          <p data-testid="text-browser-notification-help" className="text-xs text-muted-foreground">
+            El permiso fue denegado. Para habilitarlo, cambia el permiso de notificaciones de este sitio desde la configuración del navegador y vuelve a cargar la página.
+          </p>
+        )}
+        {browserPermission === 'default' && (
+          <p className="text-xs text-muted-foreground">Al pulsar Activar, el navegador te pedirá permiso. No se solicitará hasta que elijas esta opción.</p>
+        )}
+      </div>
+    </div>
   );
 }
 

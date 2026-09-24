@@ -42,3 +42,10 @@ export function playVoiceLeaveSound() {
     { freq: 523.25, delay: 0.11, duration: 0.26, volume: 0.10 }, // C5
   ]);
 }
+
+/** Short, low-volume message cue; follows the user's audio volume slider. */
+export function playMessageSound(volume: number) {
+  const level = Math.max(0, Math.min(1, volume));
+  if (!level) return;
+  playTones([{ freq: 784, delay: 0, duration: 0.11, volume: 0.065 * level }]);
+}

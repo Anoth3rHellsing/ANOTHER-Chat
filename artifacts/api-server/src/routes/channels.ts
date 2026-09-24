@@ -464,7 +464,7 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
     linkPreview,
   );
 
-  const { broadcast } = await import("../lib/websocket");
+  const { broadcast, broadcastToUser } = await import("../lib/websocket");
   broadcast(`channel:${channelId}`, { type: "message:new", data: responseMsg });
 
   // @mention detection — notify mentioned users via WS
@@ -484,7 +484,7 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
             if (userRes.rows[0]) {
               const mentionedId = userRes.rows[0].id;
               if (mentionedId !== userId) {
-                broadcast(`user:${mentionedId}`, {
+                broadcastToUser(mentionedId, {
                   type: "mention:new",
                   data: {
                     messageId: responseMsg.id,

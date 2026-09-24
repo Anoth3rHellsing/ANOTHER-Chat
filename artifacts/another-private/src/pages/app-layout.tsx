@@ -12,9 +12,12 @@ import {
   useListDmConversations, useGetDmHistory, useSendDm, useMarkDmRead, useDeleteDm,
   getListDmConversationsQueryKey, getGetDmHistoryQueryKey,
 } from '@workspace/api-client-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { useDmWebSocket } from '@/hooks/use-dm-websocket';
+import { useMessageNotifications } from '@/hooks/use-message-notifications';
+import { loadNotificationSettings, saveNotificationSettings, type NotificationSettings } from '@/lib/notification-settings';
+import { isNotificationsMuted } from '@/lib/notification-rules';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
 import { CallStatusBar } from '@/components/call-status-bar';
@@ -226,6 +229,31 @@ export default function AppLayout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [audioVideoSettings, setAudioVideoSettings] = useState<AudioVideoSettings>(loadSettings);
+  const [notificationProfile, setNotificationProfile] = useState<{ userId: number; settings: NotificationSettings } | null>(null);
+  const notificationSettings = notificationProfile && notificationProfile.userId === user?.id
+    ? notificationProfile.settings : loadNotificationSettings(user?.id ?? 0);
+  const [windowFocused, setWindowFocused] = useState(() => document.visibilityState === 'visible' && document.hasFocus());
+  useEffect(() => {
+    const refresh = () => setWindowFocused(document.visibilityState === 'visible' && document.hasFocus());
+    window.addEventListener('focus', refresh);
+    window.addEventListener('blur', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('blur', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
+  useEffect(() => {
+    if (user?.id) setNotificationProfile({ userId: user.id, settings: loadNotificationSettings(user.id) });
+  }, [user?.id]);
+  const updateNotificationSettings = (next: NotificationSettings) => {
+    if (!user?.id) return;
+    if (!saveNotificationSettings(user.id, next)) {
+      toast({ title: 'No se pudieron guardar las preferencias de notificación en este navegador', variant: 'destructive' });
+    }
+    setNotificationProfile({ userId: user.id, settings: next });
+  };
   const [isCallMinimized, setIsCallMinimized] = useState(false);
   const [joinedVoiceChannelName, setJoinedVoiceChannelName] = useState<string | null>(null);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
@@ -263,6 +291,14 @@ export default function AppLayout() {
 
   // Mobile layout depth: 0=server list, 1=channel/DM list, 2=chat
   const [mobilePanelDepth, setMobilePanelDepth] = useState(0);
+  const [desktopLayout, setDesktopLayout] = useState(() => window.matchMedia('(min-width: 768px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 768px)');
+    const update = () => setDesktopLayout(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const chatPaneVisible = desktopLayout || mobilePanelDepth >= 2;
   // Search modal
   const [showSearch, setShowSearch] = useState(false);
   // Report modal
@@ -301,7 +337,7 @@ export default function AppLayout() {
     if (channels && channels.length > 0 && activeServerId) {
       const validChannel = channels.find(c => c.id === activeChannelId);
       if (!validChannel) setActiveChannelId(channels[0].id);
-    } else if (!channels || channels.length === 0) {
+    } else if (channels && channels.length === 0) {
       setActiveChannelId(null);
     }
   }, [channels, activeServerId, activeChannelId]);
@@ -309,10 +345,34 @@ export default function AppLayout() {
   const { data: members } = useGetServerMembers(activeServerId as number, { query: { enabled: !!activeServerId } as any });
   const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
   
-  const allChannelIds = useMemo(() => channels?.map(c => c.id) ?? [], [channels]);
+  // Reuse the generated channels cache; one initial fetch per server, never polling.
+  const channelQueries = useQueries({
+    queries: (servers ?? []).map(server => ({
+      queryKey: getListChannelsQueryKey(server.id),
+      queryFn: async (): Promise<Array<{ id: number; serverId: number; name: string }>> => {
+        const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+        const response = await csrfFetch(`${base}/api/servers/${server.id}/channels`, { credentials: 'include' });
+        if (!response.ok) throw new Error('No se pudieron cargar los canales');
+        return response.json();
+      },
+      enabled: !!user,
+    })),
+  });
+  const channelMetadata = new Map<number, { serverId: number; name: string; serverName: string }>();
+  channelQueries.forEach((query, index) => {
+    const server = servers?.[index];
+    if (!server || !Array.isArray(query.data)) return;
+    query.data.forEach(channel => channelMetadata.set(channel.id, {
+      serverId: server.id, name: channel.name, serverName: server.name,
+    }));
+  });
+  const allChannelIds = [...channelMetadata.keys()];
   const mentionMembers = useMemo(() => (members ?? []).map((m: any) => m.user).filter(Boolean), [members]);
   const { suggestions: mentionSuggestions, insertMention } = useMentionAutocomplete(messageInput, mentionCursorPos, mentionMembers);
-  const { typingUsers, sendTypingStart, sendTypingStop, unreadCounts, clearUnread } = useChatWebSocket(activeChannelId, allChannelIds);
+  const { typingUsers, sendTypingStart, sendTypingStop, unreadCounts, clearUnread } = useChatWebSocket(
+    activeView === 'servers' && !showClips ? activeChannelId : null,
+    allChannelIds, undefined, user?.id, windowFocused && chatPaneVisible,
+  );
   const { dmTypingUsers, sendDmTypingStart, sendDmTypingStop } = useDmWebSocket(activeDmUserId);
 
   // WebRTC — voice channels + DM calls
@@ -336,9 +396,48 @@ export default function AppLayout() {
       if (!response.ok) throw new Error('No se pudieron cargar los grupos');
       return response.json();
     },
-    enabled: !!user && activeView === 'dms',
+    enabled: !!user,
   });
   const totalDmUnread = useMemo(() => (dmConversations ?? []).reduce((sum: number, c: any) => sum + (c.unreadCount ?? 0), 0), [dmConversations]);
+  const dmNames = new Map<number, string>((dmConversations ?? [])
+    .filter((conversation: any) => conversation.otherUser?.id)
+    .map((conversation: any) => [conversation.otherUser.id, conversation.otherUser.displayName]));
+  const groupNames = new Map(dmGroups.map(group => [group.id, group.name]));
+  const notifications = useMessageNotifications({
+    userId: user?.id, settings: notificationSettings, volume: audioVideoSettings.volume,
+    channels: channelMetadata, dmNames, groupNames,
+    active: chatPaneVisible && activeView === 'servers' && !showClips && activeChannelId && activeServerId
+      ? { kind: 'channel', channelId: activeChannelId, serverId: activeServerId }
+      : chatPaneVisible && activeView === 'dms' && dmSubView === 'messages' && activeDmGroupId
+      ? { kind: 'group', groupId: activeDmGroupId }
+      : chatPaneVisible && activeView === 'dms' && dmSubView === 'messages' && activeDmUserId
+      ? { kind: 'dm', userId: activeDmUserId } : null,
+    navigate: destination => {
+      setLocation('/app');
+      setMobilePanelDepth(2);
+      setShowClips(false);
+      setDmSubView('messages');
+      if (destination.kind === 'channel') {
+        setActiveView('servers');
+        setActiveServerId(destination.serverId);
+        setActiveChannelId(destination.channelId);
+      } else {
+        setActiveView('dms');
+        setActiveDmGroupId(destination.kind === 'group' ? destination.groupId : null);
+        setActiveDmUserId(destination.kind === 'dm' ? destination.userId : null);
+      }
+    },
+  });
+  const groupUnreadTotal = [...notifications.groupUnread.values()].reduce((sum, count) => sum + count, 0);
+  const [notificationClock, setNotificationClock] = useState(Date.now);
+  useEffect(() => {
+    if (!notificationSettings.muteUntil) return;
+    const remaining = notificationSettings.muteUntil - Date.now();
+    if (remaining <= 0) { setNotificationClock(Date.now()); return; }
+    const timeout = window.setTimeout(() => setNotificationClock(Date.now()), remaining);
+    return () => window.clearTimeout(timeout);
+  }, [notificationSettings.muteUntil]);
+  const muteActive = isNotificationsMuted(notificationSettings, notificationClock);
   const sendDm = useSendDm();
   const markDmRead = useMarkDmRead();
   const deleteDm = useDeleteDm();
@@ -362,14 +461,21 @@ export default function AppLayout() {
     dmMessagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [dmMessages]);
 
-  // Mark DM as read when opening a conversation
+  // A selected but hidden conversation is not read. Reconcile each new arrival
+  // while it really is visible and focused, using the existing read cursor.
+  const lastMarkedDmRef = useRef<string | null>(null);
   useEffect(() => {
-    if (activeDmUserId) {
-      markDmRead.mutate({ userId: activeDmUserId }, {
-        onSuccess: () => refetchDmConversations(),
-      });
-    }
-  }, [activeDmUserId]);
+    if (!windowFocused || !chatPaneVisible || activeView !== 'dms' ||
+        dmSubView !== 'messages' || !activeDmUserId || !user) return;
+    const latest = dmMessages?.at(-1);
+    const key = `${user.id}:${activeDmUserId}:${latest?.id ?? 'open'}`;
+    if (lastMarkedDmRef.current === key) return;
+    lastMarkedDmRef.current = key;
+    markDmRead.mutate({ userId: activeDmUserId }, {
+      onSuccess: () => refetchDmConversations(),
+      onError: () => { if (lastMarkedDmRef.current === key) lastMarkedDmRef.current = null; },
+    });
+  }, [activeDmUserId, activeView, dmSubView, windowFocused, chatPaneVisible, dmMessages, user?.id]);
 
   // Mute status — poll when server changes
   useEffect(() => {
@@ -603,10 +709,17 @@ export default function AppLayout() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  // Clear unread when switching to a channel
+  // Reading requires the actual conversation to be visible and the window focused.
   useEffect(() => {
-    if (activeChannelId) clearUnread(activeChannelId);
-  }, [activeChannelId]);
+    if (!windowFocused || !chatPaneVisible) return;
+    if (activeView === 'servers' && !showClips && activeChannelId) {
+      clearUnread(activeChannelId);
+      notifications.clearMentions(activeChannelId);
+    }
+    if (activeView === 'dms' && dmSubView === 'messages' && activeDmGroupId) {
+      notifications.clearGroupUnread(activeDmGroupId);
+    }
+  }, [activeChannelId, activeDmGroupId, activeView, dmSubView, showClips, windowFocused, chatPaneVisible]);
 
   // Redirect to login when auth check completes and there's no user.
   useEffect(() => {
@@ -701,6 +814,17 @@ export default function AppLayout() {
 
   return (
     <div className="h-screen w-full bg-background flex overflow-hidden font-sans">
+      {muteActive && (
+        <button
+          type="button"
+          onClick={() => setIsSettingsOpen(true)}
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-[45] max-w-[calc(100vw-1rem)] truncate rounded-full border border-primary/50 bg-card px-4 py-1.5 text-xs font-medium text-primary shadow-lg glow-effect"
+          title="Abrir ajustes de notificaciones"
+        >
+          <Bell className="inline h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+          Notificaciones silenciadas hasta {new Date(notificationSettings.muteUntil!).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+        </button>
+      )}
       
       {/* 1. SERVER LIST COLUMN */}
       <div className={`${mobilePanelDepth === 0 ? 'flex w-full h-full' : 'hidden'} md:flex md:w-[72px] bg-card border-r border-white/5 flex-col items-center py-4 gap-3 md:flex-shrink-0 z-20`}>
@@ -720,9 +844,9 @@ export default function AppLayout() {
           >
             <MessageSquare className="w-5 h-5" />
           </button>
-          {totalDmUnread > 0 && (
+          {totalDmUnread + groupUnreadTotal > 0 && (
             <span className="absolute -bottom-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 pointer-events-none">
-              {totalDmUnread > 99 ? '99+' : totalDmUnread}
+              {totalDmUnread + groupUnreadTotal > 99 ? '99+' : totalDmUnread + groupUnreadTotal}
             </span>
           )}
         </div>
@@ -730,7 +854,10 @@ export default function AppLayout() {
         <div className="w-8 h-[2px] bg-white/10 rounded-full" />
 
         <div className="flex-1 w-full overflow-y-auto hide-scrollbar flex flex-col items-center gap-3">
-          {servers?.map(server => (
+          {servers?.map(server => {
+            const mentions = [...notifications.mentionCounts].reduce((sum, [channelId, count]) =>
+              sum + (channelMetadata.get(channelId)?.serverId === server.id ? count : 0), 0);
+            return (
             <div key={server.id} className="relative group flex justify-center w-full">
               <div className={`absolute left-0 w-1 bg-primary rounded-r-full transition-all duration-200 ${activeView === 'servers' && activeServerId === server.id ? 'h-10 top-1' : 'h-2 top-5 opacity-0 group-hover:opacity-100 group-hover:h-5'}`} />
               <button
@@ -749,8 +876,13 @@ export default function AppLayout() {
                   : <span className="font-mono font-bold">{server.name.substring(0, 2).toUpperCase()}</span>
                 }
               </button>
+              {mentions > 0 && (
+                <span className="absolute -bottom-1 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1 pointer-events-none">
+                  {mentions > 99 ? '99+' : mentions}
+                </span>
+              )}
             </div>
-          ))}
+          ); })}
           
           <button
             onClick={() => setIsCreateServerOpen(true)}
@@ -822,7 +954,7 @@ export default function AppLayout() {
                   <button
                     key={other?.id}
                     onClick={() => { setActiveDmGroupId(null); setActiveDmUserId(other?.id); setDmSubView('messages'); }}
-                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-primary/15 text-foreground glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-primary/15 text-foreground glow-effect' : unread ? 'bg-primary/5 text-foreground font-semibold hover:bg-primary/10' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                   >
                     <div className="relative flex-shrink-0">
                       <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden">
@@ -851,14 +983,19 @@ export default function AppLayout() {
               {dmGroups.map(group => (
                 <button
                   key={`group-${group.id}`}
-                  onClick={() => { setActiveDmUserId(null); setActiveDmGroupId(group.id); setDmSubView('messages'); }}
-                  className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${activeDmGroupId === group.id ? 'bg-primary/15 text-foreground glow-effect' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'}`}
+                    onClick={() => { setActiveDmUserId(null); setActiveDmGroupId(group.id); setDmSubView('messages'); setMobilePanelDepth(2); }}
+                  className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${activeDmGroupId === group.id ? 'bg-primary/15 text-foreground glow-effect' : notifications.groupUnread.has(group.id) ? 'bg-primary/5 text-foreground font-semibold hover:bg-primary/10' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'}`}
                   aria-label={`Grupo ${group.name}`}
                 >
                   <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
                     <UsersIcon className="w-4 h-4" />
                   </div>
-                  <span className="truncate font-medium">{group.name}</span>
+                  <span className="truncate font-medium flex-1 text-left">{group.name}</span>
+                  {(notifications.groupUnread.get(group.id) ?? 0) > 0 && (
+                    <span className="min-w-[18px] h-[18px] rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center px-1">
+                      {(notifications.groupUnread.get(group.id) ?? 0) > 99 ? '99+' : notifications.groupUnread.get(group.id)}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -944,11 +1081,12 @@ export default function AppLayout() {
                 const vc = (channel as any).visualConfig ?? {};
                 const hasVisual = vc.kind && vc.value;
                 const channelUnread = unreadCounts.get(channel.id) ?? 0;
+                const mentions = notifications.mentionCounts.get(channel.id) ?? 0;
                 return (
                   <button
                     key={channel.id}
-                    onClick={() => { setActiveChannelId(channel.id); setShowClips(false); clearUnread(channel.id); }}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    onClick={() => { setActiveChannelId(channel.id); setShowClips(false); setMobilePanelDepth(2); }}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : channelUnread || mentions ? 'bg-primary/5 text-foreground font-semibold hover:bg-primary/10' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                     style={hasVisual && vc.kind === 'gradient'
                       ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
                       : hasVisual && vc.kind === 'image'
@@ -966,6 +1104,11 @@ export default function AppLayout() {
                       {channelUnread > 0 && (
                         <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                           {channelUnread > 99 ? '99+' : channelUnread}
+                        </span>
+                      )}
+                      {mentions > 0 && (
+                        <span className="min-w-[18px] h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                          {mentions > 99 ? '99+' : `@${mentions}`}
                         </span>
                       )}
                     </span>
@@ -1859,6 +2002,10 @@ export default function AppLayout() {
         onClose={() => setIsSettingsOpen(false)}
         settings={audioVideoSettings}
         onSettingsChange={setAudioVideoSettings}
+        notificationSettings={notificationSettings}
+        onNotificationSettingsChange={updateNotificationSettings}
+        serverOptions={(servers ?? []).map(server => ({ id: server.id, name: server.name }))}
+        activeServerId={activeServerId}
       />
       {isServerSettingsOpen && activeServer && (
         <ServerSettingsModal

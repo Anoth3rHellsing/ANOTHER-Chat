@@ -47,14 +47,52 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
   const pendingReactionKeys = useRef(new Set<string>());
   const messagesQueryKey = ['/api/dm-groups', groupId, 'messages'];
 
-  // Group reactions are delivered to authenticated members directly, not to
-  // the group topic. No subscription to the group's unrestricted topic is needed.
-  useRealtimeMessages(['dm_group:reaction_update'], payload => {
-    const data = payload.data as { groupId: number; messageId: number; reactions: MessageReaction[] } | undefined;
+  // Group events arrive through the authenticated unified transport; there is
+  // no need to subscribe to the group's unrestricted topic.
+  useRealtimeMessages(['dm_group:message', 'dm_group:reaction_update'], payload => {
+    const data = payload.data as {
+      groupId: number;
+      messageId?: number;
+      reactions?: MessageReaction[];
+      id?: number;
+      userId?: number;
+      content?: string;
+      createdAt?: string;
+      author?: GroupMessage['author'];
+    } | undefined;
     if (!data || data.groupId !== groupId) return;
-    queryClient.setQueryData<GroupMessage[]>(messagesQueryKey, previous =>
-      previous?.map(item => item.id === data.messageId ? { ...item, reactions: data.reactions } : item),
-    );
+
+    if (payload.type === 'dm_group:reaction_update') {
+      if (typeof data.messageId !== 'number' || !Array.isArray(data.reactions)) return;
+      queryClient.setQueryData<GroupMessage[]>(messagesQueryKey, previous => (
+        previous?.map(item => item.id === data.messageId ? { ...item, reactions: data.reactions } : item)
+      ));
+      void queryClient.invalidateQueries({ queryKey: messagesQueryKey });
+      return;
+    }
+
+    if (
+      typeof data.id !== 'number'
+      || typeof data.userId !== 'number'
+      || typeof data.content !== 'string'
+      || typeof data.createdAt !== 'string'
+      || !data.author
+    ) return;
+
+    const incoming: GroupMessage = {
+      id: data.id,
+      groupId: data.groupId,
+      userId: data.userId,
+      content: data.content,
+      createdAt: data.createdAt,
+      author: data.author,
+      reactions: data.reactions ?? [],
+    };
+    queryClient.setQueryData<GroupMessage[]>(messagesQueryKey, previous => {
+      if (!previous) return previous;
+      if (previous.some(item => item.id === incoming.id)) return previous;
+      return [...previous, incoming];
+    });
     void queryClient.invalidateQueries({ queryKey: messagesQueryKey });
   });
 
@@ -70,7 +108,6 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
       return response.json();
     },
     enabled: Number.isFinite(groupId) && groupId > 0,
-    refetchInterval: 10_000,
   });
 
   const sendMessage = useMutation({

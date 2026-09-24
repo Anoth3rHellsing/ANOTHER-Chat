@@ -41,6 +41,8 @@ export function useChatWebSocket(
   channelId?: number | null,
   allChannelIds?: number[],
   onMention?: (data: { messageId: number, channelId: number, serverId: number, authorName: string, preview: string }) => void,
+  currentUserId?: number,
+  channelVisibleFocused = true,
 ) {
   const queryClient = useQueryClient();
   const { send } = useRealtimeTransport();
@@ -48,9 +50,13 @@ export function useChatWebSocket(
   const [unreadCounts, setUnreadCounts] = useState<Map<number, number>>(new Map());
   const activeChannelIdRef = useRef(channelId);
   const onMentionRef = useRef(onMention);
+  const currentUserIdRef = useRef(currentUserId);
+  const channelVisibleFocusedRef = useRef(channelVisibleFocused);
 
   activeChannelIdRef.current = channelId;
   onMentionRef.current = onMention;
+  currentUserIdRef.current = currentUserId;
+  channelVisibleFocusedRef.current = channelVisibleFocused;
   useRealtimeChannels(allChannelIds ?? []);
 
   useEffect(() => {
@@ -79,7 +85,9 @@ export function useChatWebSocket(
               return [...old, payload.data];
             },
           );
-        } else if (payload.data.channelId && payload.data.channelId !== activeChannelId) {
+        }
+        if (payload.data.channelId && payload.data.userId !== currentUserIdRef.current &&
+            (payload.data.channelId !== activeChannelId || !channelVisibleFocusedRef.current)) {
           setUnreadCounts(prev => {
             const next = new Map(prev);
             next.set(payload.data.channelId, (next.get(payload.data.channelId) ?? 0) + 1);
