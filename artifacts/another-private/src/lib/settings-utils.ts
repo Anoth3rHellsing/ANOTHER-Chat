@@ -36,3 +36,19 @@ export function videoConstraintsFromQuality(quality: VideoQuality): MediaTrackCo
     default:       return { width: 640,  height: 480,  frameRate: 24 };
   }
 }
+
+export function callMediaConstraints(
+  audioInputId: string | undefined,
+  videoQuality: VideoQuality,
+  withVideo = false,
+): MediaStreamConstraints {
+  return {
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      ...(audioInputId ? { deviceId: { exact: audioInputId } } : {}),
+    },
+    video: withVideo ? videoConstraintsFromQuality(videoQuality) : false,
+  };
+}

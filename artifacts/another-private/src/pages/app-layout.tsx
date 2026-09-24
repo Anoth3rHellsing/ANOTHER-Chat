@@ -2123,7 +2123,7 @@ export default function AppLayout() {
                 onPlay={() => { watch.control('play'); }}
                 onPause={() => { watch.control('pause'); }}
                 onSeek={positionMs => { watch.control('seek', { positionMs }); }}
-                onEnded={() => { watch.control('ended', { itemId: watch.session?.current?.id }); }}
+                onEnded={itemId => { watch.control('ended', { itemId }); }}
                 onMetadata={({ title, durationMs }) => {
                   const current = watch.session?.current;
                   if (!watch.isController || !current) return;

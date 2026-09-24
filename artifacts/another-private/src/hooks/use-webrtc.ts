@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { safeCloseAudioContext, videoConstraintsFromQuality, type VideoQuality } from '@/lib/settings-utils';
+import { callMediaConstraints, safeCloseAudioContext, videoConstraintsFromQuality, type VideoQuality } from '@/lib/settings-utils';
 import { playVoiceJoinSound, playVoiceLeaveSound } from '@/lib/voice-sounds';
 import { csrfFetch } from '@workspace/api-client-react';
 import {
@@ -710,12 +710,7 @@ export function useWebRTC(options: {
     const generation = mediaGenerationRef.current;
     const pending = (async () => {
       try {
-      const constraints: MediaStreamConstraints = {
-        audio: settings.audioInputId
-          ? { deviceId: { exact: settings.audioInputId } }
-          : true,
-        video: withVideo ? videoConstraintsFromQuality(settings.videoQuality ?? 'medium') : false,
-      };
+      const constraints = callMediaConstraints(settings.audioInputId, settings.videoQuality ?? 'medium', withVideo);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (!mountedRef.current || generation !== mediaGenerationRef.current) {
         stream.getTracks().forEach(track => track.stop());

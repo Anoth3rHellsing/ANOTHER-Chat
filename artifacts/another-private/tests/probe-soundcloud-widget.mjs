@@ -1,6 +1,7 @@
 // Optional live probe. Uses a disposable browser profile and a public example track.
 // Run manually: node artifacts/another-private/tests/probe-soundcloud-widget.mjs
 import { spawn } from 'node:child_process';
+import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -189,6 +190,43 @@ try {
       },
     })}\0`);
     console.log('iframe policy and media:', (await frameResult).result.value);
+  }
+  if (process.env.WATCH_TEST_TRANSITIONS && process.env.WATCH_TEST_PAGE) {
+    const waitForTrack = async id => {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const snapshot = await pageEvaluate(`({
+          ...window.fixtureState,
+          youtubeMounted: !!document.querySelector('[data-testid="watch-youtube-player"] iframe'),
+          soundcloudMounted: !!document.querySelector('[data-testid="watch-soundcloud-player"]'),
+          errors: window.fixtureErrors,
+        })`);
+        if (snapshot.current === id && (id === null ||
+          (id.startsWith('fixture-next-youtube') ? snapshot.youtubeMounted : snapshot.soundcloudMounted))) {
+          await sleep(200);
+          assert.deepEqual(snapshot.errors, []);
+          return snapshot;
+        }
+        await sleep(250);
+      }
+      throw new Error(`The real player did not mount after advancing to ${id}`);
+    };
+    await pageEvaluate('window.advanceFixture()');
+    console.log('real SoundCloud -> YouTube:', await waitForTrack('fixture-next-youtube'));
+    await pageEvaluate('window.advanceFixture()');
+    console.log('real YouTube -> SoundCloud:', await waitForTrack('fixture-next-soundcloud'));
+    await pageEvaluate('window.removeCurrentFixture()');
+    console.log('real current item removed:', await waitForTrack(null));
+    const clean = await pageEvaluate(`({
+      playerRemoved: !document.querySelector('[data-testid="watch-player"]'),
+      queueCount: document.querySelector('[data-testid="watch-queue-count"]')?.textContent?.trim(),
+      errors: window.fixtureErrors,
+      overlay: !!document.querySelector('vite-error-overlay, replit-error-overlay'),
+    })`);
+    assert.equal(clean.playerRemoved, true);
+    assert.equal(clean.queueCount, '0 / 50');
+    assert.deepEqual(clean.errors, []);
+    assert.equal(clean.overlay, false);
+    console.log('PASS live official SDK transitions and empty queue:', clean);
   }
 } finally {
   monitor.kill();

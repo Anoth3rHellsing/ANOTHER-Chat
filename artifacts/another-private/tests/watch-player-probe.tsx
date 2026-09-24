@@ -23,13 +23,16 @@ const initialQueue: WatchItem[] = [
     canonicalUrl: track, addedById: 1, addedByName: 'Prueba', title: 'Otra pista de prueba',
   },
 ];
+(window as any).fixtureErrors = [];
+window.addEventListener('error', event => (window as any).fixtureErrors.push(event.message));
+window.addEventListener('unhandledrejection', event => (window as any).fixtureErrors.push(String(event.reason)));
 
 function Fixture() {
   const [volume, setVolume] = useState(0.6);
   const [playing, setPlaying] = useState(true);
   const [positionMs, setPositionMs] = useState(0);
   const [updatedAtMs, setUpdatedAtMs] = useState(Date.now());
-  const [current, setCurrent] = useState<WatchItem>(initialTrack);
+  const [current, setCurrent] = useState<WatchItem | null>(initialTrack);
   const [queue, setQueue] = useState(initialQueue);
   (window as any).watchPlaying = playing;
   (window as any).controlEvents ??= [];
@@ -55,12 +58,14 @@ function Fixture() {
     return () => clearInterval(timer);
   }, []);
   const next = () => {
-    if (queue.length === 0) return;
-    setCurrent(queue[0]);
+    setCurrent(queue[0] ?? null);
     setQueue(queue.slice(1));
     setPositionMs(0);
     setUpdatedAtMs(Date.now());
   };
+  (window as any).advanceFixture = next;
+  (window as any).removeCurrentFixture = next;
+  (window as any).fixtureState = { current: current?.id ?? null, queue: queue.map(item => item.id) };
   const action = (name: string, payload?: any) => {
     if (name === 'pause' || name === 'play') {
       setPlaying(name === 'play');
@@ -103,7 +108,7 @@ function Fixture() {
       error={null}
       active="voice"
       currentUserId={1}
-      player={<WatchPlayer
+      player={current ? <WatchPlayer
       current={current}
       playing={playing}
       positionMs={positionMs}
@@ -117,7 +122,7 @@ function Fixture() {
       onSeek={position => { (window as any).controlEvents.push('seek'); setPositionMs(position); setUpdatedAtMs(Date.now()); }}
       onEnded={next}
       onMetadata={() => {}}
-    />}
+    /> : null}
     />
   </aside>;
 }

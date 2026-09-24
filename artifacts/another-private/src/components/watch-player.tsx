@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertCircle, Music2, Pause, Play, RotateCw, Volume2, VolumeX } from 'lucide-react';
 import {
   clampWatchVolume,
@@ -25,7 +25,7 @@ interface WatchPlayerProps {
   onPlay: () => void;
   onPause: (positionMs: number) => void;
   onSeek: (positionMs: number) => void;
-  onEnded: () => void;
+  onEnded: (itemId: string) => void;
   onMetadata: (metadata: { title: string; durationMs?: number }) => void;
   onLoadError?: (message: string | null) => void;
 }
@@ -91,6 +91,7 @@ interface SoundCloudWidget {
   getDuration: (callback: (durationMs: number) => void) => void;
   getCurrentSound: (callback: (sound: SoundCloudSound | null) => void) => void;
   isPaused: (callback: (paused: boolean) => void) => void;
+  destroy?: () => void;
 }
 
 interface SoundCloudApi {
@@ -206,7 +207,16 @@ function sessionSnapshot(props: WatchPlayerProps): WatchSessionState {
   };
 }
 
-export function WatchPlayer({
+export function WatchPlayer(props: WatchPlayerProps) {
+  // A distinct React instance per item guarantees that neither platform can
+  // inherit a DOM mount or callbacks from the previous item.
+  const identity = props.current
+    ? `${props.sessionKey}:${props.current.platform}:${props.current.contentId}:${props.current.id}`
+    : `${props.sessionKey}:empty`;
+  return <WatchPlayerInstance key={identity} {...props} />;
+}
+
+function WatchPlayerInstance({
   current,
   playing,
   positionMs,
@@ -225,6 +235,7 @@ export function WatchPlayer({
   onLoadError,
 }: WatchPlayerProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const soundCloudMountRef = useRef<HTMLDivElement>(null);
   const soundCloudFrameRef = useRef<HTMLIFrameElement>(null);
   const youtubePlayerRef = useRef<YouTubePlayer | null>(null);
   const soundCloudWidgetRef = useRef<SoundCloudWidget | null>(null);
@@ -356,7 +367,7 @@ export function WatchPlayer({
     setDuration(currentRef.current.durationMs ?? currentRef.current.current?.durationMs ?? 0);
   }, [itemKey]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!current) return undefined;
     setPlayerReady(false);
     playerReadyRef.current = false;
@@ -365,13 +376,20 @@ export function WatchPlayer({
     let disposed = false;
     let timer: number | undefined;
     let teardownSoundCloud: (() => void) | undefined;
+    const youtubeHost = mountRef.current;
+    const soundCloudHost = soundCloudMountRef.current;
+    let soundCloudFrame: HTMLIFrameElement | null = null;
 
     if (current.platform === 'youtube') {
       loadPlayerApi('youtube').then(api => {
-        if (disposed || !mountRef.current) return;
+        if (disposed || !youtubeHost) return;
         const youtube = api as YouTubeApi;
+        const youtubeNode = document.createElement('div');
+        youtubeNode.style.width = '480px';
+        youtubeNode.style.height = '270px';
+        youtubeHost.appendChild(youtubeNode);
         const expected = Math.max(0, expectedWatchPosition(sessionSnapshot(currentRef.current as WatchPlayerProps), Date.now()));
-        youtubePlayerRef.current = new youtube.Player(mountRef.current, {
+        youtubePlayerRef.current = new youtube.Player(youtubeNode, {
           width: '480',
           height: '270',
           videoId: current.contentId,
@@ -418,7 +436,12 @@ export function WatchPlayer({
               if (event.data === youtube.PlayerState.ENDED && propsRef.current.canControl
                 && endedKeyRef.current !== current.id) {
                 endedKeyRef.current = current.id;
-                propsRef.current.onEnded();
+                try {
+                  propsRef.current.onEnded(current.id);
+                } catch (error) {
+                  endedKeyRef.current = '';
+                  setError(error instanceof Error ? error.message : 'No se pudo avanzar a la siguiente pista.');
+                }
               }
               if (event.data === youtube.PlayerState.PLAYING) {
                 if (localVolumeRef.current.localVolume > 0 && !localVolumeRef.current.muted
@@ -449,10 +472,27 @@ export function WatchPlayer({
         if (!disposed) setError(error instanceof Error ? error.message : 'No se pudo iniciar el reproductor de YouTube.');
       });
     } else {
+      const host = soundCloudHost;
+      if (host) {
+        soundCloudFrame = document.createElement('iframe');
+        soundCloudFrame.title = `Reproductor oficial de SoundCloud: ${current.title}`;
+        soundCloudFrame.src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(current.canonicalUrl)}&auto_play=false&visual=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&single_active=true`;
+        soundCloudFrame.width = '100%';
+        soundCloudFrame.height = '200';
+        soundCloudFrame.scrolling = 'no';
+        soundCloudFrame.setAttribute('frameborder', 'no');
+        soundCloudFrame.allow = 'autoplay';
+        soundCloudFrame.className = 'min-h-[200px] w-full min-w-[200px] rounded-lg border-0 bg-background';
+        soundCloudFrame.dataset.testid = 'watch-soundcloud-player';
+        soundCloudFrame.style.pointerEvents = 'none';
+        soundCloudFrame.tabIndex = -1;
+        host.appendChild(soundCloudFrame);
+        soundCloudFrameRef.current = soundCloudFrame;
+      }
       loadPlayerApi('soundcloud').then(api => {
-        if (disposed || !soundCloudFrameRef.current) return;
+        if (disposed || !soundCloudFrame || soundCloudFrame !== soundCloudFrameRef.current) return;
         const soundCloud = api as SoundCloudApi;
-        const widget = soundCloud.Widget(soundCloudFrameRef.current);
+        const widget = soundCloud.Widget(soundCloudFrame);
         soundCloudWidgetRef.current = widget;
         const events = soundCloud.Widget.Events;
         const boundEvents = [events.READY, events.ERROR, events.FINISH, events.PLAY_PROGRESS]
@@ -495,7 +535,12 @@ export function WatchPlayer({
         widget.bind(events.FINISH, () => {
           if (disposed || !propsRef.current.canControl || endedKeyRef.current === current.id) return;
           endedKeyRef.current = current.id;
-          propsRef.current.onEnded();
+          try {
+            propsRef.current.onEnded(current.id);
+          } catch (error) {
+            endedKeyRef.current = '';
+            setError(error instanceof Error ? error.message : 'No se pudo avanzar a la siguiente pista.');
+          }
         });
         widget.bind(events.PLAY_PROGRESS, event => {
           const position = (event as { currentPosition?: number } | undefined)?.currentPosition;
@@ -518,11 +563,24 @@ export function WatchPlayer({
     return () => {
       disposed = true;
       if (timer !== undefined) window.clearTimeout(timer);
-      teardownSoundCloud?.();
+      const widget = soundCloudWidgetRef.current;
+      if (widget) {
+        try { widget.pause(); } catch (error) { console.warn('No se pudo detener SoundCloud.', error); }
+        try { teardownSoundCloud?.(); } catch (error) { console.warn('No se pudieron liberar los eventos de SoundCloud.', error); }
+        try { widget.destroy?.(); } catch (error) { console.warn('No se pudo destruir el widget de SoundCloud.', error); }
+      }
+      soundCloudWidgetRef.current = null;
       const player = youtubePlayerRef.current;
       youtubePlayerRef.current = null;
-      player?.destroy();
-      soundCloudWidgetRef.current = null;
+      if (player) {
+        try { player.pauseVideo(); } catch (error) { console.warn('No se pudo detener YouTube.', error); }
+        try { player.destroy(); } catch (error) { console.warn('No se pudo destruir YouTube.', error); }
+      }
+      // The platform alone owned these descendants; React only removes the empty hosts.
+      try { youtubeHost?.replaceChildren(); } catch (error) { console.warn('No se pudo retirar el marco de YouTube.', error); }
+      try { soundCloudHost?.replaceChildren(); } catch (error) { console.warn('No se pudo retirar el marco de SoundCloud.', error); }
+      soundCloudFrameRef.current = null;
+      soundCloudFrame = null;
       playerReadyRef.current = false;
       lastLoadedKeyRef.current = '';
     };
@@ -618,15 +676,6 @@ export function WatchPlayer({
     const actual = currentTime();
     if (shouldCorrectWatchDrift(positionMs, actual)) seekLocal(positionMs);
   }, [positionMs, playing, playerReady, current?.id, currentTime, seekLocal]);
-
-  useEffect(() => {
-    const frame = soundCloudFrameRef.current;
-    if (!frame) return;
-    // The shared session's own buttons are authoritative. Widget PLAY/PAUSE
-    // callbacks also fire for script commands and must not echo to the server.
-    frame.style.pointerEvents = 'none';
-    frame.tabIndex = -1;
-  }, [current?.platform, playerReady]);
 
   const onPlayClick = () => {
     if (!canControl) return;
@@ -728,28 +777,11 @@ export function WatchPlayer({
         {current.platform === 'youtube' ? (
           // Keep the official player visible and at least 480×270; never use audio-only/hidden playback.
           <div className="h-[270px] w-[480px] max-w-none overflow-hidden rounded-lg bg-background">
-            <div
-              key={`${sessionKey}:${itemKey}`}
-              ref={mountRef}
-              className="h-[270px] w-[480px] max-w-none"
-              aria-label="Reproductor oficial visible de YouTube"
-              data-testid="watch-youtube-player"
-            />
+            <div ref={mountRef} className="h-[270px] w-[480px] max-w-none"
+              aria-label="Reproductor oficial visible de YouTube" data-testid="watch-youtube-player" />
           </div>
         ) : (
-          <iframe
-            key={`${sessionKey}:${itemKey}`}
-            ref={soundCloudFrameRef}
-            title={`Reproductor oficial de SoundCloud: ${current.title}`}
-            src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(current.canonicalUrl)}&auto_play=false&visual=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&single_active=true`}
-            width="100%"
-            height="200"
-            scrolling="no"
-            frameBorder="no"
-            allow="autoplay"
-            className="min-h-[200px] w-full min-w-[200px] rounded-lg border-0 bg-background"
-            data-testid="watch-soundcloud-player"
-          />
+          <div ref={soundCloudMountRef} data-testid="watch-soundcloud-mount" className="min-h-[200px] w-full min-w-[200px]" />
         )}
       </div>
 

@@ -215,8 +215,16 @@ try {
     && m.data.session.queue.length === 0, "automatic advance at track end");
   bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
     action: "ended", itemId: currentTrack.id }));
-  await autoAdvance;
+  const advanced = (await autoAdvance).data.session.current;
   console.log("PASS track end advances automatically to the next queued item");
+  const cleared = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.current === null
+    && m.data.session.queue.length === 0
+    && m.data.session.playing === false, "current item removed with empty queue");
+  bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
+    action: "remove", itemId: advanced.id }));
+  await cleared;
+  console.log("PASS removing the playing item leaves an empty, paused session");
 
   const ended = waitFor(aWs, m => m.type === "watch:state" && m.data?.session === null, "session end");
   bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId), action: "end" }));
