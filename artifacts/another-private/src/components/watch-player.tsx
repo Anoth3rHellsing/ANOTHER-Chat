@@ -244,7 +244,6 @@ export function WatchPlayer({
   const itemKey = current ? `${current.platform}:${current.contentId}:${current.id}` : '';
   const lastLoadedKeyRef = useRef('');
   const endedKeyRef = useRef('');
-  const programmaticSoundCloudCommandRef = useRef(false);
   const audioActivatedRef = useRef(false);
   const localVolumeRef = useRef({ localVolume, muted });
   localVolumeRef.current = { localVolume, muted };
@@ -327,9 +326,7 @@ export function WatchPlayer({
     }
     const widget = soundCloudWidgetRef.current;
     if (widget) {
-      programmaticSoundCloudCommandRef.current = true;
       widget.play();
-      window.setTimeout(() => { programmaticSoundCloudCommandRef.current = false; }, 1200);
       window.setTimeout(() => {
         if (widget !== soundCloudWidgetRef.current || !currentRef.current.playing) return;
         confirmSoundCloudVolume(widget);
@@ -338,11 +335,6 @@ export function WatchPlayer({
           if (paused) {
             setPlaybackBlocked(true);
             setPlayerError('Tu navegador requiere que pulses Reproducir para activar el contenido.');
-          } else if (!fromUserGesture && !audioActivatedRef.current) {
-            // The widget can advance while the browser suppresses audio. Its
-            // getVolume() reports its slider, not the browser's audio output.
-            setPlaybackBlocked(true);
-            setPlayerError('Si la pista avanza sin sonido, pulsa Reproducir en este dispositivo para activar el audio.');
           }
         });
       }, 1200);
@@ -433,10 +425,6 @@ export function WatchPlayer({
                   && event.target.isMuted()) {
                   setPlaybackBlocked(true);
                   setPlayerError('YouTube está silenciado. Pulsa Reproducir en este dispositivo para activar el audio.');
-                } else if (!audioActivatedRef.current && localVolumeRef.current.localVolume > 0
-                  && !localVolumeRef.current.muted) {
-                  setPlaybackBlocked(true);
-                  setPlayerError('Si el vídeo avanza sin sonido, pulsa Reproducir en este dispositivo para activar el audio.');
                 }
                 const title = event.target.getVideoData()?.title;
                 const durationValue = Math.round(event.target.getDuration() * 1000);
@@ -467,7 +455,7 @@ export function WatchPlayer({
         const widget = soundCloud.Widget(soundCloudFrameRef.current);
         soundCloudWidgetRef.current = widget;
         const events = soundCloud.Widget.Events;
-        const boundEvents = [events.READY, events.ERROR, events.FINISH, events.PLAY, events.PAUSE, events.PLAY_PROGRESS, events.SEEK]
+        const boundEvents = [events.READY, events.ERROR, events.FINISH, events.PLAY_PROGRESS]
           .filter((event): event is string => typeof event === 'string');
         teardownSoundCloud = () => {
           for (const event of boundEvents) widget.unbind(event);
@@ -509,25 +497,11 @@ export function WatchPlayer({
           endedKeyRef.current = current.id;
           propsRef.current.onEnded();
         });
-        widget.bind(events.PLAY, () => {
-          if (disposed || programmaticSoundCloudCommandRef.current || !propsRef.current.canControl) return;
-          propsRef.current.onPlay();
-        });
-        widget.bind(events.PAUSE, () => {
-          if (disposed || programmaticSoundCloudCommandRef.current || !propsRef.current.canControl) return;
-          widget.getPosition(position => propsRef.current.onPause(Math.max(0, position)));
-        });
         widget.bind(events.PLAY_PROGRESS, event => {
           const position = (event as { currentPosition?: number } | undefined)?.currentPosition;
           if (typeof position === 'number' && Number.isFinite(position)) {
             setCurrentPositionMs(Math.max(0, position));
           }
-        });
-        widget.bind(events.SEEK, () => {
-          if (disposed || programmaticSoundCloudCommandRef.current || !propsRef.current.canControl) return;
-          widget.getPosition(position => {
-            if (Number.isFinite(position)) propsRef.current.onSeek(Math.max(0, position));
-          });
         });
         // The keyed iframe already contains this URL. Reloading it here can
         // replace the frame after Widget(frame) has bound to it.
@@ -636,9 +610,7 @@ export function WatchPlayer({
         // SoundCloud may resume after seekTo even if the session remains paused.
         widget.isPaused(paused => {
           if (paused || currentRef.current.playing || widget !== soundCloudWidgetRef.current) return;
-          programmaticSoundCloudCommandRef.current = true;
           widget.pause();
-          window.setTimeout(() => { programmaticSoundCloudCommandRef.current = false; }, 1200);
         });
       });
       return;
@@ -650,9 +622,11 @@ export function WatchPlayer({
   useEffect(() => {
     const frame = soundCloudFrameRef.current;
     if (!frame) return;
-    frame.style.pointerEvents = canControl ? 'auto' : 'none';
-    frame.tabIndex = canControl ? 0 : -1;
-  }, [canControl, current?.platform, playerReady]);
+    // The shared session's own buttons are authoritative. Widget PLAY/PAUSE
+    // callbacks also fire for script commands and must not echo to the server.
+    frame.style.pointerEvents = 'none';
+    frame.tabIndex = -1;
+  }, [current?.platform, playerReady]);
 
   const onPlayClick = () => {
     if (!canControl) return;
@@ -715,6 +689,41 @@ export function WatchPlayer({
         </span>
       </div>
 
+      {current.platform === 'soundcloud' && !playbackBlocked && (
+        <div className="px-3 pt-2">
+          <button
+            type="button"
+            onClick={onRetryClick}
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="Activar audio de SoundCloud en este dispositivo"
+            data-testid="button-watch-soundcloud-audio"
+          >
+            <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />
+            ¿Sin sonido? Activar audio
+          </button>
+        </div>
+      )}
+
+      {playerError && (
+        <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive" role="alert" data-testid="status-watch-player-error">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p>{playerError}</p>
+            {playbackBlocked && (
+              <button
+                type="button"
+                onClick={onRetryClick}
+                className="mt-1 inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-background/50 px-2 py-1 font-medium hover:bg-destructive/10"
+                data-testid="button-watch-player-retry"
+              >
+                <RotateCw className="h-3 w-3" aria-hidden="true" />
+                Reproducir en este dispositivo
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto p-3" data-testid="watch-embed-viewport">
         {current.platform === 'youtube' ? (
           // Keep the official player visible and at least 480×270; never use audio-only/hidden playback.
@@ -743,26 +752,6 @@ export function WatchPlayer({
           />
         )}
       </div>
-
-      {playerError && (
-        <div className="mx-3 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive" role="alert" data-testid="status-watch-player-error">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <p>{playerError}</p>
-            {playbackBlocked && (
-              <button
-                type="button"
-                onClick={onRetryClick}
-                className="mt-1 inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-background/50 px-2 py-1 font-medium hover:bg-destructive/10"
-                data-testid="button-watch-player-retry"
-              >
-                <RotateCw className="h-3 w-3" aria-hidden="true" />
-                Reproducir en este dispositivo
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       <div className="flex flex-wrap items-center gap-3 border-t border-border/70 px-3 py-2">
         <button

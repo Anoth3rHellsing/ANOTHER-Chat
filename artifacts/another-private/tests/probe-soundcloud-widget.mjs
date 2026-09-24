@@ -32,6 +32,8 @@ const port = server.address().port;
 const pageUrl = process.env.WATCH_TEST_PAGE ?? `http://127.0.0.1:${port}/`;
 const chrome = spawn('chromium', [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+  ...(process.env.WATCH_TEST_MOBILE ? ['--window-size=390,844'] : []),
+  ...(process.env.WATCH_TEST_AUTOPLAY_ALLOWED ? ['--autoplay-policy=no-user-gesture-required'] : []),
   '--remote-debugging-port=0', `--remote-debugging-pipe`,
   `--user-data-dir=${profile}`, pageUrl,
 ], { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
@@ -100,6 +102,28 @@ try {
   }
   const events = await pageEvaluate('window.events');
   if (!events.includes('READY')) throw new Error(`Widget not ready: ${JSON.stringify(events)}`);
+  if (process.env.WATCH_TEST_PAGE) console.log('queue layout:', await pageEvaluate(`(() => {
+    const area = document.querySelector('[data-testid="watch-panel-scroll"]');
+    const queue = document.querySelector('[data-testid="watch-queue"]');
+    const visibleInitially = queue.getBoundingClientRect().top < area.getBoundingClientRect().bottom;
+    area.scrollTop = area.scrollHeight;
+    const metrics = {
+      viewportWidth: innerWidth, clientHeight: area.clientHeight,
+      scrollHeight: area.scrollHeight, scrollTop: area.scrollTop,
+      visibleInitially, visibleAfterScroll: queue.getBoundingClientRect().top < area.getBoundingClientRect().bottom,
+      count: document.querySelector('[data-testid="watch-queue-count"]')?.textContent?.trim(),
+      items: document.querySelectorAll('[data-testid="watch-queue-item"]').length,
+    };
+    area.scrollTop = 0;
+    return metrics;
+  })()`));
+  console.log('parent policy:', await pageEvaluate(`({
+    allowed: document.permissionsPolicy?.allowsFeature('autoplay') ?? document.featurePolicy?.allowsFeature('autoplay') ?? null,
+    encryptedAllowed: document.permissionsPolicy?.allowsFeature('encrypted-media') ?? document.featurePolicy?.allowsFeature('encrypted-media') ?? null,
+    iframeAllow: document.querySelector('iframe')?.getAttribute('allow') ?? null,
+    iframeAllowed: document.querySelector('iframe')?.featurePolicy?.allowsFeature('autoplay') ?? null,
+    iframeEncryptedAllowed: document.querySelector('iframe')?.featurePolicy?.allowsFeature('encrypted-media') ?? null,
+  })`));
   for (const level of [60, 0, 25, 100, 60]) {
     const before = await pageEvaluate('window.readVolume()');
     const operation = process.env.WATCH_TEST_PAGE ? `window.setWatchVolume(${level / 100})` : `window.widget.setVolume(${level})`;
@@ -108,7 +132,7 @@ try {
   }
   await pageEvaluate('window.widget.play()');
   await sleep(3000);
-  console.log('after play:', await pageEvaluate('(async () => ({volume: await window.readVolume(), position: await window.readPosition(), paused: await new Promise(r => window.widget.isPaused(r)), warning: document.querySelector("[data-testid=status-watch-player-error]")?.textContent ?? null, events: window.events.slice(-8)}))()'), 'audio RMS', meter());
+  console.log('after play:', await pageEvaluate('(async () => ({volume: await window.readVolume(), position: await window.readPosition(), paused: await new Promise(r => window.widget.isPaused(r)), sessionPlaying: window.watchPlaying, controlEvents: window.controlEvents, warning: document.querySelector("[data-testid=status-watch-player-error]")?.textContent ?? null, events: window.events.slice(-8)}))()'), 'audio RMS', meter());
   await pageEvaluate('window.widget.seekTo(12000)');
   await sleep(1200);
   console.log('after seek:', await pageEvaluate('(async () => ({volume: await window.readVolume(), position: await window.readPosition(), events: window.events.slice(-8)}))()'));
@@ -126,7 +150,11 @@ try {
     await pageSend('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     await pageSend('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   };
-  await click('#activate');
+  const activationSelector = process.env.WATCH_TEST_PAGE
+    ? await pageEvaluate(`document.querySelector('[data-testid="button-watch-player-retry"]')
+      ? '[data-testid="button-watch-player-retry"]' : '[data-testid="button-watch-soundcloud-audio"]'`)
+    : '#activate';
+  await click(activationSelector);
   await sleep(1000);
   console.log('after gesture:', await pageEvaluate('(async () => ({volume: await window.readVolume(), paused: await new Promise(r => window.widget.isPaused(r))}))()'));
   meter();
@@ -156,11 +184,11 @@ try {
     chrome.stdio[3].write(`${JSON.stringify({
       id, sessionId: frameSession, method: 'Runtime.evaluate',
       params: {
-        expression: 'Array.from(document.querySelectorAll("audio,video")).map(m => ({muted:m.muted,volume:m.volume,paused:m.paused,currentTime:m.currentTime,readyState:m.readyState}))',
+        expression: '({autoplayAllowed:document.permissionsPolicy?.allowsFeature("autoplay") ?? document.featurePolicy?.allowsFeature("autoplay") ?? null,encryptedAllowed:document.permissionsPolicy?.allowsFeature("encrypted-media") ?? document.featurePolicy?.allowsFeature("encrypted-media") ?? null,media:Array.from(document.querySelectorAll("audio,video")).map(m => ({muted:m.muted,volume:m.volume,paused:m.paused,currentTime:m.currentTime,readyState:m.readyState}))})',
         returnByValue: true,
       },
     })}\0`);
-    console.log('iframe HTML media:', (await frameResult).result.value);
+    console.log('iframe policy and media:', (await frameResult).result.value);
   }
 } finally {
   monitor.kill();

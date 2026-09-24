@@ -139,6 +139,16 @@ try {
   assert.equal(late.current.contentId, "dQw4w9WgXcQ");
   assert.equal(late.queue[0].id, track.id);
   console.log("PASS late voice participant receives current item and queue");
+  const twoQueued = waitFor(aWs, m => m.type === "watch:state" && m.data?.session?.queue.length === 2,
+    "both platforms queued");
+  bWs.send(JSON.stringify({ type: "watch:add", ...args("voice", channelId), url: youtube }));
+  const secondQueue = (await twoQueued).data.session.queue;
+  const queuedVideo = secondQueue[1];
+  assert.equal(queuedVideo.platform, "youtube");
+  assert.equal(queuedVideo.addedById, secondId);
+  assert.equal(queuedVideo.addedByName, "Test Listener");
+  assert.equal(secondQueue[0].addedById, firstId);
+  console.log("PASS both platforms queued with their authors and updated count");
   const unbound = waitFor(extraTab, m => m.type === "watch:error", "unbound tab rejection");
   extraTab.send(JSON.stringify({ type: "watch:sync", ...args("voice", channelId) }));
   assert.match((await unbound).data.message, /conectado|vinculad|llamada/i);
@@ -179,11 +189,34 @@ try {
   aWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
     action: "transfer", userId: secondId }));
   await transfer;
+  const reordered = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.queue[0]?.id === queuedVideo.id, "queue reorder");
+  bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
+    action: "reorder", itemId: queuedVideo.id, toIndex: 0 }));
+  assert.equal((await reordered).data.session.queue[1].id, track.id);
+  console.log("PASS controller reorders pending items");
+  const removed = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.queue.length === 1, "queue remove");
+  bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
+    action: "remove", itemId: queuedVideo.id }));
+  assert.equal((await removed).data.session.queue[0].id, track.id);
+  console.log("PASS controller removes a pending item");
   const next = waitFor(aWs, m => m.type === "watch:state"
     && m.data?.session?.current?.platform === "soundcloud", "advance queue");
   bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId), action: "skip" }));
-  await next;
+  const currentTrack = (await next).data.session.current;
   console.log("PASS transfer and advancing to SoundCloud track");
+  const queuedAfterSkip = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.queue.length === 1, "next track queued");
+  bWs.send(JSON.stringify({ type: "watch:add", ...args("voice", channelId), url: youtube }));
+  await queuedAfterSkip;
+  const autoAdvance = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.current?.platform === "youtube"
+    && m.data.session.queue.length === 0, "automatic advance at track end");
+  bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
+    action: "ended", itemId: currentTrack.id }));
+  await autoAdvance;
+  console.log("PASS track end advances automatically to the next queued item");
 
   const ended = waitFor(aWs, m => m.type === "watch:state" && m.data?.session === null, "session end");
   bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId), action: "end" }));
