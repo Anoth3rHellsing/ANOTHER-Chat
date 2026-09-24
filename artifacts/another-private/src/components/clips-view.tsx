@@ -29,6 +29,28 @@ interface ClipsViewProps {
   currentUserId: number;
 }
 
+function getSameOriginClipMediaUrl(value: string | null | undefined, baseUrl: string): string | null {
+  if (!value) return null;
+  try {
+    // Legacy rows stored absolute development URLs. Extract only a strictly
+    // validated app upload path, then force it onto this app's own origin.
+    const parsed = new URL(value, window.location.origin);
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      !/^\/api\/uploads\/clip-[0-9]+-[a-z0-9]+\.[a-z0-9]{1,12}$/i.test(parsed.pathname)
+    ) {
+      return null;
+    }
+    return `${baseUrl}${parsed.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +63,9 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const selectedVideoUrl = selectedClip
+    ? getSameOriginClipMediaUrl(selectedClip.videoUrl, baseUrl)
+    : null;
 
   const fetchClips = async () => {
     try {
@@ -215,7 +240,11 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
               <span className="text-sm font-medium text-foreground truncate flex-1">{selectedClip.title}</span>
             </div>
             <div className="p-4 space-y-3">
-              <video src={selectedClip.videoUrl} controls className="w-full rounded-xl border border-white/10 max-h-72 bg-black" />
+              {selectedVideoUrl ? (
+                <video src={selectedVideoUrl} controls className="w-full rounded-xl border border-white/10 max-h-72 bg-black" />
+              ) : (
+                <p role="alert" className="text-sm text-muted-foreground">El vídeo del clip no está disponible.</p>
+              )}
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                   {selectedClip.author.avatarUrl ? <img src={selectedClip.author.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
@@ -275,14 +304,16 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
         ) : (
           /* Grid */
           <div className="grid grid-cols-2 gap-2 p-4">
-            {clips.map(clip => (
+            {clips.map(clip => {
+              const thumbnailUrl = getSameOriginClipMediaUrl(clip.thumbnailUrl, baseUrl);
+              return (
               <button
                 key={clip.id}
                 onClick={() => handleOpenClip(clip)}
                 className="group relative rounded-xl overflow-hidden bg-secondary border border-white/10 aspect-video hover:border-white/30 transition-all"
               >
-                {clip.thumbnailUrl
-                  ? <img src={clip.thumbnailUrl} className="w-full h-full object-cover" alt={clip.title} />
+                {thumbnailUrl
+                  ? <img src={thumbnailUrl} className="w-full h-full object-cover" alt={clip.title} />
                   : <div className="w-full h-full flex items-center justify-center bg-black/50">
                       <Play className="w-8 h-8 text-white/40" />
                     </div>
@@ -298,7 +329,8 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
                   </div>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

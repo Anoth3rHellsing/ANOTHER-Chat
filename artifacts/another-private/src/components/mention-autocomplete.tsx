@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface Member {
   id: number;
@@ -71,7 +72,7 @@ export function MentionList({
           onMouseDown={e => { e.preventDefault(); onSelect(m); }}
         >
           <div className="w-7 h-7 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-            {m.avatarUrl && <img src={m.avatarUrl} className="w-full h-full object-cover" alt="" />}
+            {m.avatarUrl && <img src={sameOriginUploadUrl(m.avatarUrl)} className="w-full h-full object-cover" alt="" />}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{m.displayName}</p>

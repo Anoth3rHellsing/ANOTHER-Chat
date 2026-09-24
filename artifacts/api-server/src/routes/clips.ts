@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import type { Request, Response } from "express";
 import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -18,10 +19,6 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB
 
-function getBaseUrl() {
-  return process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "";
-}
-
 async function rawQuery(text: string, values?: any[]) {
   const { pool } = await import("@workspace/db");
   const client = await pool.connect();
@@ -32,9 +29,82 @@ async function rawQuery(text: string, values?: any[]) {
   }
 }
 
+function parsePositiveId(raw: string | string[]): number | null {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * Clips are server-wide content. A current server membership grants access;
+ * global administrators retain the same explicit override used by soundboard.
+ */
+async function canAccessServer(serverId: number, userId: number, globalRole?: string): Promise<boolean> {
+  const result = await rawQuery(
+    `SELECT 1
+     FROM servers s
+     WHERE s.id = $1
+       AND (
+         $3 = 'admin'
+         OR EXISTS (
+           SELECT 1 FROM server_members sm
+           WHERE sm.server_id = s.id AND sm.user_id = $2
+         )
+       )
+     LIMIT 1`,
+    [serverId, userId, globalRole ?? ""],
+  );
+  return result.rows.length > 0;
+}
+
+async function requireClipServerAccess(
+  req: Request,
+  res: Response,
+  clipId: number,
+): Promise<number | null> {
+  const clip = await rawQuery(
+    `SELECT c.server_id
+     FROM clips c
+     JOIN servers s ON s.id = c.server_id
+     WHERE c.id = $1
+       AND (
+         $3 = 'admin'
+         OR EXISTS (
+           SELECT 1 FROM server_members sm
+           WHERE sm.server_id = s.id AND sm.user_id = $2
+         )
+       )
+     LIMIT 1`,
+    [clipId, req.session.userId!, req.session.userRole ?? ""],
+  );
+  const serverId = parsePositiveId(String(clip.rows[0]?.server_id ?? ""));
+  if (!serverId) {
+    res.status(404).json({ error: "Clip no encontrado" });
+    return null;
+  }
+  return serverId;
+}
+
+function requireServerAccess(req: Request, res: Response, next: (error?: unknown) => void): void {
+  const serverId = parsePositiveId(req.params.serverId);
+  if (!serverId) {
+    res.status(404).json({ error: "Servidor no encontrado" });
+    return;
+  }
+  void canAccessServer(serverId, req.session.userId!, req.session.userRole)
+    .then(hasAccess => {
+      if (!hasAccess) {
+        res.status(404).json({ error: "Servidor no encontrado" });
+        return;
+      }
+      next();
+    })
+    .catch(next);
+}
+
 // GET /servers/:serverId/clips
-router.get("/servers/:serverId/clips", requireAuth, async (req, res): Promise<void> => {
-    const serverId = parseInt(req.params.serverId as string, 10);
+router.get("/servers/:serverId/clips", requireAuth, requireServerAccess, async (req, res): Promise<void> => {
+    const serverId = parsePositiveId(req.params.serverId)!;
     const userId = req.session.userId!;
 
     const result = await rawQuery(`
@@ -65,14 +135,14 @@ router.get("/servers/:serverId/clips", requireAuth, async (req, res): Promise<vo
 });
 
 // POST /servers/:serverId/clips
-router.post("/servers/:serverId/clips", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
-    const serverId = parseInt(req.params.serverId as string, 10);
+router.post("/servers/:serverId/clips", requireAuth, requireServerAccess, upload.single("file"), async (req, res): Promise<void> => {
+    const serverId = parsePositiveId(req.params.serverId)!;
     const userId = req.session.userId!;
-    const { title } = req.body;
+    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
     if (!req.file || !title) { res.status(400).json({ error: "Se requiere archivo y título" }); return; }
 
-    const baseUrl = getBaseUrl();
-    const videoUrl = `${baseUrl}/api/uploads/${req.file.filename}`;
+    // Keep media same-origin so protected file routes receive the session cookie.
+    const videoUrl = `/api/uploads/${req.file.filename}`;
 
     const result = await rawQuery(
       `INSERT INTO clips (server_id, user_id, title, video_url) VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -83,8 +153,10 @@ router.post("/servers/:serverId/clips", requireAuth, upload.single("file"), asyn
 
 // POST /clips/:clipId/like — toggle like
 router.post("/clips/:clipId/like", requireAuth, async (req, res): Promise<void> => {
-    const clipId = parseInt(req.params.clipId as string, 10);
+    const clipId = parsePositiveId(req.params.clipId);
+    if (!clipId) { res.status(404).json({ error: "Clip no encontrado" }); return; }
     const userId = req.session.userId!;
+    if (await requireClipServerAccess(req, res, clipId) === null) return;
 
     const existing = await rawQuery(
       `SELECT 1 FROM clip_likes WHERE clip_id = $1 AND user_id = $2`,
@@ -101,7 +173,9 @@ router.post("/clips/:clipId/like", requireAuth, async (req, res): Promise<void> 
 
 // GET /clips/:clipId/comments
 router.get("/clips/:clipId/comments", requireAuth, async (req, res): Promise<void> => {
-    const clipId = parseInt(req.params.clipId as string, 10);
+    const clipId = parsePositiveId(req.params.clipId);
+    if (!clipId) { res.status(404).json({ error: "Clip no encontrado" }); return; }
+    if (await requireClipServerAccess(req, res, clipId) === null) return;
     const result = await rawQuery(`
       SELECT cc.id, cc.content, cc.created_at, cc.user_id,
              u.username, u.display_name, u.avatar_url
@@ -122,10 +196,12 @@ router.get("/clips/:clipId/comments", requireAuth, async (req, res): Promise<voi
 
 // POST /clips/:clipId/comments
 router.post("/clips/:clipId/comments", requireAuth, async (req, res): Promise<void> => {
-    const clipId = parseInt(req.params.clipId as string, 10);
+    const clipId = parsePositiveId(req.params.clipId);
+    if (!clipId) { res.status(404).json({ error: "Clip no encontrado" }); return; }
+    if (await requireClipServerAccess(req, res, clipId) === null) return;
     const userId = req.session.userId!;
-    const { content } = req.body;
-    if (!content?.trim()) { res.status(400).json({ error: "Contenido requerido" }); return; }
+    const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+    if (!content) { res.status(400).json({ error: "Contenido requerido" }); return; }
 
     const result = await rawQuery(
       `INSERT INTO clip_comments (clip_id, user_id, content) VALUES ($1, $2, $3) RETURNING *`,
@@ -144,8 +220,10 @@ router.post("/clips/:clipId/comments", requireAuth, async (req, res): Promise<vo
 
 // DELETE /clips/:clipId
 router.delete("/clips/:clipId", requireAuth, async (req, res): Promise<void> => {
-    const clipId = parseInt(req.params.clipId as string, 10);
+    const clipId = parsePositiveId(req.params.clipId);
+    if (!clipId) { res.status(404).json({ error: "Clip no encontrado" }); return; }
     const userId = req.session.userId!;
+    if (await requireClipServerAccess(req, res, clipId) === null) return;
     const result = await rawQuery(
       `DELETE FROM clips WHERE id = $1 AND user_id = $2 RETURNING id`,
       [clipId, userId]

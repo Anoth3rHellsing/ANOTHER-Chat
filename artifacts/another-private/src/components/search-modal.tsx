@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, X, Hash, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface SearchResult {
   id: number;
@@ -123,7 +124,7 @@ export function SearchModal({ isOpen, onClose, serverId, channelId, dmUserId, on
                 >
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0 mt-0.5">
-                      {r.author.avatarUrl && <img src={r.author.avatarUrl} className="w-full h-full object-cover" alt="" />}
+                      {r.author.avatarUrl && <img src={sameOriginUploadUrl(r.author.avatarUrl)} className="w-full h-full object-cover" alt="" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">

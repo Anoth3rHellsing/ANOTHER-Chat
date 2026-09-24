@@ -5,7 +5,6 @@ import pinoHttp from "pino-http";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import ConnectPgSimple from "connect-pg-simple";
-import path from "path";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
@@ -13,6 +12,7 @@ import { authRateLimit, inviteRateLimit, messageRateLimit } from "./middleware/r
 import { finalErrorHandler } from "./middleware/errors";
 import { csrfProtection } from "./middleware/csrf";
 import { soundboardUploadSecurity } from "./middleware/soundboard-upload-security";
+import { authorizeUploadedMedia } from "./middleware/authorize-uploaded-media";
 import { SESSION_MAX_AGE_MS } from "./lib/csrf";
 import { SESSION_SECRET } from "./lib/session-config";
 import { authorizeStoryMedia } from "./routes/stories";
@@ -172,8 +172,9 @@ app.post("/api/servers/join-by-invite", inviteRateLimit);
 app.post("/api/channels/:channelId/messages", messageRateLimit);
 app.post("/api/dms/:userId", messageRateLimit);
 
-// Serve uploaded files — hardened headers to prevent XSS
-app.use("/api/uploads", soundboardUploadSecurity, authorizeStoryMedia, express.static(path.join(process.cwd(), "uploads")));
+// Keep upload hardening and story expiry semantics, but authorize every other
+// file before sending it; unknown uploads have no public-static fallback.
+app.use("/api/uploads", soundboardUploadSecurity, authorizeStoryMedia, authorizeUploadedMedia);
 
 app.use("/api", router);
 app.use(finalErrorHandler);

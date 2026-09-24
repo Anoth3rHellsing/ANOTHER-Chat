@@ -1,0 +1,6 @@
+CREATE INDEX "users_avatar_url_canonical_idx" ON "users" USING btree ((CASE WHEN "avatar_url" ~ '^https?://' THEN regexp_replace("avatar_url", '^https?://[^/]+', '') ELSE "avatar_url" END));--> statement-breakpoint
+CREATE INDEX "users_banner_url_canonical_idx" ON "users" USING btree ((CASE WHEN "banner_url" ~ '^https?://' THEN regexp_replace("banner_url", '^https?://[^/]+', '') ELSE "banner_url" END));--> statement-breakpoint
+CREATE INDEX "servers_icon_url_canonical_idx" ON "servers" USING btree ((CASE WHEN "icon_url" ~ '^https?://' THEN regexp_replace("icon_url", '^https?://[^/]+', '') ELSE "icon_url" END));--> statement-breakpoint
+CREATE INDEX "servers_banner_url_canonical_idx" ON "servers" USING btree ((CASE WHEN "banner_url" ~ '^https?://' THEN regexp_replace("banner_url", '^https?://[^/]+', '') ELSE "banner_url" END));--> statement-breakpoint
+CREATE INDEX "message_attachments_url_canonical_idx" ON "message_attachments" USING btree ((CASE WHEN "url" ~ '^https?://' THEN regexp_replace("url", '^https?://[^/]+', '') ELSE "url" END));--> statement-breakpoint
+CREATE INDEX "clips_video_url_canonical_idx" ON "clips" USING btree ((CASE WHEN "video_url" ~ '^https?://' THEN regexp_replace("video_url", '^https?://[^/]+', '') ELSE "video_url" END));

@@ -7,6 +7,7 @@ import { GifMessage } from '@/components/gif-message';
 import { GifPicker } from '@/components/gif-picker';
 import { ReactionIndicators } from '@/components/reaction-indicators';
 import { serializeGiphyMessage } from '@/lib/giphy';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 import type { MessageReaction } from '@/lib/reactions';
 import { useRealtimeMessages } from '@/providers/realtime-transport';
 
@@ -233,7 +234,7 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
                 {isFirst ? (
                   <div className="mt-0.5 h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-secondary">
                     {msg.author?.avatarUrl
-                      ? <img src={msg.author.avatarUrl} className="h-full w-full object-cover" alt="" />
+                      ? <img src={sameOriginUploadUrl(msg.author.avatarUrl)} className="h-full w-full object-cover" alt="" />
                       : <UsersIcon className="m-2.5 h-5 w-5 text-muted-foreground" />}
                   </div>
                 ) : (

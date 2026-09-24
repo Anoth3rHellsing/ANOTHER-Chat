@@ -1,8 +1,12 @@
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { pgTable, serial, integer, text, timestamp, boolean, foreignKey, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, boolean, foreignKey, unique, index } from "drizzle-orm/pg-core";
 import { users } from "./users";
-export const servers = pgTable("servers", { id: serial().primaryKey().notNull(), name: text().notNull(), iconUrl: text("icon_url"), ownerId: integer("owner_id").notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(), bannerUrl: text("banner_url"), isGeneral: boolean("is_general").default(false).notNull() });
+import { sql } from "drizzle-orm";
+export const servers = pgTable("servers", { id: serial().primaryKey().notNull(), name: text().notNull(), iconUrl: text("icon_url"), ownerId: integer("owner_id").notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(), bannerUrl: text("banner_url"), isGeneral: boolean("is_general").default(false).notNull() }, t => [
+  index("servers_icon_url_canonical_idx").using("btree", sql`(CASE WHEN ${t.iconUrl} ~ '^https?://' THEN regexp_replace(${t.iconUrl}, '^https?://[^/]+', '') ELSE ${t.iconUrl} END)`),
+  index("servers_banner_url_canonical_idx").using("btree", sql`(CASE WHEN ${t.bannerUrl} ~ '^https?://' THEN regexp_replace(${t.bannerUrl}, '^https?://[^/]+', '') ELSE ${t.bannerUrl} END)`),
+]);
 export const serverMembers = pgTable("server_members", { id: serial().primaryKey().notNull(), serverId: integer("server_id").notNull(), userId: integer("user_id").notNull(), role: text().default("member").notNull(), joinedAt: timestamp("joined_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() });
 export const serverRoles = pgTable("server_roles", { id: serial().primaryKey().notNull(), serverId: integer("server_id").notNull(), name: text().notNull(), color: text().default("#6366f1").notNull(), permissions: integer().default(0).notNull(), position: integer().default(0).notNull(), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull() });
 export const serverMemberRoles = pgTable("server_member_roles", { id: serial().primaryKey().notNull(), memberId: integer("member_id").notNull(), roleId: integer("role_id").notNull() });

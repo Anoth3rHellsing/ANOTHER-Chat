@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, X, Users as UsersIcon } from 'lucide-react';
 import { StoryViewer } from './story-viewer';
 import { csrfFetch } from '@workspace/api-client-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface StoryGroup {
   userId: number;
@@ -99,7 +100,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
             <div className={`w-10 h-10 rounded-full relative ${myGroup?.hasUnviewed ? 'p-[2px] bg-gradient-to-tr from-primary via-primary/80 to-primary/50' : myGroup ? 'p-[2px] bg-muted' : 'border-2 border-dashed border-muted-foreground/40 hover:border-primary/60'}`}>
               <div className="w-full h-full rounded-full bg-card overflow-hidden flex items-center justify-center">
                 {currentUser?.avatarUrl
-                  ? <img src={currentUser.avatarUrl} className="w-full h-full object-cover" alt="" />
+                  ? <img src={sameOriginUploadUrl(currentUser.avatarUrl)} className="w-full h-full object-cover" alt="" />
                   : <UsersIcon className="w-4 h-4 text-muted-foreground" />}
               </div>
               {!myGroup && (
@@ -140,7 +141,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
               <div className={`w-10 h-10 rounded-full p-[2px] ${group.hasUnviewed ? 'bg-gradient-to-tr from-primary via-primary/80 to-primary/50' : 'bg-white/20'}`}>
                 <div className="w-full h-full rounded-full bg-card overflow-hidden">
                   {group.avatarUrl
-                    ? <img src={group.avatarUrl} className="w-full h-full object-cover" alt="" />
+                    ? <img src={sameOriginUploadUrl(group.avatarUrl)} className="w-full h-full object-cover" alt="" />
                     : <UsersIcon className="w-4 h-4 m-3 text-muted-foreground" />}
                 </div>
               </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGetUserProfile } from '@workspace/api-client-react';
 import { X, User as UserIcon, Instagram, Youtube, Twitch, Github, ExternalLink, MessageSquare } from 'lucide-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface UserProfileCardProps {
   userId: number;
@@ -106,7 +107,7 @@ export function UserProfileCard({ userId, currentUserId, onClose, anchorRect, on
         {/* Banner */}
         <div className="h-24 relative flex-shrink-0" style={{ background: gradient }}>
           {profile?.bannerUrl && (
-            <img src={profile.bannerUrl} alt="" className="w-full h-full object-cover opacity-70" />
+            <img src={sameOriginUploadUrl(profile.bannerUrl)} alt="" className="w-full h-full object-cover opacity-70" />
           )}
           <button
             onClick={onClose}
@@ -123,7 +124,7 @@ export function UserProfileCard({ userId, currentUserId, onClose, anchorRect, on
               {isLoading ? (
                 <div className="w-full h-full animate-pulse bg-white/10" />
               ) : profile?.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover" />
+                <img src={sameOriginUploadUrl(profile.avatarUrl)} alt="" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <UserIcon className="w-8 h-8 text-muted-foreground" />

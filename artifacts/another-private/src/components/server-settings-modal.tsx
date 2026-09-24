@@ -22,6 +22,7 @@ import {
 import { X, Plus, Trash2, Check, Shield, Hash, Lock, Copy, Link2, Image as ImageIcon, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { PERM, PERM_LABELS, hasPerm } from '@/lib/permissions';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface ServerSettingsModalProps {
   isOpen: boolean;
@@ -600,7 +601,7 @@ export function ServerSettingsModal({
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                       {member.user?.avatarUrl
-                        ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" />
+                        ? <img src={sameOriginUploadUrl(member.user.avatarUrl)} className="w-full h-full object-cover" alt="" />
                         : <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground font-mono">{member.user?.displayName?.substring(0, 2).toUpperCase()}</div>
                       }
                     </div>
@@ -651,7 +652,7 @@ export function ServerSettingsModal({
                 <div className="flex items-center gap-4">
                   <div className="w-20 h-20 rounded-full bg-secondary border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
                     {serverIconUrl
-                      ? <img src={serverIconUrl} className="w-full h-full object-cover" alt="" />
+                      ? <img src={sameOriginUploadUrl(serverIconUrl)} className="w-full h-full object-cover" alt="" />
                       : <span className="font-mono font-bold text-xl text-muted-foreground">{serverName.substring(0, 2).toUpperCase()}</span>
                     }
                   </div>
@@ -679,7 +680,7 @@ export function ServerSettingsModal({
                 >
                   {serverBannerUrl ? (
                     <>
-                      <img src={serverBannerUrl} className="w-full h-full object-cover" alt="" />
+                      <img src={sameOriginUploadUrl(serverBannerUrl)} className="w-full h-full object-cover" alt="" />
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                         <p className="text-sm text-white font-mono">Cambiar banner</p>
                       </div>

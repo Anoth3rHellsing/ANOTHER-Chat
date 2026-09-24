@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Shield, Key, Users, Activity, Trash2, Ban, ShieldAlert, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
@@ -184,7 +185,7 @@ export default function AdminPanel() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
-                                {u.avatarUrl ? <img src={u.avatarUrl} className="w-full h-full object-cover" alt="" /> : <Users className="w-4 h-4 m-2 text-muted-foreground" />}
+                                {u.avatarUrl ? <img src={sameOriginUploadUrl(u.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <Users className="w-4 h-4 m-2 text-muted-foreground" />}
                               </div>
                               <div>
                                 <p className="font-medium text-foreground">{u.displayName}</p>

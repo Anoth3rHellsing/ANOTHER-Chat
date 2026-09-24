@@ -1,5 +1,6 @@
 import { useGetVoiceMembers } from '@workspace/api-client-react';
 import { Users as UsersIcon, Volume2 } from 'lucide-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface VoiceChannelRowProps {
   channel: any;
@@ -54,7 +55,7 @@ export function VoiceChannelRow({ channel, isActive, isJoined, onClick }: VoiceC
             <div key={member.userId} className="flex items-center gap-1.5 py-0.5">
               <div className="w-5 h-5 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                 {member.avatarUrl
-                  ? <img src={member.avatarUrl} className="w-full h-full object-cover" alt="" />
+                  ? <img src={sameOriginUploadUrl(member.avatarUrl)} className="w-full h-full object-cover" alt="" />
                   : <UsersIcon className="w-3 h-3 m-1 text-muted-foreground" />}
               </div>
               <span className="text-xs text-muted-foreground truncate">{member.displayName}</span>

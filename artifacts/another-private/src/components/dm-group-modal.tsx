@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Users as UsersIcon, Plus, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { csrfFetch } from '@workspace/api-client-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface User {
   id: number;
@@ -102,7 +103,7 @@ export function DmGroupModal({ isOpen, onClose, currentUserId, friends, onCreate
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${selected.has(f.id) ? 'bg-primary/20 border border-primary/30' : 'hover:bg-white/5 border border-transparent'}`}
                   >
                     <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-                      {f.avatarUrl && <img src={f.avatarUrl} className="w-full h-full object-cover" alt="" />}
+                      {f.avatarUrl && <img src={sameOriginUploadUrl(f.avatarUrl)} className="w-full h-full object-cover" alt="" />}
                     </div>
                     <div className="flex-1 min-w-0 text-left">
                       <p className="text-sm font-medium text-foreground truncate">{f.displayName}</p>

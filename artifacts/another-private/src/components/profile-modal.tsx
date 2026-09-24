@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X, Upload, CheckCircle2, Circle, Loader2, User as UserIcon, Plus, Trash2, Instagram, Youtube, Twitch, Github, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@workspace/api-client-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface ProfileModalProps {
   user: User;
@@ -146,7 +147,7 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
             {/* Header / Banner Area */}
             <div className="relative h-32 bg-secondary flex items-center justify-center overflow-hidden group flex-shrink-0">
               {bannerUrl ? (
-                <img src={bannerUrl} alt="Banner" className="w-full h-full object-cover opacity-60" />
+                <img src={sameOriginUploadUrl(bannerUrl)} alt="Banner" className="w-full h-full object-cover opacity-60" />
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-tr from-primary/20 to-transparent" />
               )}
@@ -171,7 +172,7 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
               <div className="relative -mt-10 mb-4 inline-block group">
                 <div className="w-20 h-20 rounded-full border-4 border-card bg-secondary flex items-center justify-center overflow-hidden relative">
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    <img src={sameOriginUploadUrl(avatarUrl)} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
                     <UserIcon className="w-8 h-8 text-muted-foreground" />
                   )}

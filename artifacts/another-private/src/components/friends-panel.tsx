@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { UserPlus, Check, X, MessageSquare, Users as UsersIcon, Clock, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { csrfFetch } from '@workspace/api-client-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface Friend {
   id: number;
@@ -144,7 +145,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
                   <div key={f.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 group transition-colors">
                     <div className="relative flex-shrink-0">
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
-                        {f.avatarUrl ? <img src={f.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                        {f.avatarUrl ? <img src={sameOriginUploadUrl(f.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                       <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${STATUS_DOT[f.status] ?? 'bg-gray-500'}`} />
                     </div>
@@ -180,7 +181,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
                   {incoming.map(r => (
                     <div key={r.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
                       <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-                        {r.avatarUrl && <img src={r.avatarUrl} className="w-full h-full object-cover" alt="" />}
+                        {r.avatarUrl && <img src={sameOriginUploadUrl(r.avatarUrl)} className="w-full h-full object-cover" alt="" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground">{r.displayName}</p>
@@ -206,7 +207,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
                   {outgoing.map(r => (
                     <div key={r.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
                       <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-                        {r.avatarUrl && <img src={r.avatarUrl} className="w-full h-full object-cover" alt="" />}
+                        {r.avatarUrl && <img src={sameOriginUploadUrl(r.avatarUrl)} className="w-full h-full object-cover" alt="" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground">{r.displayName}</p>

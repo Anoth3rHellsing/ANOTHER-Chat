@@ -70,6 +70,7 @@ import { EmojiPicker, QUICK_EMOJIS, insertEmojiAtCursor } from '@/components/emo
 import { GifPicker } from '@/components/gif-picker';
 import { GifMessage } from '@/components/gif-message';
 import { parseGiphyMessage, serializeGiphyMessage } from '@/lib/giphy';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 import { ReactionIndicators } from '@/components/reaction-indicators';
 import { updateChannelReactions, updateDmReactions, type MessageReaction } from '@/lib/reactions';
 import { format } from 'date-fns';
@@ -113,7 +114,7 @@ function AttachmentRenderer({ attachment }: { attachment: any }) {
     return (
       <>
         <img
-          src={attachment.url}
+          src={sameOriginUploadUrl(attachment.url)}
           alt={attachment.filename}
           className="max-w-xs max-h-64 rounded-lg cursor-pointer hover:opacity-90 transition-opacity object-cover border border-white/10"
           onClick={() => setLightboxOpen(true)}
@@ -127,7 +128,7 @@ function AttachmentRenderer({ attachment }: { attachment: any }) {
               <X className="w-6 h-6" />
             </button>
             <img
-              src={attachment.url}
+              src={sameOriginUploadUrl(attachment.url)}
               alt={attachment.filename}
               className="max-w-full max-h-full object-contain rounded-lg"
               onClick={e => e.stopPropagation()}
@@ -141,7 +142,7 @@ function AttachmentRenderer({ attachment }: { attachment: any }) {
   if (isVideo(attachment.mimeType)) {
     return (
       <video
-        src={attachment.url}
+        src={sameOriginUploadUrl(attachment.url)}
         controls
         className="max-w-xs max-h-64 rounded-lg border border-white/10"
       />
@@ -151,7 +152,7 @@ function AttachmentRenderer({ attachment }: { attachment: any }) {
   // Document / generic file
   return (
     <a
-      href={attachment.url}
+      href={sameOriginUploadUrl(attachment.url)}
       download={attachment.filename}
       className="flex items-center gap-3 bg-secondary border border-white/10 rounded-lg px-4 py-3 hover:bg-white/5 transition-colors max-w-xs"
     >
@@ -1070,7 +1071,7 @@ export default function AppLayout() {
                 title={server.name}
               >
                 {server.iconUrl
-                  ? <img src={server.iconUrl} className="w-full h-full object-cover" alt="" />
+                  ? <img src={sameOriginUploadUrl(server.iconUrl)} className="w-full h-full object-cover" alt="" />
                   : <span className="font-mono font-bold">{server.name.substring(0, 2).toUpperCase()}</span>
                 }
               </button>
@@ -1169,7 +1170,7 @@ export default function AppLayout() {
                   >
                     <div className="relative flex-shrink-0">
                       <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden">
-                        {other?.avatarUrl ? <img src={other.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2.5 text-muted-foreground" />}
+                        {other?.avatarUrl ? <img src={sameOriginUploadUrl(other.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2.5 text-muted-foreground" />}
                       </div>
                       <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(other?.status ?? 'offline')}`} />
                     </div>
@@ -1218,7 +1219,7 @@ export default function AppLayout() {
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
               <button onClick={() => setIsProfileOpen(true)} className="relative group" title="Perfil">
                 <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
-                  {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                  {user.avatarUrl ? <img src={sameOriginUploadUrl(user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                 </div>
                 <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
               </button>
@@ -1236,7 +1237,7 @@ export default function AppLayout() {
             <div className="flex-shrink-0">
               {activeServer?.bannerUrl && (
                 <div className="w-full h-16 overflow-hidden flex-shrink-0">
-                  <img src={activeServer.bannerUrl} className="w-full h-full object-cover" alt="" />
+                  <img src={sameOriginUploadUrl(activeServer.bannerUrl)} className="w-full h-full object-cover" alt="" />
                 </div>
               )}
               <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
@@ -1353,7 +1354,7 @@ export default function AppLayout() {
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
               <button onClick={() => setIsProfileOpen(true)} className="relative group" title="Perfil">
                 <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
-                  {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                  {user.avatarUrl ? <img src={sameOriginUploadUrl(user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                 </div>
                 <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
               </button>
@@ -1396,7 +1397,7 @@ export default function AppLayout() {
               <div className="relative flex-shrink-0">
                 <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
                   {(activeDmConvo as any).otherUser?.avatarUrl
-                    ? <img src={(activeDmConvo as any).otherUser.avatarUrl} className="w-full h-full object-cover" alt="" />
+                    ? <img src={sameOriginUploadUrl((activeDmConvo as any).otherUser.avatarUrl)} className="w-full h-full object-cover" alt="" />
                     : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                 </div>
                 <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-2 border-card ${getStatusColor((activeDmConvo as any).otherUser?.status ?? 'offline')}`} />
@@ -1443,7 +1444,7 @@ export default function AppLayout() {
                     {isFirst ? (
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5"
                         onClick={e => openProfileCard(msg.senderId, e)}>
-                        {msg.sender?.avatarUrl ? <img src={msg.sender.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                        {msg.sender?.avatarUrl ? <img src={sameOriginUploadUrl(msg.sender.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                     ) : (
                       <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-start pt-1">
@@ -1717,7 +1718,7 @@ export default function AppLayout() {
                   >
                     {isFirst ? (
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5" onClick={e => openProfileCard(msg.userId, e)}>
-                        {msgAny.author?.avatarUrl ? <img src={msgAny.author.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                        {msgAny.author?.avatarUrl ? <img src={sameOriginUploadUrl(msgAny.author.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                     ) : (
                       <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-start pt-1">
@@ -2036,7 +2037,7 @@ export default function AppLayout() {
                     >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
-                          {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                          {member.user.avatarUrl ? <img src={sameOriginUploadUrl(member.user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                         </div>
                         <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(member.user.status)}`} />
                       </div>
@@ -2063,7 +2064,7 @@ export default function AppLayout() {
                     >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
-                          {member.user.avatarUrl ? <img src={member.user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                          {member.user.avatarUrl ? <img src={sameOriginUploadUrl(member.user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                         </div>
                         <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(member.user.status)}`} />
                       </div>
@@ -2119,7 +2120,7 @@ export default function AppLayout() {
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0">
               {webrtc.incomingCall.callerAvatar
-                ? <img src={webrtc.incomingCall.callerAvatar} className="w-full h-full object-cover" alt="" />
+                ? <img src={sameOriginUploadUrl(webrtc.incomingCall.callerAvatar)} className="w-full h-full object-cover" alt="" />
                 : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
             </div>
             <div className="flex-1 min-w-0">
@@ -2219,7 +2220,7 @@ export default function AppLayout() {
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <div className="w-16 h-16 rounded-full bg-secondary overflow-hidden">
-                      {user.avatarUrl ? <img src={user.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-8 h-8 m-4 text-muted-foreground" />}
+                      {user.avatarUrl ? <img src={sameOriginUploadUrl(user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-8 h-8 m-4 text-muted-foreground" />}
                     </div>
                   </div>
                 )}

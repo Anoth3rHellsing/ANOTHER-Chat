@@ -57,6 +57,13 @@
       "when": 1790231273843,
       "tag": "0007_natural_salo",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790269861620,
+      "tag": "0008_gray_doorman",
+      "breakpoints": true
     }
   ]
 }

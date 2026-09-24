@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Eye, Trash2 } from 'lucide-react';
 import { csrfFetch } from '@workspace/api-client-react';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 interface Story {
   id: number;
@@ -125,7 +126,7 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
         <div className="absolute top-4 left-0 right-0 z-10 flex items-center gap-2 px-4 pt-1">
           <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 flex-shrink-0">
             {group.avatarUrl
-              ? <img src={group.avatarUrl} className="w-full h-full object-cover" alt="" />
+              ? <img src={sameOriginUploadUrl(group.avatarUrl)} className="w-full h-full object-cover" alt="" />
               : <div className="w-full h-full bg-secondary" />}
           </div>
           <div className="flex-1 min-w-0">
@@ -162,7 +163,7 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
           {current.mediaType === 'video' ? (
             <video
               key={current.id}
-              src={current.mediaUrl}
+              src={sameOriginUploadUrl(current.mediaUrl) ?? undefined}
               className="w-full h-full object-contain"
               autoPlay
               playsInline
@@ -171,7 +172,7 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
           ) : (
             <img
               key={current.id}
-              src={current.mediaUrl}
+              src={sameOriginUploadUrl(current.mediaUrl) ?? undefined}
               className="w-full h-full object-contain"
               alt=""
             />
@@ -200,7 +201,7 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
             {viewers.map(v => (
               <div key={v.userId} className="flex items-center gap-2 py-1.5">
                 <div className="w-6 h-6 rounded-full overflow-hidden bg-secondary flex-shrink-0">
-                  {v.avatarUrl && <img src={v.avatarUrl} className="w-full h-full object-cover" alt="" />}
+                  {v.avatarUrl && <img src={sameOriginUploadUrl(v.avatarUrl)} className="w-full h-full object-cover" alt="" />}
                 </div>
                 <span className="text-white text-xs">{v.displayName}</span>
                 <span className="text-white/70 text-[10px] ml-auto font-mono">

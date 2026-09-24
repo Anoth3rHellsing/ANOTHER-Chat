@@ -18,6 +18,7 @@ import { useRealtimeMessages } from '@/providers/realtime-transport';
 import { convertToUTC, formatEventTime, validateLocalTime } from '@/lib/event-time';
 import { hasPerm, PERM } from '@/lib/permissions';
 import { useToast } from '@/hooks/use-toast';
+import { sameOriginUploadUrl } from '@/lib/media-url';
 
 // Add realtime invalidation hook
 export function useEventRealtime() {
@@ -407,7 +408,7 @@ function EventItem({ event, channelId, canManage, onEdit }: { event: any, channe
                       {attendees.map((r: any) => (
                         <div key={r.userId} className="flex items-center gap-1 bg-white/5 border border-white/5 rounded-full px-1.5 py-0.5" title={r.user.name}>
                           {r.user.avatarUrl ? (
-                            <img src={r.user.avatarUrl} alt="" className="w-3 h-3 rounded-full object-cover" />
+                            <img src={sameOriginUploadUrl(r.user.avatarUrl)} alt="" className="w-3 h-3 rounded-full object-cover" />
                           ) : (
                             <UsersIcon className="w-3 h-3 text-muted-foreground p-0.5" />
                           )}
