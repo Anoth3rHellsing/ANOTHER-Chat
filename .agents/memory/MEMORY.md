@@ -18,3 +18,4 @@
 - [Embedded player DOM ownership](embedded-player-dom-ownership.md) — React must own only an empty host when a third-party player replaces its mount; clean up before host removal
 - [Browser audio test limits](browser-audio-test-limits.md) — Chromium fake mic may ignore native noise/gain options; WebRTC meters need a playing audio sink
 - [RNNoise worklet readiness](rnnoise-worklet-readiness.md) — the bundled processor has no ready message while WASM initializes asynchronously
+- [Temporary PostgreSQL clusters](temporary-postgres-clusters.md) — isolated tests need a writable Unix-socket directory even when clients use TCP

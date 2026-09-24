@@ -16,6 +16,7 @@ import searchRouter from "./search";
 import dmGroupsRouter from "./dm-groups";
 import moderationRouter from "./moderation";
 import soundboardRouter from "./soundboard";
+import eventsRouter from "./events";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(searchRouter);
 router.use(dmGroupsRouter);
 router.use(moderationRouter);
 router.use(soundboardRouter);
+router.use(eventsRouter);
 
 export default router;

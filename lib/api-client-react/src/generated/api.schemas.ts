@@ -185,6 +185,69 @@ export interface Channel {
   createdAt: string;
 }
 
+export type ChannelEventCreator = {
+  id: number;
+  username: string;
+  displayName: string;
+  /** @nullable */
+  avatarUrl: string | null;
+};
+
+export type ChannelEventCounts = {
+  yes: number;
+  no: number;
+  maybe: number;
+};
+
+export type EventResponseStatus = typeof EventResponseStatus[keyof typeof EventResponseStatus];
+
+
+export const EventResponseStatus = {
+  yes: 'yes',
+  no: 'no',
+  maybe: 'maybe',
+} as const;
+
+export type EventResponseUser = {
+  name: string;
+  displayName: string;
+  /** @nullable */
+  avatarUrl: string | null;
+};
+
+export interface EventResponse {
+  userId: number;
+  status: EventResponseStatus;
+  user: EventResponseUser;
+  updatedAt: string;
+}
+
+export interface ChannelEvent {
+  id: number;
+  channelId: number;
+  creatorId: number;
+  creator: ChannelEventCreator;
+  title: string;
+  /** @nullable */
+  description: string | null;
+  /** UTC ISO 8601 date-time. */
+  startsAt: string;
+  /**
+     * Optional event end time as a date-time.
+     * @nullable
+     */
+  endsAt: string | null;
+  /** IANA time zone identifier used when the event was created. */
+  originalTimeZone: string;
+  /** @nullable */
+  canceledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  responses: EventResponse[];
+  counts: ChannelEventCounts;
+  myResponse: EventResponse | null;
+}
+
 export interface ServerInvite {
   id: number;
   serverId: number;
@@ -364,6 +427,45 @@ export interface ChannelUpdate {
   channelType?: ChannelUpdateChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelUpdateVisualConfig;
+}
+
+export interface EventInput {
+  /** @minLength 1 */
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  /** UTC ISO 8601 date-time. */
+  startsAt: string;
+  /** @nullable */
+  endsAt?: string | null;
+  /** IANA time zone identifier. */
+  originalTimeZone: string;
+}
+
+export interface EventUpdate {
+  /** @minLength 1 */
+  title?: string;
+  /** @nullable */
+  description?: string | null;
+  /** UTC ISO 8601 date-time. */
+  startsAt?: string;
+  /** @nullable */
+  endsAt?: string | null;
+  /** IANA time zone identifier. */
+  originalTimeZone?: string;
+}
+
+export type RSVPInputStatus = typeof RSVPInputStatus[keyof typeof RSVPInputStatus];
+
+
+export const RSVPInputStatus = {
+  yes: 'yes',
+  no: 'no',
+  maybe: 'maybe',
+} as const;
+
+export interface RSVPInput {
+  status: RSVPInputStatus;
 }
 
 export interface MessageInput {

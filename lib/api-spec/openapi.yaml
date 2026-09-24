@@ -18,6 +18,8 @@ tags:
     description: Channel management
   - name: messages
     description: Message management
+  - name: events
+    description: Channel calendar events and RSVPs
   - name: users
     description: User profiles
   - name: admin
@@ -683,6 +685,216 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Message"
+
+  /channels/{channelId}/events:
+    get:
+      operationId: listChannelEvents
+      tags: [events]
+      summary: List events in a channel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Channel events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelEvent"
+        "401":
+          description: Authentication is required
+        "403":
+          description: The caller cannot access this channel
+        "404":
+          description: The channel does not exist
+    post:
+      operationId: createChannelEvent
+      tags: [events]
+      summary: Create an event in a channel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventInput"
+      responses:
+        "201":
+          description: Event created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+        "400":
+          description: Event input is invalid
+        "401":
+          description: Authentication is required
+        "403":
+          description: The caller cannot create events in this channel
+        "404":
+          description: The channel does not exist
+
+  /channels/{channelId}/events/{eventId}:
+    get:
+      operationId: getChannelEvent
+      tags: [events]
+      summary: Get a channel event
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Channel event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+        "401":
+          description: Authentication is required
+        "403":
+          description: The caller cannot access this channel
+        "404":
+          description: The channel or event does not exist
+    patch:
+      operationId: updateChannelEvent
+      tags: [events]
+      summary: Edit a channel event
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventUpdate"
+      responses:
+        "200":
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+        "400":
+          description: Event update is invalid
+        "401":
+          description: Authentication is required
+        "403":
+          description: The caller is not allowed to edit this event
+        "404":
+          description: The channel or event does not exist
+    delete:
+      operationId: cancelChannelEvent
+      tags: [events]
+      summary: Soft-cancel a channel event
+      description: Marks the event as canceled and returns the updated event; the event is not permanently deleted.
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Event canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+        "401":
+          description: Authentication is required
+        "403":
+          description: The caller is not allowed to cancel this event
+        "404":
+          description: The channel or event does not exist
+
+  /channels/{channelId}/events/{eventId}/response:
+    put:
+      operationId: respondToChannelEvent
+      tags: [events]
+      summary: Create or update the caller's RSVP to an event
+      description: Each person has one response per event; this operation replaces that person's existing response if present.
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RSVPInput"
+      responses:
+        "200":
+          description: Event response recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelEvent"
+        "400":
+          description: RSVP status is invalid
+        "401":
+          description: Authentication is required
+        "403":
+          description: The caller cannot respond to this event
+        "404":
+          description: The channel or event does not exist
+
+  /events/upcoming/mine:
+    get:
+      operationId: listMyUpcomingEvents
+      tags: [events]
+      summary: List upcoming events the caller is attending or considering
+      description: Returns upcoming events where the caller's RSVP is yes or maybe. This is a normal request-response endpoint and does not poll or stream updates.
+      responses:
+        "200":
+          description: Upcoming events with the caller's yes or maybe RSVP
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelEvent"
+        "401":
+          description: Authentication is required
 
   /channels/{channelId}/attachments:
     post:
@@ -1538,6 +1750,94 @@ components:
           type: string
           format: date-time
 
+    ChannelEvent:
+      type: object
+      required: [id, channelId, creatorId, creator, title, description, startsAt, endsAt, originalTimeZone, canceledAt, createdAt, updatedAt, responses, counts, myResponse]
+      properties:
+        id:
+          type: integer
+        channelId:
+          type: integer
+        creatorId:
+          type: integer
+        creator:
+          type: object
+          required: [id, username, displayName, avatarUrl]
+          properties:
+            id:
+              type: integer
+            username:
+              type: string
+            displayName:
+              type: string
+            avatarUrl:
+              type: ["string", "null"]
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 date-time.
+        endsAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Optional event end time as a date-time.
+        originalTimeZone:
+          type: string
+          description: IANA time zone identifier used when the event was created.
+        canceledAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        responses:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventResponse"
+        counts:
+          type: object
+          required: [yes, no, maybe]
+          properties:
+            yes:
+              type: integer
+            no:
+              type: integer
+            maybe:
+              type: integer
+        myResponse:
+          anyOf:
+            - $ref: "#/components/schemas/EventResponse"
+            - type: "null"
+
+    EventResponse:
+      type: object
+      required: [userId, status, user, updatedAt]
+      properties:
+        userId:
+          type: integer
+        status:
+          type: string
+          enum: [yes, no, maybe]
+        user:
+          type: object
+          required: [name, displayName, avatarUrl]
+          properties:
+            name:
+              type: string
+            displayName:
+              type: string
+            avatarUrl:
+              type: ["string", "null"]
+        updatedAt:
+          type: string
+          format: date-time
+
     ServerInvite:
       type: object
       required: [id, serverId, code, createdById, revoked, createdAt]
@@ -1794,6 +2094,54 @@ components:
             type: integer
         visualConfig:
           type: object
+
+    EventInput:
+      type: object
+      required: [title, startsAt, originalTimeZone]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 date-time.
+        endsAt:
+          type: ["string", "null"]
+          format: date-time
+        originalTimeZone:
+          type: string
+          description: IANA time zone identifier.
+
+    EventUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 date-time.
+        endsAt:
+          type: ["string", "null"]
+          format: date-time
+        originalTimeZone:
+          type: string
+          description: IANA time zone identifier.
+
+    RSVPInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [yes, no, maybe]
 
     MessageInput:
       type: object

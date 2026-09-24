@@ -25,11 +25,14 @@ import type {
   Attachment,
   AvatarUploadResult,
   Channel,
+  ChannelEvent,
   ChannelInput,
   ChannelUpdate,
   DirectMessage,
   DmConversation,
   DmInput,
+  EventInput,
+  EventUpdate,
   GetDmGroupMessagesParams,
   GroupMessage,
   GroupMessageInput,
@@ -45,6 +48,7 @@ import type {
   MessageReaction,
   MessageUpdate,
   ProfileUpdate,
+  RSVPInput,
   ReactionInput,
   RegisterInput,
   Server,
@@ -2382,6 +2386,538 @@ export const useSendMessage = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getSendMessageMutationOptions(options));
     }
+
+export const getListChannelEventsUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/events`
+}
+
+/**
+ * @summary List events in a channel
+ */
+export const listChannelEvents = async (channelId: number, options?: RequestInit): Promise<ChannelEvent[]> => {
+
+  return customFetch<ChannelEvent[]>(getListChannelEventsUrl(channelId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChannelEventsQueryKey = (channelId: number,) => {
+    return [
+    `/api/channels/${channelId}/events`
+    ] as const;
+    }
+
+
+export const getListChannelEventsQueryOptions = <TData = Awaited<ReturnType<typeof listChannelEvents>>, TError = ErrorType<void>>(channelId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChannelEventsQueryKey(channelId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChannelEvents>>> = ({ signal }) => listChannelEvents(channelId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChannelEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChannelEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listChannelEvents>>>
+export type ListChannelEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List events in a channel
+ */
+
+export function useListChannelEvents<TData = Awaited<ReturnType<typeof listChannelEvents>>, TError = ErrorType<void>>(
+ channelId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChannelEventsQueryOptions(channelId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateChannelEventUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/events`
+}
+
+/**
+ * @summary Create an event in a channel
+ */
+export const createChannelEvent = async (channelId: number,
+    eventInput: EventInput, options?: RequestInit): Promise<ChannelEvent> => {
+
+  return customFetch<ChannelEvent>(getCreateChannelEventUrl(channelId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventInput)
+  }
+);}
+
+
+
+
+
+export const getCreateChannelEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChannelEvent>>, TError,{channelId: number;data: BodyType<EventInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChannelEvent>>, TError,{channelId: number;data: BodyType<EventInput>}, TContext> => {
+
+const mutationKey = ['createChannelEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChannelEvent>>, {channelId: number;data: BodyType<EventInput>}> = (props) => {
+          const {channelId,data} = props ?? {};
+
+          return  createChannelEvent(channelId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateChannelEventMutationResult = NonNullable<Awaited<ReturnType<typeof createChannelEvent>>>
+    export type CreateChannelEventMutationBody = BodyType<EventInput>
+    export type CreateChannelEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Create an event in a channel
+ */
+export const useCreateChannelEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChannelEvent>>, TError,{channelId: number;data: BodyType<EventInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createChannelEvent>>,
+        TError,
+        {channelId: number;data: BodyType<EventInput>},
+        TContext
+      > => {
+      return useMutation(getCreateChannelEventMutationOptions(options));
+    }
+
+export const getGetChannelEventUrl = (channelId: number,
+    eventId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/events/${eventId}`
+}
+
+/**
+ * @summary Get a channel event
+ */
+export const getChannelEvent = async (channelId: number,
+    eventId: number, options?: RequestInit): Promise<ChannelEvent> => {
+
+  return customFetch<ChannelEvent>(getGetChannelEventUrl(channelId,eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelEventQueryKey = (channelId: number,
+    eventId: number,) => {
+    return [
+    `/api/channels/${channelId}/events/${eventId}`
+    ] as const;
+    }
+
+
+export const getGetChannelEventQueryOptions = <TData = Awaited<ReturnType<typeof getChannelEvent>>, TError = ErrorType<void>>(channelId: number,
+    eventId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelEvent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelEventQueryKey(channelId,eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelEvent>>> = ({ signal }) => getChannelEvent(channelId,eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined && eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelEvent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelEventQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelEvent>>>
+export type GetChannelEventQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a channel event
+ */
+
+export function useGetChannelEvent<TData = Awaited<ReturnType<typeof getChannelEvent>>, TError = ErrorType<void>>(
+ channelId: number,
+    eventId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelEvent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelEventQueryOptions(channelId,eventId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateChannelEventUrl = (channelId: number,
+    eventId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/events/${eventId}`
+}
+
+/**
+ * @summary Edit a channel event
+ */
+export const updateChannelEvent = async (channelId: number,
+    eventId: number,
+    eventUpdate: EventUpdate, options?: RequestInit): Promise<ChannelEvent> => {
+
+  return customFetch<ChannelEvent>(getUpdateChannelEventUrl(channelId,eventId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(eventUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateChannelEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannelEvent>>, TError,{channelId: number;eventId: number;data: BodyType<EventUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChannelEvent>>, TError,{channelId: number;eventId: number;data: BodyType<EventUpdate>}, TContext> => {
+
+const mutationKey = ['updateChannelEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChannelEvent>>, {channelId: number;eventId: number;data: BodyType<EventUpdate>}> = (props) => {
+          const {channelId,eventId,data} = props ?? {};
+
+          return  updateChannelEvent(channelId,eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChannelEventMutationResult = NonNullable<Awaited<ReturnType<typeof updateChannelEvent>>>
+    export type UpdateChannelEventMutationBody = BodyType<EventUpdate>
+    export type UpdateChannelEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit a channel event
+ */
+export const useUpdateChannelEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChannelEvent>>, TError,{channelId: number;eventId: number;data: BodyType<EventUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChannelEvent>>,
+        TError,
+        {channelId: number;eventId: number;data: BodyType<EventUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateChannelEventMutationOptions(options));
+    }
+
+export const getCancelChannelEventUrl = (channelId: number,
+    eventId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/events/${eventId}`
+}
+
+/**
+ * Marks the event as canceled and returns the updated event; the event is not permanently deleted.
+ * @summary Soft-cancel a channel event
+ */
+export const cancelChannelEvent = async (channelId: number,
+    eventId: number, options?: RequestInit): Promise<ChannelEvent> => {
+
+  return customFetch<ChannelEvent>(getCancelChannelEventUrl(channelId,eventId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelChannelEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelChannelEvent>>, TError,{channelId: number;eventId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelChannelEvent>>, TError,{channelId: number;eventId: number}, TContext> => {
+
+const mutationKey = ['cancelChannelEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelChannelEvent>>, {channelId: number;eventId: number}> = (props) => {
+          const {channelId,eventId} = props ?? {};
+
+          return  cancelChannelEvent(channelId,eventId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelChannelEventMutationResult = NonNullable<Awaited<ReturnType<typeof cancelChannelEvent>>>
+
+    export type CancelChannelEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Soft-cancel a channel event
+ */
+export const useCancelChannelEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelChannelEvent>>, TError,{channelId: number;eventId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelChannelEvent>>,
+        TError,
+        {channelId: number;eventId: number},
+        TContext
+      > => {
+      return useMutation(getCancelChannelEventMutationOptions(options));
+    }
+
+export const getRespondToChannelEventUrl = (channelId: number,
+    eventId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/events/${eventId}/response`
+}
+
+/**
+ * Each person has one response per event; this operation replaces that person's existing response if present.
+ * @summary Create or update the caller's RSVP to an event
+ */
+export const respondToChannelEvent = async (channelId: number,
+    eventId: number,
+    rSVPInput: RSVPInput, options?: RequestInit): Promise<ChannelEvent> => {
+
+  return customFetch<ChannelEvent>(getRespondToChannelEventUrl(channelId,eventId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(rSVPInput)
+  }
+);}
+
+
+
+
+
+export const getRespondToChannelEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToChannelEvent>>, TError,{channelId: number;eventId: number;data: BodyType<RSVPInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof respondToChannelEvent>>, TError,{channelId: number;eventId: number;data: BodyType<RSVPInput>}, TContext> => {
+
+const mutationKey = ['respondToChannelEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof respondToChannelEvent>>, {channelId: number;eventId: number;data: BodyType<RSVPInput>}> = (props) => {
+          const {channelId,eventId,data} = props ?? {};
+
+          return  respondToChannelEvent(channelId,eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RespondToChannelEventMutationResult = NonNullable<Awaited<ReturnType<typeof respondToChannelEvent>>>
+    export type RespondToChannelEventMutationBody = BodyType<RSVPInput>
+    export type RespondToChannelEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Create or update the caller's RSVP to an event
+ */
+export const useRespondToChannelEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof respondToChannelEvent>>, TError,{channelId: number;eventId: number;data: BodyType<RSVPInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof respondToChannelEvent>>,
+        TError,
+        {channelId: number;eventId: number;data: BodyType<RSVPInput>},
+        TContext
+      > => {
+      return useMutation(getRespondToChannelEventMutationOptions(options));
+    }
+
+export const getListMyUpcomingEventsUrl = () => {
+
+
+
+
+  return `/api/events/upcoming/mine`
+}
+
+/**
+ * Returns upcoming events where the caller's RSVP is yes or maybe. This is a normal request-response endpoint and does not poll or stream updates.
+ * @summary List upcoming events the caller is attending or considering
+ */
+export const listMyUpcomingEvents = async ( options?: RequestInit): Promise<ChannelEvent[]> => {
+
+  return customFetch<ChannelEvent[]>(getListMyUpcomingEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMyUpcomingEventsQueryKey = () => {
+    return [
+    `/api/events/upcoming/mine`
+    ] as const;
+    }
+
+
+export const getListMyUpcomingEventsQueryOptions = <TData = Awaited<ReturnType<typeof listMyUpcomingEvents>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyUpcomingEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMyUpcomingEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMyUpcomingEvents>>> = ({ signal }) => listMyUpcomingEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMyUpcomingEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMyUpcomingEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listMyUpcomingEvents>>>
+export type ListMyUpcomingEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List upcoming events the caller is attending or considering
+ */
+
+export function useListMyUpcomingEvents<TData = Awaited<ReturnType<typeof listMyUpcomingEvents>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMyUpcomingEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMyUpcomingEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getUploadAttachmentUrl = (channelId: number,) => {
 

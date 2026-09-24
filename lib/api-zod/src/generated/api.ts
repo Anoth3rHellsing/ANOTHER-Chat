@@ -747,6 +747,408 @@ export const SendMessageResponse = zod.object({
 
 
 /**
+ * @summary List events in a channel
+ */
+export const ListChannelEventsParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const ListChannelEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+export const ListChannelEventsResponse = zod.array(ListChannelEventsResponseItem)
+
+
+/**
+ * @summary Create an event in a channel
+ */
+export const CreateChannelEventParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+
+
+
+export const CreateChannelEventBody = zod.object({
+  "title": zod.string().min(1),
+  "description": zod.string().nullish(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullish(),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier.')
+})
+
+export const CreateChannelEventResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Get a channel event
+ */
+export const GetChannelEventParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "eventId": zod.coerce.number()
+})
+
+export const GetChannelEventResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Edit a channel event
+ */
+export const UpdateChannelEventParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "eventId": zod.coerce.number()
+})
+
+
+
+
+export const UpdateChannelEventBody = zod.object({
+  "title": zod.string().min(1).optional(),
+  "description": zod.string().nullish(),
+  "startsAt": zod.coerce.date().optional().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullish(),
+  "originalTimeZone": zod.string().optional().describe('IANA time zone identifier.')
+})
+
+export const UpdateChannelEventResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * Marks the event as canceled and returns the updated event; the event is not permanently deleted.
+ * @summary Soft-cancel a channel event
+ */
+export const CancelChannelEventParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "eventId": zod.coerce.number()
+})
+
+export const CancelChannelEventResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * Each person has one response per event; this operation replaces that person's existing response if present.
+ * @summary Create or update the caller's RSVP to an event
+ */
+export const RespondToChannelEventParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "eventId": zod.coerce.number()
+})
+
+export const RespondToChannelEventBody = zod.object({
+  "status": zod.enum(['yes', 'no', 'maybe'])
+})
+
+export const RespondToChannelEventResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * Returns upcoming events where the caller's RSVP is yes or maybe. This is a normal request-response endpoint and does not poll or stream updates.
+ * @summary List upcoming events the caller is attending or considering
+ */
+export const ListMyUpcomingEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "creatorId": zod.number(),
+  "creator": zod.object({
+  "id": zod.number(),
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "startsAt": zod.coerce.date().describe('UTC ISO 8601 date-time.'),
+  "endsAt": zod.coerce.date().nullable().describe('Optional event end time as a date-time.'),
+  "originalTimeZone": zod.string().describe('IANA time zone identifier used when the event was created.'),
+  "canceledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "responses": zod.array(zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+})),
+  "counts": zod.object({
+  "yes": zod.number(),
+  "no": zod.number(),
+  "maybe": zod.number()
+}),
+  "myResponse": zod.union([zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['yes', 'no', 'maybe']),
+  "user": zod.object({
+  "name": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "updatedAt": zod.coerce.date()
+}),zod.null()])
+})
+export const ListMyUpcomingEventsResponse = zod.array(ListMyUpcomingEventsResponseItem)
+
+
+/**
  * @summary Upload a file attachment for a channel
  */
 export const UploadAttachmentParams = zod.object({

@@ -38,12 +38,13 @@ import { CreateServerModal } from '@/components/create-server-modal';
 import { StoryBar } from '@/components/story-bar';
 import { ClipsView } from '@/components/clips-view';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
+import { ChannelEventsPanel, EventMessageCard, useEventRealtime } from '@/components/channel-events';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
   Link2, Volume2, Image as ImageIcon, Paperclip, Smile, CornerUpLeft,
-  FileText, ExternalLink, Download, MessageSquare, Play,
+  FileText, ExternalLink, Download, MessageSquare, Play, Calendar,
   Cog, Phone, PhoneOff, Mic, MicOff, Music2, Video, VideoOff, Monitor, MonitorOff,
   PhoneIncoming, Minimize2, Clapperboard,
   Search, ChevronLeft, Flag, Bell, ShoppingBag
@@ -290,6 +291,7 @@ export default function AppLayout() {
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [showMembers, setShowMembers] = useState(true);
+  const [showEvents, setShowEvents] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedAnchorRect, setSelectedAnchorRect] = useState<DOMRect | null>(null);
 
@@ -372,6 +374,8 @@ export default function AppLayout() {
   const { data: members } = useGetServerMembers(activeServerId as number, { query: { enabled: !!activeServerId } as any });
   const { data: messages } = useListMessages(activeChannelId as number, {}, { query: { enabled: !!activeChannelId } as any });
   
+  useEventRealtime();
+
   // Reuse the generated channels cache; one initial fetch per server, never polling.
   const channelQueries = useQueries({
     queries: (servers ?? []).map(server => ({
@@ -1511,9 +1515,25 @@ export default function AppLayout() {
                 >
                   <Search className="w-4 h-4" />
                 </button>
+                <button
+                  onClick={() => {
+                    const next = !showEvents;
+                    setShowEvents(next);
+                    if (next) setShowMembers(false);
+                  }}
+                  className={`p-1.5 rounded-md transition-colors ${showEvents ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
+                  title="Eventos del canal"
+                >
+                  <Calendar className="w-5 h-5" />
+                </button>
                 <button 
-                  onClick={() => setShowMembers(!showMembers)}
+                  onClick={() => {
+                    const next = !showMembers;
+                    setShowMembers(next);
+                    if (next) setShowEvents(false);
+                  }}
                   className={`p-1.5 rounded-md transition-colors ${showMembers ? 'bg-white/10 text-white' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
+                  title="Miembros"
                 >
                   <UsersIcon className="w-5 h-5" />
                 </button>
@@ -1526,6 +1546,16 @@ export default function AppLayout() {
                 const isFirst = idx === 0 || messages[idx - 1].userId !== msg.userId || new Date(msg.createdAt).getTime() - new Date(messages[idx - 1].createdAt).getTime() > 300000;
                 const isOwn = msg.userId === user.id;
                 const msgAny = msg as any;
+
+                let contentToRender = msg.content;
+                let announcedEventId: number | null = null;
+                if (contentToRender && !msg.deletedAt) {
+                  const match = contentToRender.match(/\[event:(\d+)\]/);
+                  if (match) {
+                    announcedEventId = parseInt(match[1], 10);
+                    contentToRender = contentToRender.replace(/\[event:\d+\]/, '').trim();
+                  }
+                }
 
                 return (
                   <div
@@ -1574,14 +1604,24 @@ export default function AppLayout() {
                             {msg.deletedAt ? (
                               <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             ) : (
-                              <>
-                                {msg.content && msg.content.trim() !== '' && msg.content !== ' ' && (
-                                  <>
-                                    {msg.content}
+                              <div className="flex flex-col gap-1">
+                                {contentToRender && contentToRender.trim() !== '' && (
+                                  <div>
+                                    {contentToRender}
                                     {msg.editedAt && <span className="text-[10px] text-muted-foreground ml-2 font-mono">(editado)</span>}
-                                  </>
+                                  </div>
                                 )}
-                              </>
+                                {announcedEventId && (
+                                  <EventMessageCard
+                                    eventId={announcedEventId}
+                                    channelId={activeChannel.id}
+                                    onOpenEvents={() => {
+                                      setShowEvents(true);
+                                      setShowMembers(false);
+                                    }}
+                                  />
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -1879,6 +1919,16 @@ export default function AppLayout() {
             )}
           </div>
         </div>
+      )}
+
+      {/* 5. EVENTS LIST COLUMN — only in server mode */}
+      {activeView === 'servers' && showEvents && activeChannel && (
+        <ChannelEventsPanel
+          channelId={activeChannel.id}
+          onClose={() => setShowEvents(false)}
+          currentUser={user}
+          userPermissions={myPermissions}
+        />
       )}
 
       {/* Join by invite overlay */}
