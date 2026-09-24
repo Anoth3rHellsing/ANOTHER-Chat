@@ -441,6 +441,15 @@ export function useWebRTC(options: {
             return next;
           });
         }, { once: true });
+        // replaceTrack(null) mutes the receiver without ending the transceiver.
+        // Re-render source availability on both stop and subsequent re-share.
+        const refreshAvailability = () => setRemoteAudioTracks(prev => {
+          const current = prev.get(peerId);
+          if (!current || current[role] !== track) return prev;
+          return new Map(prev);
+        });
+        track.addEventListener('mute', refreshAvailability);
+        track.addEventListener('unmute', refreshAvailability);
         return role;
       };
       const showRemoteScreen = (track: MediaStreamTrack, stream: MediaStream) => {

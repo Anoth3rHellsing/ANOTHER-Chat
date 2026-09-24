@@ -1,4 +1,4 @@
-import { Maximize2, Mic, MicOff, Music2, PhoneOff, Volume2, Clapperboard } from 'lucide-react';
+import { Maximize2, Mic, MicOff, Music2, PhoneOff, Volume2, Clapperboard, SlidersHorizontal } from 'lucide-react';
 
 interface CallStatusBarProps {
   name: string;
@@ -13,11 +13,13 @@ interface CallStatusBarProps {
   onOpenWatch: () => void;
   isWatching: boolean;
   hasWatchInvitation: boolean;
+  onOpenSources: () => void;
+  isSourcesOpen: boolean;
 }
 
 export function CallStatusBar({
   name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand,
-  onOpenSoundboard, onOpenWatch, isWatching, hasWatchInvitation,
+  onOpenSoundboard, onOpenWatch, isWatching, hasWatchInvitation, onOpenSources, isSourcesOpen,
 }: CallStatusBarProps) {
   return (
     <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
@@ -34,6 +36,17 @@ export function CallStatusBar({
         aria-label="Abrir soundboard"
       >
         <Music2 className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onOpenSources}
+        className={`inline-flex items-center gap-1 rounded p-1 transition-colors ${isSourcesOpen ? 'bg-primary/15 text-primary' : 'text-primary hover:bg-primary/15'}`}
+        title="Controlar voz, cámara y pantalla de cada participante"
+        aria-label="Controles de participantes y fuentes"
+        aria-expanded={isSourcesOpen}
+      >
+        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="text-[10px]">Fuentes</span>
       </button>
       <button
         type="button"

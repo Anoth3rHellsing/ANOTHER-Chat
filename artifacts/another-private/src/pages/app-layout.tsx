@@ -27,6 +27,15 @@ import { loadSoundboardSettings, saveSoundboardSettings, type SoundboardSettings
 import { SoundboardPanel, type Clip as SoundboardClip } from '@/components/soundboard-panel';
 import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
 import { CallStatusBar } from '@/components/call-status-bar';
+import { CallSourceControls } from '@/components/call-source-controls';
+import { CallScreenGallery } from '@/components/call-screen-gallery';
+import {
+  sourcePreferencesFor,
+  type CallAudioSource,
+  type CallVideoSource,
+  type PeerSourcePreferences,
+  type SourceLevel,
+} from '@/lib/call-source-preferences';
 import { ProfileModal } from '@/components/profile-modal';
 import { SettingsModal } from '@/components/settings-modal';
 import { loadSettings, saveSettings, type AudioVideoSettings } from '@/lib/settings-utils';
@@ -284,6 +293,9 @@ export default function AppLayout() {
     setNotificationProfile({ userId: user.id, settings: next });
   };
   const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [callSourcePreferences, setCallSourcePreferences] = useState<Map<number, PeerSourcePreferences>>(new Map());
+  const [showCallSources, setShowCallSources] = useState(false);
+  const [featuredScreenKey, setFeaturedScreenKey] = useState<string | null>(null);
   const [joinedVoiceChannelName, setJoinedVoiceChannelName] = useState<string | null>(null);
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false);
   const [showClips, setShowClips] = useState(false);
@@ -432,6 +444,39 @@ export default function AppLayout() {
     ? `voice:${webrtc.activeVoiceChannelId}`
     : webrtc.callState === 'connected' && webrtc.dmCallUserId
       ? `dm:${webrtc.dmCallUserId}` : null;
+  useEffect(() => {
+    setCallSourcePreferences(new Map());
+    setFeaturedScreenKey(null);
+    setShowCallSources(false);
+  }, [currentCallKey]);
+  const changeSourceLevel = (peerId: number, source: CallAudioSource, patch: Partial<SourceLevel>) => {
+    setCallSourcePreferences(previous => {
+      const next = new Map(previous);
+      const current = sourcePreferencesFor(previous, peerId);
+      next.set(peerId, {
+        ...current,
+        [source]: {
+          ...current[source],
+          ...patch,
+          volume: patch.volume === undefined ? current[source].volume : Math.max(0, Math.min(1, patch.volume)),
+        },
+      });
+      return next;
+    });
+  };
+  const toggleSourceVideo = (peerId: number, source: CallVideoSource) => {
+    setCallSourcePreferences(previous => {
+      const next = new Map(previous);
+      const current = sourcePreferencesFor(previous, peerId);
+      next.set(peerId, {
+        ...current,
+        [source === 'camera' ? 'cameraVisible' : 'screenVisible']:
+          !(source === 'camera' ? current.cameraVisible : current.screenVisible),
+      });
+      return next;
+    });
+    if (source === 'screen' && featuredScreenKey === `peer-${peerId}`) setFeaturedScreenKey(null);
+  };
   const watch = useWatchSession({
     userId: user?.id,
     scope: webrtc.isInVoiceChannel ? 'voice' : webrtc.callState === 'connected' ? 'dm' : null,
@@ -824,6 +869,28 @@ export default function AppLayout() {
   const watchParticipants = [...new Map(
     watchParticipantCandidates.map(participant => [participant.userId, participant]),
   ).values()];
+  const remotePeerIds = new Set([
+    ...webrtc.voiceMembers.map(member => member.userId),
+    ...webrtc.remoteStreams.keys(),
+    ...webrtc.remoteScreenStreams.keys(),
+    ...webrtc.remoteAudioTracks.keys(),
+    ...(!webrtc.isInVoiceChannel && webrtc.dmCallUserId ? [webrtc.dmCallUserId] : []),
+  ]);
+  const sourceParticipants = [...remotePeerIds]
+    .filter(peerId => peerId !== user?.id)
+    .map(peerId => ({
+      userId: peerId,
+      displayName: webrtc.voiceMembers.find(member => member.userId === peerId)?.displayName
+        ?? (webrtc.dmCallUserId === peerId ? callPeer?.displayName : null)
+        ?? `Usuario ${peerId}`,
+      hasMicrophone: !!webrtc.remoteAudioTracks.get(peerId)?.microphone,
+      hasCamera: !!webrtc.remoteStreams.get(peerId)?.getVideoTracks().some(track => track.readyState === 'live'),
+      hasScreen: webrtc.remoteScreenStreams.has(peerId),
+      hasScreenAudio: webrtc.remoteScreenStreams.has(peerId) &&
+        webrtc.remoteAudioTracks.get(peerId)?.screen?.readyState === 'live' &&
+        !webrtc.remoteAudioTracks.get(peerId)?.screen?.muted,
+      preferences: sourcePreferencesFor(callSourcePreferences, peerId),
+    }));
   const callStatusBar = isCallActive ? (
     <CallStatusBar
       name={webrtc.isInVoiceChannel
@@ -842,6 +909,8 @@ export default function AppLayout() {
       onOpenWatch={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => !open); }}
       isWatching={isWatchVisible}
       hasWatchInvitation={!!watch.session && !watch.isWatching}
+      onOpenSources={() => setShowCallSources(open => !open)}
+      isSourcesOpen={showCallSources}
     />
   ) : null;
 
@@ -897,17 +966,22 @@ export default function AppLayout() {
   const sharedScreens = [
     ...Array.from(webrtc.remoteScreenStreams.entries(), ([peerId, stream]) => ({
       key: `peer-${peerId}`,
+      peerId,
       stream,
       label: webrtc.voiceMembers.find(member => member.userId === peerId)?.displayName
         ?? (dmConversations ?? []).find(conversation => conversation.otherUser?.id === peerId)?.otherUser?.displayName
         ?? `Usuario ${peerId}`,
       local: false,
+      visible: sourcePreferencesFor(callSourcePreferences, peerId).screenVisible,
     })),
     ...(webrtc.screenStream ? [{
       key: 'local',
+      peerId: null,
       stream: webrtc.screenStream,
       label: `${user.displayName} (vos)`,
       local: true,
+      visible: true,
+      audioAvailable: webrtc.screenAudioAvailable,
     }] : []),
   ];
 
@@ -2046,7 +2120,17 @@ export default function AppLayout() {
       )}
 
       {/* Remains mounted independently of the visual call overlay. */}
-      <RemoteAudioStreams streams={webrtc.remoteStreams} />
+      <RemoteAudioStreams tracks={webrtc.remoteAudioTracks} preferences={callSourcePreferences} />
+      {isCallActive && showCallSources && (
+        <div className="fixed bottom-20 right-4 z-[70] max-h-[min(70dvh,620px)] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl">
+          <CallSourceControls
+            participants={sourceParticipants}
+            onAudioChange={changeSourceLevel}
+            onToggleVideo={toggleSourceVideo}
+            onClose={() => setShowCallSources(false)}
+          />
+        </div>
+      )}
       {/* ── In-call overlay (voice/video) ────────────────────────────────── */}
       {!isCallMinimized && (webrtc.callState === 'connected' || webrtc.isInVoiceChannel) && (
         <div className="fixed inset-0 z-40 bg-black/95 flex flex-col">
@@ -2071,22 +2155,7 @@ export default function AppLayout() {
           )}
           {/* Shared content takes priority; each remote screen has its own video stream. */}
           <div className="flex-1 min-h-0 p-4 flex flex-col gap-3">
-            {sharedScreens.length > 0 && (
-              <div className={`grid min-h-0 flex-[2] gap-3 ${sharedScreens.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                {sharedScreens.map(share => (
-                  <div key={share.key} className="relative min-h-0 overflow-hidden rounded-2xl border border-border bg-secondary">
-                    <RemoteVideo stream={share.stream} fit="contain" />
-                    <div className="absolute bottom-2 left-3 rounded-md bg-card/90 px-2 py-1 font-mono text-xs text-foreground">
-                      <Monitor className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                      {share.label} — pantalla compartida
-                      {share.local && webrtc.screenAudioAvailable === false && (
-                        <span className="block text-muted-foreground">Sin audio de la pantalla</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <CallScreenGallery screens={sharedScreens} featuredKey={featuredScreenKey} onFeature={setFeaturedScreenKey} />
 
             {/* Remote streams grid */}
             <div className={`grid min-h-0 flex-1 gap-3 ${webrtc.remoteStreams.size === 0 ? 'grid-cols-1' : webrtc.remoteStreams.size <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
@@ -2119,7 +2188,17 @@ export default function AppLayout() {
                 const isActive = webrtc.activeSpeakerId === peerId;
                 return (
                   <div key={peerId} className={`rounded-2xl overflow-hidden bg-secondary border relative ${isActive ? 'border-green-400 shadow-[0_0_12px_rgba(74,222,128,0.4)]' : 'border-white/10'}`}>
-                    <RemoteVideo stream={stream} />
+                    <div
+                      className={sourcePreferencesFor(callSourcePreferences, peerId).cameraVisible ? 'h-full w-full' : 'hidden'}
+                      aria-hidden={!sourcePreferencesFor(callSourcePreferences, peerId).cameraVisible}
+                    >
+                      <RemoteVideo stream={stream} />
+                    </div>
+                    {!sourcePreferencesFor(callSourcePreferences, peerId).cameraVisible && (
+                      <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+                        Cámara oculta para ti
+                      </div>
+                    )}
                     <div className="absolute bottom-2 left-3 text-xs text-white/80 font-mono bg-black/60 px-2 py-0.5 rounded-md">
                       {peerMember?.displayName ?? `Usuario ${peerId}`}
                     </div>
@@ -2131,6 +2210,17 @@ export default function AppLayout() {
 
           {/* Control bar */}
           <div className="h-20 border-t border-white/10 flex items-center justify-center gap-4 bg-card/80 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setShowCallSources(open => !open)}
+              aria-label="Controles de participantes y fuentes"
+              aria-expanded={showCallSources}
+              className={`flex h-12 items-center gap-1 rounded-full px-3 transition-colors ${showCallSources ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
+              title="Ajustar voz, cámara y pantalla por participante"
+            >
+              <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
+              <span className="text-xs">Fuentes</span>
+            </button>
             <button
               onClick={() => webrtc.toggleMute()}
               className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isMuted ? 'bg-red-500 text-white' : 'bg-secondary text-foreground hover:bg-white/10'}`}
