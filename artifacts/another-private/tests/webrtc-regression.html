@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local WebRTC regression</title>
+</head>
+<body>
+  <h1>Local WebRTC browser-primitives regression</h1>
+  <section id="visual-panel" aria-label="Synthetic remote screen panel">
+    <video id="remote-video" autoplay muted playsinline></video>
+  </section>
+  <audio id="remote-audio" autoplay></audio>
+  <pre id="results">Running local two-peer checks…</pre>
+  <script>
+    (() => {
+      const results = [];
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const assert = (condition, message) => {
+        if (!condition) throw new Error(message);
+        results.push(`PASS ${message}`);
+      };
+      const makeVideoTrack = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = 180;
+        const context = canvas.getContext('2d');
+        let frame = 0;
+        const draw = () => {
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.save();
+          context.filter = 'invert(1)';
+          context.font = '28px sans-serif';
+          context.fillText(`synthetic frame ${frame++}`, 18, 44);
+          context.restore();
+          requestAnimationFrame(draw);
+        };
+        draw();
+        return canvas.captureStream(15).getVideoTracks()[0];
+      };
+      const makeToneTrack = (audioContext, frequency) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const destination = audioContext.createMediaStreamDestination();
+        oscillator.frequency.value = frequency;
+        gain.gain.value = 0.18;
+        oscillator.connect(gain).connect(destination);
+        oscillator.start();
+        return { track: destination.stream.getAudioTracks()[0], oscillator, destination };
+      };
+      const connectPeers = async (left, right) => {
+        left.onicecandidate = event => {
+          if (event.candidate) void right.addIceCandidate(event.candidate).catch(error => console.error(error));
+        };
+        right.onicecandidate = event => {
+          if (event.candidate) void left.addIceCandidate(event.candidate).catch(error => console.error(error));
+        };
+        const offer = await left.createOffer();
+        await left.setLocalDescription(offer);
+        await right.setRemoteDescription(offer);
+        const answer = await right.createAnswer();
+        await right.setLocalDescription(answer);
+        await left.setRemoteDescription(answer);
+      };
+      const waitConnected = async (...peers) => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          if (peers.every(peer => peer.connectionState === 'connected')) return;
+          if (peers.some(peer => peer.connectionState === 'failed')) {
+            throw new Error(`ICE failed: ${peers.map(peer => peer.connectionState).join(', ')}`);
+          }
+          await sleep(50);
+        }
+        throw new Error(`Timed out connecting peers: ${peers.map(peer => peer.connectionState).join(', ')}`);
+      };
+      const peakDb = analyser => {
+        const values = new Float32Array(analyser.frequencyBinCount);
+        analyser.getFloatFrequencyData(values);
+        const binHz = analyser.context.sampleRate / analyser.fftSize;
+        const peakNear = hz => {
+          const center = Math.round(hz / binHz);
+          let peak = -Infinity;
+          for (let i = center - 2; i <= center + 2; i++) peak = Math.max(peak, values[i]);
+          return peak;
+        };
+        return { hz440: peakNear(440), hz880: peakNear(880) };
+      };
+      const waitForAudioPeaks = async (analyser, predicate, label) => {
+        const deadline = Date.now() + 7000;
+        let measured;
+        while (Date.now() < deadline) {
+          measured = peakDb(analyser);
+          if (predicate(measured)) return measured;
+          await sleep(150);
+        }
+        throw new Error(`${label}: frequency check timed out (${JSON.stringify(measured)})`);
+      };
+      const senderStatsBytes = async sender => {
+        const stats = await sender.getStats();
+        let bytes = 0;
+        stats.forEach(report => {
+          if (report.type === 'outbound-rtp' && report.kind === 'video' && !report.isRemote) {
+            bytes += report.bytesSent || 0;
+          }
+        });
+        return bytes;
+      };
+      const report = async payload => {
+        document.getElementById('results').textContent = JSON.stringify(payload, null, 2);
+        await fetch('/report', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      };
+
+      async function run() {
+        let context;
+        let peers = [];
+        let extraPeers = [];
+        try {
+          context = new AudioContext();
+          await context.resume();
+          const micTone = makeToneTrack(context, 440);
+          const displayTone = makeToneTrack(context, 880);
+          const micStream = new MediaStream([micTone.track]);
+          const screenVideoTrack = makeVideoTrack();
+          const displayCaptureStream = new MediaStream([screenVideoTrack, displayTone.track]);
+
+          const mixer = context.createMediaStreamDestination();
+          context.createMediaStreamSource(micStream).connect(mixer);
+          context.createMediaStreamSource(displayTone.destination.stream).connect(mixer);
+          const mixedTrack = mixer.stream.getAudioTracks()[0];
+
+          const senderPeer = new RTCPeerConnection({ iceServers: [] });
+          const receiverPeer = new RTCPeerConnection({ iceServers: [] });
+          peers = [senderPeer, receiverPeer];
+          const micSender = senderPeer.addTrack(micTone.track, micStream);
+          const screenSender = senderPeer.addTrack(screenVideoTrack, displayCaptureStream);
+          assert(micSender.track === micTone.track && screenSender.track === screenVideoTrack,
+            'microphone and screen video are distinct RTCRtpSender tracks');
+          assert(micSender.track.kind === 'audio' && screenSender.track.kind === 'video',
+            'screen capture video is sent separately from the microphone audio sender');
+
+          let receivedAudioTrack;
+          let receivedVideoTrack;
+          receiverPeer.ontrack = event => {
+            if (event.track.kind === 'audio') {
+              receivedAudioTrack = event.track;
+              document.getElementById('remote-audio').srcObject = new MediaStream([event.track]);
+            } else if (event.track.kind === 'video') {
+              receivedVideoTrack = event.track;
+              document.getElementById('remote-video').srcObject = new MediaStream([event.track]);
+            }
+          };
+          await micSender.replaceTrack(mixedTrack);
+          assert(micSender.track === mixedTrack,
+            'Web Audio MediaStreamDestination mixer replaces the microphone sender during screen audio sharing');
+          await connectPeers(senderPeer, receiverPeer);
+          await waitConnected(senderPeer, receiverPeer);
+          const receiveDeadline = Date.now() + 5000;
+          while (Date.now() < receiveDeadline && (!receivedAudioTrack || !receivedVideoTrack)) await sleep(50);
+          assert(Boolean(receivedAudioTrack && receivedVideoTrack),
+            'receiver gets both the mixed audio track and separate screen video track');
+          const audioElement = document.getElementById('remote-audio');
+          const analyzerContext = new AudioContext();
+          await analyzerContext.resume();
+          const analyzer = analyzerContext.createAnalyser();
+          analyzer.fftSize = 16384;
+          analyzer.smoothingTimeConstant = 0;
+          analyzerContext.createMediaStreamSource(new MediaStream([receivedAudioTrack])).connect(analyzer);
+          await audioElement.play();
+          const mixedPeaks = await waitForAudioPeaks(analyzer,
+            peaks => peaks.hz440 > -55 && peaks.hz880 > -55,
+            'simultaneous microphone/shared-sound tones');
+          assert(mixedPeaks.hz440 > -55 && mixedPeaks.hz880 > -55,
+            `receiver spectrum contains simultaneous 440 Hz mic and 880 Hz shared sound (${JSON.stringify(mixedPeaks)} dBFS)`);
+
+          micTone.track.enabled = false;
+          const screenOnlyPeaks = await waitForAudioPeaks(analyzer,
+            peaks => peaks.hz880 > -55 && peaks.hz440 < peaks.hz880 - 15,
+            'muted-microphone shared sound');
+          assert(screenOnlyPeaks.hz880 > -55 && screenOnlyPeaks.hz440 < screenOnlyPeaks.hz880 - 15,
+            `disabling mic leaves shared-screen audio audible (${JSON.stringify(screenOnlyPeaks)} dBFS)`);
+          micTone.track.enabled = true;
+
+          let endedHandlerRan = false;
+          displayTone.track.addEventListener('ended', () => {
+            endedHandlerRan = true;
+            void micSender.replaceTrack(micTone.track);
+          }, { once: true });
+          displayTone.track.dispatchEvent(new Event('ended'));
+          const restoreDeadline = Date.now() + 2000;
+          while (Date.now() < restoreDeadline && micSender.track !== micTone.track) await sleep(20);
+          assert(endedHandlerRan && micSender.track === micTone.track,
+            'simulated display-audio ended event restores the original microphone with replaceTrack');
+          const micOnlyPeaks = await waitForAudioPeaks(analyzer,
+            peaks => peaks.hz440 > -55 && peaks.hz880 < peaks.hz440 - 15,
+            'restored microphone tone');
+          assert(micOnlyPeaks.hz440 > -55 && micOnlyPeaks.hz880 < micOnlyPeaks.hz440 - 15,
+            `restored microphone is audible after shared audio ends (${JSON.stringify(micOnlyPeaks)} dBFS)`);
+
+          const panel = document.getElementById('visual-panel');
+          const video = document.getElementById('remote-video');
+          assert(video.isConnected && video.srcObject && video.videoWidth > 0,
+            'synthetic remote screen video is mounted and rendering before minimization');
+          panel.hidden = true;
+          await sleep(250);
+          assert(panel.hidden && audioElement.isConnected && !audioElement.paused &&
+            audioElement.srcObject && audioElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+            'remote audio element remains mounted and playing while its synthetic visual panel is hidden');
+          const bytesBeforeStop = await senderStatsBytes(screenSender);
+          await screenSender.replaceTrack(null);
+          assert(screenSender.track === null,
+            'screen sender.replaceTrack(null) removes the outgoing screen track');
+          await sleep(900);
+          const bytesAfterStop = await senderStatsBytes(screenSender);
+          assert(bytesAfterStop - bytesBeforeStop < 12000,
+            `screen video transmission stops after replaceTrack(null) (bytes before=${bytesBeforeStop}, after=${bytesAfterStop})`);
+          assert(audioElement.isConnected && !audioElement.paused && (await peakDb(analyzer)).hz440 > -55,
+            'screen-video removal does not stop the mounted remote microphone audio');
+
+          const cancelledPc = new RTCPeerConnection({ iceServers: [] });
+          const cancelledMicSender = cancelledPc.addTrack(micTone.track, micStream);
+          const cancelledMicTrack = cancelledMicSender.track;
+          let cancellationObserved = false;
+          try {
+            await Promise.reject(new DOMException('Synthetic user cancellation', 'AbortError'));
+          } catch (error) {
+            cancellationObserved = error.name === 'AbortError';
+          }
+          assert(cancellationObserved && cancelledPc.getSenders().length === 1 &&
+            cancelledMicSender.track === cancelledMicTrack,
+            'simulated display-capture cancellation leaves existing microphone sending unchanged (permission UI is not invoked)');
+          cancelledPc.close();
+
+          const noAudioVideoTrack = makeVideoTrack();
+          const noAudioDisplayStream = new MediaStream([noAudioVideoTrack]);
+          const noAudioSenderPc = new RTCPeerConnection({ iceServers: [] });
+          const noAudioReceiverPc = new RTCPeerConnection({ iceServers: [] });
+          extraPeers = [noAudioSenderPc, noAudioReceiverPc];
+          const noAudioMicSender = noAudioSenderPc.addTrack(micTone.track, micStream);
+          const noAudioScreenSender = noAudioSenderPc.addTrack(noAudioDisplayStream.getVideoTracks()[0], noAudioDisplayStream);
+          assert(noAudioDisplayStream.getAudioTracks().length === 0 &&
+            noAudioMicSender.track === micTone.track && noAudioScreenSender.track === noAudioVideoTrack,
+            'video-only display stream has no display-audio track while mic and screen-video senders remain configured');
+          let noAudioRemoteKinds = new Set();
+          noAudioReceiverPc.ontrack = event => noAudioRemoteKinds.add(event.track.kind);
+          await connectPeers(noAudioSenderPc, noAudioReceiverPc);
+          await waitConnected(noAudioSenderPc, noAudioReceiverPc);
+          const noAudioDeadline = Date.now() + 5000;
+          while (Date.now() < noAudioDeadline &&
+            (!noAudioRemoteKinds.has('audio') || !noAudioRemoteKinds.has('video'))) await sleep(50);
+          assert(noAudioRemoteKinds.has('audio') && noAudioRemoteKinds.has('video'),
+            'no-display-audio scenario still delivers microphone audio and screen video to the receiver');
+
+          results.push('NOTE Cancellation is an AbortError flow simulation; browser capture permission/cancel UI is not exercised.');
+          results.push('NOTE These checks exercise Chromium WebRTC/Web Audio/canvas primitives, not application UI or signaling integration.');
+          await report({ status: 'passed', results });
+          await analyzerContext.close();
+          for (const peer of [...peers, ...extraPeers]) peer.close();
+          for (const track of [micTone.track, displayTone.track, screenVideoTrack, noAudioVideoTrack]) track.stop();
+          micTone.oscillator.stop();
+          displayTone.oscillator.stop();
+          await context.close();
+        } catch (error) {
+          results.push(`FAIL ${error && error.stack ? error.stack : String(error)}`);
+          await report({ status: 'failed', results });
+          for (const peer of [...peers, ...extraPeers]) peer.close();
+          if (context && context.state !== 'closed') await context.close();
+        }
+      }
+      void run();
+    })();
+  </script>
+</body>
+</html>

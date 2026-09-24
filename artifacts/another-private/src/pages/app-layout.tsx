@@ -682,6 +682,23 @@ export default function AppLayout() {
   }
   if (!user) return null;
 
+  const sharedScreens = [
+    ...Array.from(webrtc.remoteScreenStreams.entries(), ([peerId, stream]) => ({
+      key: `peer-${peerId}`,
+      stream,
+      label: webrtc.voiceMembers.find(member => member.userId === peerId)?.displayName
+        ?? (dmConversations ?? []).find(conversation => conversation.otherUser?.id === peerId)?.otherUser?.displayName
+        ?? `Usuario ${peerId}`,
+      local: false,
+    })),
+    ...(webrtc.screenStream ? [{
+      key: 'local',
+      stream: webrtc.screenStream,
+      label: `${user.displayName} (vos)`,
+      local: true,
+    }] : []),
+  ];
+
   return (
     <div className="h-screen w-full bg-background flex overflow-hidden font-sans">
       
@@ -1721,31 +1738,32 @@ export default function AppLayout() {
       {/* Remains mounted independently of the visual call overlay. */}
       <RemoteAudioStreams streams={webrtc.remoteStreams} />
       {/* ── In-call overlay (voice/video) ────────────────────────────────── */}
-      {!isCallMinimized && (webrtc.callState === 'connected' || (webrtc.isInVoiceChannel && webrtc.remoteStreams.size > 0)) && (
+      {!isCallMinimized && (webrtc.callState === 'connected' || webrtc.isInVoiceChannel) && (
         <div className="fixed inset-0 z-40 bg-black/95 flex flex-col">
-          {/* Video grid */}
-          <div className="flex-1 p-4 overflow-hidden">
-            {/* Screen share — takes priority */}
-            {webrtc.isScreenSharing && webrtc.localStream && (
-              <div className="w-full h-2/3 mb-4 rounded-2xl overflow-hidden bg-secondary border border-white/10 relative">
-                <video
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-contain"
-                  ref={el => { if (el) el.srcObject = webrtc.localStream; }}
-                />
-                <div className="absolute bottom-2 left-3 text-xs text-white/70 font-mono bg-black/50 px-2 py-1 rounded-md">
-                  📺 {user.displayName} — pantalla compartida
-                </div>
+          {/* Shared content takes priority; each remote screen has its own video stream. */}
+          <div className="flex-1 min-h-0 p-4 flex flex-col gap-3">
+            {sharedScreens.length > 0 && (
+              <div className={`grid min-h-0 flex-[2] gap-3 ${sharedScreens.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                {sharedScreens.map(share => (
+                  <div key={share.key} className="relative min-h-0 overflow-hidden rounded-2xl border border-border bg-secondary">
+                    <RemoteVideo stream={share.stream} fit="contain" />
+                    <div className="absolute bottom-2 left-3 rounded-md bg-card/90 px-2 py-1 font-mono text-xs text-foreground">
+                      <Monitor className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      {share.label} — pantalla compartida
+                      {share.local && webrtc.screenAudioAvailable === false && (
+                        <span className="block text-muted-foreground">Sin audio de la pantalla</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* Remote streams grid */}
-            <div className={`grid gap-3 h-full ${webrtc.remoteStreams.size === 0 ? 'grid-cols-1' : webrtc.remoteStreams.size <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+            <div className={`grid min-h-0 flex-1 gap-3 ${webrtc.remoteStreams.size === 0 ? 'grid-cols-1' : webrtc.remoteStreams.size <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {/* Local self-view (small) */}
               <div className={`rounded-2xl overflow-hidden bg-secondary border relative ${webrtc.activeSpeakerId === user.id ? 'border-green-400 shadow-[0_0_12px_rgba(74,222,128,0.4)]' : 'border-white/10'}`}>
-                {webrtc.localStream ? (
+                {webrtc.isCameraOn && webrtc.localStream?.getVideoTracks().some(track => track.readyState === 'live') ? (
                   <video
                     autoPlay
                     muted
@@ -1800,11 +1818,20 @@ export default function AppLayout() {
             </button>
             <button
               onClick={() => webrtc.toggleScreenShare()}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isScreenSharing ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-white/10'}`}
+              type="button"
+              disabled={webrtc.isScreenShareStarting}
+              aria-pressed={webrtc.isScreenSharing}
+              aria-label={webrtc.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${webrtc.isScreenSharing ? 'bg-primary text-primary-foreground glow-effect ring-2 ring-primary/50' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
               title={webrtc.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
             >
               {webrtc.isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
             </button>
+            {webrtc.screenShareNotice && (
+              <span role="status" className="max-w-36 text-xs text-muted-foreground">
+                {webrtc.screenShareNotice}
+              </span>
+            )}
             <button
               onClick={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
               className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"

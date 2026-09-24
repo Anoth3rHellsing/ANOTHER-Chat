@@ -22,6 +22,7 @@ type PeerSession = {
   localCandidates: Record<string, number>;
   remoteCandidates: number;
   queuedCandidates: number;
+  negotiationPending: boolean;
 };
 
 export interface VoiceMember {
@@ -83,6 +84,26 @@ export function useWebRTC(options: {
   const incomingCallerIdRef = useRef<number | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenSendersRef = useRef<Map<number, RTCRtpSender>>(new Map());
+  const cameraSendersRef = useRef<Map<number, RTCRtpSender>>(new Map());
+  const screenAudioContextRef = useRef<AudioContext | null>(null);
+  const screenAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const screenMicSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const screenDisplayAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const screenMicTrackRef = useRef<MediaStreamTrack | null>(null);
+  const screenAudioSendersRef = useRef<Map<number, { sender: RTCRtpSender; originalTrack: MediaStreamTrack | null }>>(new Map());
+  const remoteCompositeStreamsRef = useRef<Map<number, MediaStream>>(new Map());
+  const remoteAudioStreamIdsRef = useRef<Map<number, Set<string>>>(new Map());
+  const pendingRemoteVideoTracksRef = useRef<Map<number, Map<string, {
+    track: MediaStreamTrack;
+    stream: MediaStream;
+  }>>>(new Map());
+  const screenOperationRef = useRef(0);
+  const screenAudioEpochRef = useRef(0);
+  const cameraOperationRef = useRef(0);
+  const screenStartingRef = useRef(false);
+  const screenCleaningRef = useRef(false);
+  const screenAudioAvailableRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const speakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -95,6 +116,11 @@ export function useWebRTC(options: {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [remoteScreenStreams, setRemoteScreenStreams] = useState<Map<number, MediaStream>>(new Map());
+  const [screenAudioAvailable, setScreenAudioAvailable] = useState(false);
+  const [isScreenShareStarting, setIsScreenShareStarting] = useState(false);
+  const [screenShareNotice, setScreenShareNotice] = useState<string | null>(null);
   const [isInVoiceChannel, setIsInVoiceChannel] = useState(false);
   const [activeVoiceChannelId, setActiveVoiceChannelId] = useState<number | null>(null);
   const [voiceMembers, setVoiceMembers] = useState<VoiceMember[]>([]);
@@ -226,19 +252,24 @@ export function useWebRTC(options: {
 
       case 'dm:call-reject': {
         if (dmCallUserIdRef.current !== msg.data.fromUserId) break;
+        cameraOperationRef.current += 1;
         closePeerConnection(msg.data.fromUserId);
         dmCallUserIdRef.current = null;
         incomingCallerIdRef.current = null;
         setIncomingCall(null);
         setCallState('idle');
         setDmCallUserId(null);
-        if (activeVoiceChannelIdRef.current === null) stopLocalMedia();
+        if (activeVoiceChannelIdRef.current === null) {
+          void cleanupScreenShare();
+          stopLocalMedia();
+        }
         break;
       }
 
       case 'dm:call-end': {
         if (dmCallUserIdRef.current !== msg.data.fromUserId &&
             incomingCallerIdRef.current !== msg.data.fromUserId) break;
+        cameraOperationRef.current += 1;
         closePeerConnection(msg.data.fromUserId);
         dmCallUserIdRef.current = null;
         incomingCallerIdRef.current = null;
@@ -246,7 +277,10 @@ export function useWebRTC(options: {
         setCallState('idle');
         setDmCallUserId(null);
         setRemoteStreams(new Map());
-        if (activeVoiceChannelIdRef.current === null) stopLocalMedia();
+        if (activeVoiceChannelIdRef.current === null) {
+          void cleanupScreenShare();
+          stopLocalMedia();
+        }
         break;
       }
       }
@@ -270,19 +304,40 @@ export function useWebRTC(options: {
       pc, mode, chain: Promise.resolve(), candidates: [], makingOffer: false,
       ignoreOffer: false, ignoredUfrags: new Set(), restartPending: false,
       restarts: 0, localCandidates: {},
-      remoteCandidates: 0, queuedCandidates: 0,
+      remoteCandidates: 0, queuedCandidates: 0, negotiationPending: false,
     };
     sessionsRef.current.set(peerId, session);
     peerConnections.current.set(peerId, pc);
     voiceDebug(peerId, 'par creado', { mode, rol: currentUserId > peerId ? 'cortés' : 'firme' });
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
+      localStreamRef.current.getTracks().forEach(track => {
+        const outgoing = track.kind === 'audio' && screenAudioDestinationRef.current
+          ? screenAudioDestinationRef.current.stream.getAudioTracks()[0]
+          : track;
+        const stream = localStreamRef.current!;
+        const sender = pc.addTrack(outgoing, stream);
+        if (track.kind === 'video') cameraSendersRef.current.set(peerId, sender);
+        if (track.kind === 'audio' && outgoing !== track) {
+          screenAudioSendersRef.current.set(peerId, { sender, originalTrack: track });
+        }
+      });
+    }
+    if (screenStreamRef.current) {
+      const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+      if (screenTrack) {
+        const sender = pc.addTrack(screenTrack, screenStreamRef.current);
+        screenSendersRef.current.set(peerId, sender);
+      }
     }
     pc.onsignalingstatechange = () => {
       voiceDebug(peerId, 'estado señalización', { estado: pc.signalingState });
-      if (pc.signalingState === 'stable' && session.restartPending) {
-        void offerPeer(peerId, mode, true);
+      if (pc.signalingState === 'stable') {
+        if (session.restartPending) void offerPeer(peerId, mode, true);
+        else if (session.negotiationPending) {
+          session.negotiationPending = false;
+          void offerPeer(peerId, mode);
+        }
       }
     };
     pc.oniceconnectionstatechange = () =>
@@ -301,15 +356,70 @@ export function useWebRTC(options: {
       });
     };
     pc.ontrack = event => {
-      const stream = event.streams[0];
-      if (!stream || sessionsRef.current.get(peerId) !== session) return;
-      voiceDebug(peerId, 'flujo remoto recibido', { pistas: stream.getTracks().map(t => t.kind) });
-      setRemoteStreams(prev => {
-        if (prev.get(peerId) === stream) return prev;
-        const next = new Map(prev);
-        next.set(peerId, stream);
-        return next;
-      });
+      if (sessionsRef.current.get(peerId) !== session) return;
+      const sourceStream = event.streams[0];
+      const composite = remoteCompositeStreamsRef.current.get(peerId) ?? new MediaStream();
+      remoteCompositeStreamsRef.current.set(peerId, composite);
+      const audioStreamIds = remoteAudioStreamIdsRef.current.get(peerId) ?? new Set<string>();
+      remoteAudioStreamIdsRef.current.set(peerId, audioStreamIds);
+      const addToComposite = (track: MediaStreamTrack) => {
+        if (!composite.getTracks().some(existing => existing.id === track.id)) composite.addTrack(track);
+      };
+      const showRemoteScreen = (track: MediaStreamTrack, stream: MediaStream) => {
+        setRemoteScreenStreams(prev => new Map(prev).set(peerId, stream));
+        voiceDebug(peerId, 'pantalla remota recibida');
+        track.onended = () => {
+          setRemoteScreenStreams(prev => {
+            if (!prev.has(peerId)) return prev;
+            const next = new Map(prev);
+            next.delete(peerId);
+            return next;
+          });
+          voiceDebug(peerId, 'pantalla remota finalizada');
+        };
+        track.onmute = () => setRemoteScreenStreams(prev => {
+          if (!prev.has(peerId)) return prev;
+          const next = new Map(prev);
+          next.delete(peerId);
+          return next;
+        });
+        track.onunmute = () => setRemoteScreenStreams(prev => new Map(prev).set(peerId, stream));
+      };
+
+      if (event.track.kind === 'audio') {
+        if (sourceStream) audioStreamIds.add(sourceStream.id);
+        addToComposite(event.track);
+        const pending = pendingRemoteVideoTracksRef.current.get(peerId);
+        if (pending?.size) {
+          for (const [streamId, video] of pending) {
+            if (sourceStream && streamId === sourceStream.id) {
+              addToComposite(video.track);
+            } else {
+              showRemoteScreen(video.track, video.stream);
+            }
+          }
+          pendingRemoteVideoTracksRef.current.delete(peerId);
+        }
+        setRemoteStreams(prev => new Map(prev).set(peerId, composite));
+      } else if (event.track.kind === 'video') {
+        const streamId = sourceStream?.id;
+        if (!sourceStream || !streamId || audioStreamIds.has(streamId) ||
+            sourceStream.getAudioTracks().length > 0) {
+          addToComposite(event.track);
+          setRemoteStreams(prev => new Map(prev).set(peerId, composite));
+        } else if (audioStreamIds.size) {
+          showRemoteScreen(event.track, sourceStream);
+        } else {
+          const pending = pendingRemoteVideoTracksRef.current.get(peerId) ?? new Map();
+          pending.set(streamId, { track: event.track, stream: sourceStream });
+          pendingRemoteVideoTracksRef.current.set(peerId, pending);
+          event.track.onended = () => pendingRemoteVideoTracksRef.current.get(peerId)?.delete(streamId);
+        }
+      } else {
+        addToComposite(event.track);
+        setRemoteStreams(prev => new Map(prev).set(peerId, composite));
+      }
+      voiceDebug(peerId, 'pista remota recibida', { tipo: event.track.kind });
     };
     pc.onconnectionstatechange = () => {
       voiceDebug(peerId, 'estado conexión', { estado: pc.connectionState, reinicios: session.restarts });
@@ -449,13 +559,16 @@ export function useWebRTC(options: {
       const { pc } = session;
       if (session.makingOffer || pc.signalingState !== 'stable') {
         voiceDebug(peerId, 'oferta duplicada omitida', { estado: pc.signalingState });
+        session.negotiationPending = true;
         return;
       }
       session.makingOffer = true;
+      session.negotiationPending = false;
       try {
         const offer = await pc.createOffer({ iceRestart });
         if (pc.signalingState !== 'stable') {
           voiceDebug(peerId, 'oferta obsoleta omitida', { estado: pc.signalingState });
+          session.negotiationPending = true;
           return;
         }
         await pc.setLocalDescription(offer);
@@ -475,6 +588,85 @@ export function useWebRTC(options: {
     });
   }
 
+  function requestNegotiation(peerId: number, mode: PeerMode) {
+    const session = sessionsRef.current.get(peerId);
+    if (!session) return;
+    if (session.negotiationPending) return;
+    session.negotiationPending = true;
+    if (!session.makingOffer && session.pc.signalingState === 'stable') {
+      void offerPeer(peerId, mode);
+    }
+  }
+
+  function closeScreenMixer() {
+    const context = screenAudioContextRef.current;
+    screenAudioContextRef.current = null;
+    screenAudioDestinationRef.current = null;
+    screenDisplayAudioSourceRef.current?.disconnect();
+    screenDisplayAudioSourceRef.current = null;
+    screenMicSourceRef.current = null;
+    screenMicTrackRef.current = null;
+    if (context) safeCloseAudioContext(context);
+    screenAudioSendersRef.current.clear();
+    screenAudioAvailableRef.current = false;
+    if (mountedRef.current) setScreenAudioAvailable(false);
+  }
+
+  async function stopScreenAudioMixer(expectedScreen: MediaStream) {
+    if (screenCleaningRef.current || screenStreamRef.current !== expectedScreen) return;
+    screenAudioEpochRef.current += 1;
+    const entries = [...screenAudioSendersRef.current.entries()];
+    await Promise.all(entries.map(async ([peerId, entry]) => {
+      try {
+        await entry.sender.replaceTrack(entry.originalTrack);
+      } catch (error) {
+        console.error(`[voz][par ${peerId}] No se pudo restaurar el micrófono tras finalizar el audio de pantalla`, error);
+      }
+    }));
+    if (screenCleaningRef.current || screenStreamRef.current !== expectedScreen) return;
+    closeScreenMixer();
+    if (mountedRef.current) {
+      setScreenAudioAvailable(false);
+      setScreenShareNotice('El audio de pantalla terminó; se sigue compartiendo vídeo sin sonido.');
+    }
+    voiceDebug(currentUserId, 'audio de pantalla finalizado; vídeo continúa');
+  }
+
+  async function cleanupScreenShare(stopTracks = true) {
+    if (screenCleaningRef.current) return;
+    screenCleaningRef.current = true;
+    try {
+      screenOperationRef.current += 1;
+      screenAudioEpochRef.current += 1;
+      const stream = screenStreamRef.current;
+      screenStreamRef.current = null;
+      screenStartingRef.current = false;
+      if (mountedRef.current) {
+        setScreenStream(null);
+        setIsScreenSharing(false);
+        setIsScreenShareStarting(false);
+        setScreenShareNotice(null);
+      }
+      const restorations: Promise<void>[] = [];
+      for (const [peerId, sender] of screenSendersRef.current) {
+        restorations.push(sender.replaceTrack(null).catch(error => {
+          console.error(`[voz][par ${peerId}] No se pudo retirar la pista de pantalla`, error);
+        }));
+      }
+      for (const [peerId, entry] of screenAudioSendersRef.current) {
+        restorations.push(entry.sender.replaceTrack(entry.originalTrack).catch(error => {
+          console.error(`[voz][par ${peerId}] No se pudo restaurar el micrófono`, error);
+        }));
+      }
+      await Promise.all(restorations);
+      closeScreenMixer();
+      if (stopTracks) stream?.getTracks().forEach(track => track.stop());
+      if (stream) voiceDebug(currentUserId, 'compartir pantalla finalizado');
+    } finally {
+      screenCleaningRef.current = false;
+    }
+  }
+
   function closePeerConnection(peerId: number) {
     const session = sessionsRef.current.get(peerId);
     if (!session) return;
@@ -487,6 +679,18 @@ export function useWebRTC(options: {
       puestosEnCola: session.queuedCandidates, reinicios: session.restarts,
     });
     if (mountedRef.current) setRemoteStreams(prev => {
+      if (!prev.has(peerId)) return prev;
+      const next = new Map(prev);
+      next.delete(peerId);
+      return next;
+    });
+    screenSendersRef.current.delete(peerId);
+    cameraSendersRef.current.delete(peerId);
+    screenAudioSendersRef.current.delete(peerId);
+    remoteCompositeStreamsRef.current.delete(peerId);
+    remoteAudioStreamIdsRef.current.delete(peerId);
+    pendingRemoteVideoTracksRef.current.delete(peerId);
+    if (mountedRef.current) setRemoteScreenStreams(prev => {
       if (!prev.has(peerId)) return prev;
       const next = new Map(prev);
       next.delete(peerId);
@@ -518,10 +722,37 @@ export function useWebRTC(options: {
         return null;
       }
       localStreamRef.current = stream;
-      sessionsRef.current.forEach(session => {
+      if (screenAudioContextRef.current && screenAudioDestinationRef.current &&
+          stream.getAudioTracks()[0] &&
+          screenMicTrackRef.current !== stream.getAudioTracks()[0]) {
+        screenMicSourceRef.current?.disconnect();
+        screenMicSourceRef.current = screenAudioContextRef.current
+          .createMediaStreamSource(new MediaStream([stream.getAudioTracks()[0]]));
+        screenMicSourceRef.current.connect(screenAudioDestinationRef.current);
+        screenMicTrackRef.current = stream.getAudioTracks()[0];
+      }
+      sessionsRef.current.forEach((session, peerId) => {
         stream.getTracks().forEach(track => {
+          const mixedMicSender = screenAudioSendersRef.current.get(peerId);
+          if (track.kind === 'audio' && screenAudioDestinationRef.current && mixedMicSender) {
+            if (!mixedMicSender.originalTrack) {
+              screenAudioSendersRef.current.set(peerId, { ...mixedMicSender, originalTrack: track });
+            }
+            return;
+          }
           if (!session.pc.getSenders().some(sender => sender.track === track)) {
-            session.pc.addTrack(track, stream);
+            const outgoing = track.kind === 'audio' && screenAudioDestinationRef.current
+              ? screenAudioDestinationRef.current.stream.getAudioTracks()[0]
+              : track;
+            const sender = session.pc.addTrack(
+              outgoing,
+              stream,
+            );
+            if (track.kind === 'video') cameraSendersRef.current.set(peerId, sender);
+            if (track.kind === 'audio' && outgoing !== track) {
+              screenAudioSendersRef.current.set(peerId, { sender, originalTrack: track });
+            }
+            requestNegotiation(peerId, session.mode);
           }
         });
       });
@@ -574,11 +805,13 @@ export function useWebRTC(options: {
   };
 
   const stopLocalMedia = useCallback(() => {
+    cameraOperationRef.current += 1;
     mediaGenerationRef.current += 1;
     mediaPromiseRef.current = null;
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current = null;
     setLocalStream(null);
+    setIsCameraOn(false);
     if (speakingIntervalRef.current) clearInterval(speakingIntervalRef.current);
     speakingIntervalRef.current = null;
     safeCloseAudioContext(audioContextRef.current);
@@ -603,11 +836,14 @@ export function useWebRTC(options: {
   // ── Cleanup ────────────────────────────────────────────────────────────────
 
   const cleanupAll = useCallback(() => {
+    cameraOperationRef.current += 1;
     for (const peerId of [...sessionsRef.current.keys()]) closePeerConnection(peerId);
+    void cleanupScreenShare();
     stopLocalMedia();
-    screenStreamRef.current?.getTracks().forEach(t => t.stop());
-    screenStreamRef.current = null;
-    if (mountedRef.current) setRemoteStreams(new Map());
+    if (mountedRef.current) {
+      setRemoteStreams(new Map());
+      setRemoteScreenStreams(new Map());
+    }
   }, [stopLocalMedia]);
 
   function cleanupMode(mode: PeerMode) {
@@ -653,6 +889,9 @@ export function useWebRTC(options: {
     voiceSubscriptionReleaseRef.current?.();
     voiceSubscriptionReleaseRef.current = null;
     cleanupMode('voice');
+    if (dmCallUserIdRef.current === null && incomingCallerIdRef.current === null) {
+      void cleanupScreenShare();
+    }
     setIsInVoiceChannel(false);
     setActiveVoiceChannelId(null);
     setVoiceMembers([]);
@@ -746,6 +985,7 @@ export function useWebRTC(options: {
 
   const rejectCall = useCallback(() => {
     if (!incomingCall) return;
+    cameraOperationRef.current += 1;
     sendWS({ type: 'dm:call-reject', callerId: incomingCall.callerId });
     dmCallUserIdRef.current = null;
     incomingCallerIdRef.current = null;
@@ -754,6 +994,7 @@ export function useWebRTC(options: {
   }, [incomingCall, sendWS]);
 
   const endCall = useCallback(async () => {
+    cameraOperationRef.current += 1;
     const peerId = dmCallUserIdRef.current;
     dmCallUserIdRef.current = null;
     incomingCallerIdRef.current = null;
@@ -761,7 +1002,10 @@ export function useWebRTC(options: {
       sendWS({ type: 'dm:call-end', targetUserId: peerId });
       closePeerConnection(peerId);
     }
-    if (activeVoiceChannelIdRef.current === null) stopLocalMedia();
+    if (activeVoiceChannelIdRef.current === null) {
+      void cleanupScreenShare();
+      stopLocalMedia();
+    }
     setCallState('idle');
     setDmCallUserId(null);
     setRemoteStreams(new Map());
@@ -784,67 +1028,244 @@ export function useWebRTC(options: {
 
   const toggleCamera = useCallback(async () => {
     if (isCameraOn) {
-      localStreamRef.current?.getVideoTracks().forEach(t => { t.stop(); });
-      if (localStreamRef.current) {
-        const videoTracks = localStreamRef.current.getVideoTracks();
-        videoTracks.forEach(t => localStreamRef.current?.removeTrack(t));
-      }
-      peerConnections.current.forEach(pc => {
-        pc.getSenders().filter(s => s.track?.kind === 'video').forEach(s => pc.removeTrack(s));
+      cameraOperationRef.current += 1;
+      const tracks = localStreamRef.current?.getVideoTracks() ?? [];
+      await Promise.all([...cameraSendersRef.current.entries()].map(async ([peerId, sender]) => {
+        try { await sender.replaceTrack(null); }
+        catch (error) { console.error(`[voz][par ${peerId}] No se pudo pausar la cámara`, error); }
+      }));
+      tracks.forEach(track => {
+        localStreamRef.current?.removeTrack(track);
+        track.stop();
       });
       setIsCameraOn(false);
     } else {
+      const operation = ++cameraOperationRef.current;
+      const hasActiveCall = () => activeVoiceChannelIdRef.current !== null ||
+        dmCallUserIdRef.current !== null;
+      const isCurrent = () => mountedRef.current &&
+        operation === cameraOperationRef.current && hasActiveCall();
+      if (!hasActiveCall()) return;
+      let videoTrack: MediaStreamTrack | undefined;
+      const changedSenders: RTCRtpSender[] = [];
       try {
+        if (!localStreamRef.current && !await startLocalMedia(false)) return;
+        if (!isCurrent()) return;
         const videoConstraints = videoConstraintsFromQuality(settings.videoQuality ?? 'medium');
         const videoStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-        const videoTrack = videoStream.getVideoTracks()[0];
-        if (localStreamRef.current) {
-          localStreamRef.current.addTrack(videoTrack);
+        videoTrack = videoStream.getVideoTracks()[0];
+        if (!videoTrack) throw new Error('La cámara no devolvió una pista de vídeo');
+        if (!isCurrent() || !localStreamRef.current) {
+          videoTrack.stop();
+          return;
         }
-        peerConnections.current.forEach(pc => {
-          pc.addTrack(videoTrack, localStreamRef.current!);
-        });
+        localStreamRef.current.addTrack(videoTrack);
+        for (const [peerId, session] of sessionsRef.current) {
+          if (!isCurrent()) throw new DOMException('Activación de cámara cancelada', 'AbortError');
+          const existing = cameraSendersRef.current.get(peerId);
+          if (existing) {
+            await existing.replaceTrack(videoTrack);
+            changedSenders.push(existing);
+            if (!isCurrent()) throw new DOMException('Activación de cámara cancelada', 'AbortError');
+          } else {
+            const sender = session.pc.addTrack(videoTrack, localStreamRef.current);
+            cameraSendersRef.current.set(peerId, sender);
+            changedSenders.push(sender);
+            requestNegotiation(peerId, session.mode);
+          }
+        }
+        if (!isCurrent()) throw new DOMException('Activación de cámara cancelada', 'AbortError');
         setIsCameraOn(true);
       } catch (err) {
-        console.error('Failed to start camera', err);
+        await Promise.all(changedSenders.map(sender => sender.replaceTrack(null).catch(error => {
+          console.error('[voz] No se pudo revertir la activación de cámara', error);
+        })));
+        if (videoTrack) {
+          localStreamRef.current?.removeTrack(videoTrack);
+          videoTrack.stop();
+        }
+        if (operation !== cameraOperationRef.current || !mountedRef.current) return;
+        if ((err as { name?: string })?.name === 'AbortError') return;
+        console.error('[voz] No se pudo iniciar la cámara', err);
       }
     }
-  }, [isCameraOn]);
+  }, [isCameraOn, settings.videoQuality, startLocalMedia]);
 
   const toggleScreenShare = useCallback(async () => {
-    if (isScreenSharing) {
-      screenStreamRef.current?.getTracks().forEach(t => t.stop());
-      screenStreamRef.current = null;
-      setIsScreenSharing(false);
-    } else {
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: false,
-        });
-        screenStreamRef.current = screenStream;
-        const screenTrack = screenStream.getVideoTracks()[0];
-
-        peerConnections.current.forEach(pc => {
-          const videoSender = pc.getSenders().find(s => s.track?.kind === 'video');
-          if (videoSender) {
-            videoSender.replaceTrack(screenTrack);
-          } else {
-            pc.addTrack(screenTrack, screenStream);
-          }
-        });
-
-        screenTrack.onended = () => {
-          setIsScreenSharing(false);
-          screenStreamRef.current = null;
-        };
-
-        setIsScreenSharing(true);
-      } catch (err) {
-        console.error('Failed to share screen', err);
-      }
+    if (screenCleaningRef.current) return;
+    if (screenStartingRef.current) {
+      await cleanupScreenShare();
+      return;
     }
-  }, [isScreenSharing]);
+    if (screenStreamRef.current) {
+      await cleanupScreenShare();
+      return;
+    }
+
+    const operation = ++screenOperationRef.current;
+    const audioEpoch = ++screenAudioEpochRef.current;
+    const lifecycle = lifecycleRef.current;
+    screenStartingRef.current = true;
+    setIsScreenShareStarting(true);
+    setScreenAudioAvailable(false);
+    screenAudioAvailableRef.current = false;
+    setScreenShareNotice(null);
+    voiceDebug(currentUserId, 'selector de pantalla abierto');
+    let acquired: MediaStream | null = null;
+    try {
+      acquired = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      if (!mountedRef.current || operation !== screenOperationRef.current ||
+          lifecycle !== lifecycleRef.current) {
+        acquired.getTracks().forEach(track => track.stop());
+        if (operation === screenOperationRef.current) {
+          screenStartingRef.current = false;
+          setIsScreenShareStarting(false);
+        }
+        return;
+      }
+      const screenTrack = acquired.getVideoTracks()[0];
+      if (!screenTrack) throw new Error('El selector no devolvió una pista de vídeo');
+      screenStreamRef.current = acquired;
+      setScreenStream(acquired);
+      const ensureCurrent = () => {
+        if (!mountedRef.current || operation !== screenOperationRef.current ||
+            lifecycle !== lifecycleRef.current || screenStreamRef.current !== acquired) {
+          throw new DOMException('Compartir pantalla cancelado', 'AbortError');
+        }
+      };
+      screenTrack.onended = () => { void cleanupScreenShare(); };
+
+      let audioReady = false;
+      const displayAudioTracks = acquired.getAudioTracks();
+      displayAudioTracks.forEach(track => {
+        track.onended = () => { void stopScreenAudioMixer(acquired!); };
+      });
+      const ensureAudioCurrent = () => {
+        if (audioEpoch !== screenAudioEpochRef.current ||
+            displayAudioTracks.some(track => track.readyState === 'ended')) {
+          throw new Error('El audio de pantalla dejó de estar disponible');
+        }
+      };
+      if (displayAudioTracks.length) {
+        try {
+          if (typeof AudioContext === 'undefined') throw new Error('AudioContext no está disponible');
+          const context = new AudioContext();
+          screenAudioContextRef.current = context;
+          await context.resume();
+          ensureCurrent();
+          ensureAudioCurrent();
+          const destination = context.createMediaStreamDestination();
+          screenAudioDestinationRef.current = destination;
+          const microphoneTrack = localStreamRef.current?.getAudioTracks()[0];
+          if (microphoneTrack) {
+            screenMicSourceRef.current = context.createMediaStreamSource(new MediaStream([microphoneTrack]));
+            screenMicSourceRef.current.connect(destination);
+            screenMicTrackRef.current = microphoneTrack;
+          }
+          screenDisplayAudioSourceRef.current =
+            context.createMediaStreamSource(new MediaStream(displayAudioTracks));
+          screenDisplayAudioSourceRef.current.connect(destination);
+          const mixedTrack = destination.stream.getAudioTracks()[0];
+          const replaced: Array<{ sender: RTCRtpSender; originalTrack: MediaStreamTrack | null; peerId: number }> = [];
+          const added: RTCRtpSender[] = [];
+          try {
+            for (const [peerId, session] of sessionsRef.current) {
+              let sender = session.pc.getSenders().find(item =>
+                item.track?.kind === 'audio' && item.track !== mixedTrack,
+              );
+              let originalTrack: MediaStreamTrack | null;
+              if (!sender) {
+                sender = session.pc.addTrack(mixedTrack, destination.stream);
+                added.push(sender);
+                originalTrack = null;
+                requestNegotiation(peerId, session.mode);
+              } else {
+                originalTrack = sender.track;
+                await sender.replaceTrack(mixedTrack);
+                replaced.push({ sender, originalTrack, peerId });
+                ensureCurrent();
+                ensureAudioCurrent();
+              }
+              screenAudioSendersRef.current.set(peerId, { sender, originalTrack });
+            }
+            ensureAudioCurrent();
+            audioReady = true;
+          } catch (error) {
+            await Promise.all(replaced.map(item => item.sender.replaceTrack(item.originalTrack).catch(rollbackError => {
+              console.error(`[voz][par ${item.peerId}] Error al revertir el audio compartido`, rollbackError);
+            })));
+            await Promise.all(added.map(sender => sender.replaceTrack(null).catch(() => undefined)));
+            closeScreenMixer();
+            throw error;
+          }
+        } catch (error) {
+          closeScreenMixer();
+          if ((error as { name?: string })?.name === 'AbortError') throw error;
+          console.error('[voz] No se pudo mezclar el audio de pantalla', error);
+          setScreenShareNotice('La pantalla se compartirá sin sonido.');
+        }
+      } else {
+        setScreenShareNotice('El navegador no proporcionó audio de pantalla; se compartirá sin sonido.');
+      }
+
+      if (audioReady) {
+        screenAudioAvailableRef.current = true;
+        setScreenAudioAvailable(true);
+        setScreenShareNotice(null);
+      }
+
+      const changedSenders: RTCRtpSender[] = [];
+      try {
+        for (const [peerId, session] of sessionsRef.current) {
+          const sender = screenSendersRef.current.get(peerId);
+          if (sender) {
+            await sender.replaceTrack(screenTrack);
+            changedSenders.push(sender);
+            ensureCurrent();
+          } else {
+            const newSender = session.pc.addTrack(screenTrack, acquired);
+            screenSendersRef.current.set(peerId, newSender);
+            requestNegotiation(peerId, session.mode);
+          }
+        }
+      } catch (error) {
+        await Promise.all(changedSenders.map(sender => sender.replaceTrack(null).catch(() => undefined)));
+        throw error;
+      }
+
+      ensureCurrent();
+      if (screenTrack.readyState === 'ended') {
+        await cleanupScreenShare();
+        return;
+      }
+      if (audioReady && (audioEpoch !== screenAudioEpochRef.current ||
+          displayAudioTracks.some(track => track.readyState === 'ended'))) {
+        audioReady = false;
+        screenAudioAvailableRef.current = false;
+        setScreenAudioAvailable(false);
+        setScreenShareNotice('El audio de pantalla terminó; se sigue compartiendo vídeo sin sonido.');
+      }
+      setIsScreenSharing(true);
+      setIsScreenShareStarting(false);
+      screenStartingRef.current = false;
+      voiceDebug(currentUserId, 'compartir pantalla iniciado', { audio: audioReady });
+    } catch (error) {
+      const currentOperation = operation === screenOperationRef.current;
+      const ownsStream = !!acquired && screenStreamRef.current === acquired;
+      if (ownsStream) await cleanupScreenShare();
+      else if (acquired) acquired.getTracks().forEach(track => track.stop());
+      if (!currentOperation) return;
+      screenStartingRef.current = false;
+      if (mountedRef.current) setIsScreenShareStarting(false);
+      const name = (error as { name?: string })?.name;
+      if (name === 'AbortError' || name === 'NotAllowedError') {
+        voiceDebug(currentUserId, 'selector de pantalla cancelado');
+        return;
+      }
+      console.error('[voz] No se pudo compartir la pantalla', error);
+      if (mountedRef.current) setScreenShareNotice('No se pudo iniciar el compartir pantalla.');
+    }
+  }, []);
 
   return {
     // State
@@ -854,6 +1275,11 @@ export function useWebRTC(options: {
     isMuted,
     isCameraOn,
     isScreenSharing,
+    screenStream,
+    remoteScreenStreams,
+    screenAudioAvailable,
+    isScreenShareStarting,
+    screenShareNotice,
     isInVoiceChannel,
     activeVoiceChannelId,
     voiceMembers,

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { VideoOff } from 'lucide-react';
 
 function RemoteAudio({ peerId, stream }: { peerId: number; stream: MediaStream }) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -47,13 +48,54 @@ export function RemoteAudioStreams({ streams }: { streams: Map<number, MediaStre
   )}</>;
 }
 
-export function RemoteVideo({ stream }: { stream: MediaStream }) {
+export function RemoteVideo({ stream, fit = 'cover' }: { stream: MediaStream; fit?: 'cover' | 'contain' }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [hasVideo, setHasVideo] = useState(false);
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     if (video.srcObject !== stream) video.srcObject = stream;
-    return () => { video.srcObject = null; };
+    const update = () => setHasVideo(stream.getVideoTracks().some(track =>
+      track.readyState === 'live' && !track.muted
+    ));
+    let tracks: MediaStreamTrack[] = [];
+    const refreshTracks = () => {
+      tracks.forEach(track => {
+        track.removeEventListener('mute', update);
+        track.removeEventListener('unmute', update);
+        track.removeEventListener('ended', update);
+      });
+      tracks = stream.getVideoTracks();
+      tracks.forEach(track => {
+        track.addEventListener('mute', update);
+        track.addEventListener('unmute', update);
+        track.addEventListener('ended', update);
+      });
+      update();
+    };
+    stream.addEventListener('addtrack', refreshTracks);
+    stream.addEventListener('removetrack', refreshTracks);
+    refreshTracks();
+    return () => {
+      stream.removeEventListener('addtrack', refreshTracks);
+      stream.removeEventListener('removetrack', refreshTracks);
+      tracks.forEach(track => {
+        track.removeEventListener('mute', update);
+        track.removeEventListener('unmute', update);
+        track.removeEventListener('ended', update);
+      });
+      video.srcObject = null;
+    };
   }, [stream]);
-  return <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />;
+  return (
+    <div className="relative h-full w-full">
+      <video ref={videoRef} autoPlay muted playsInline
+        className={`h-full w-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} ${hasVideo ? '' : 'invisible'}`} />
+      {!hasVideo && (
+        <div className="absolute inset-0 flex items-center justify-center bg-secondary text-muted-foreground">
+          <VideoOff className="h-9 w-9" aria-label="Cámara apagada" />
+        </div>
+      )}
+    </div>
+  );
 }
