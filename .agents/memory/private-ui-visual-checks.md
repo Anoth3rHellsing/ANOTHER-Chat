@@ -3,8 +3,8 @@ name: Private UI visual checks
 description: Scope and limitations of styling previews when no authenticated session is available
 ---
 
-For visual-only work in the private chat app, an isolated browser with read-only response fixtures can render authenticated surfaces without creating or deleting database records.
+For private surfaces, a synthetic browser fixture can render and exercise the actual UI component (including click-driven dialogs and state changes) without logging into or modifying the owner's account.
 
-**Why:** The normal preview starts at login. Visual review still needs message lists, sidebars, modals and chat states; creating test accounts may conflict with a request not to alter data. Browser-only fixtures let those surfaces be inspected while preserving the database.
+**Why:** The normal preview starts at login. A screenshot of that screen cannot establish how an authenticated component behaves. Browser-only fixtures permit interaction checks without touching owner data, but they do not prove the integration or access control.
 
-**How to apply:** Clearly label fixture-backed screenshots as visual checks, not evidence that message sending, voice joining, or other server behavior works. Test functional flows only with a legitimate authenticated test session when one is available and the user permits the needed data changes.
+**How to apply:** Use synthetic fixtures to check rendering and local interactions; pair them with isolated API tests using disposable accounts to verify actual server visibility and authorization. Clearly distinguish component checks from end-to-end authenticated behavior in the report.

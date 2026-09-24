@@ -1203,6 +1203,7 @@ export const ListChannelFilesResponse = zod.object({
   "malicious": zod.number().nullable(),
   "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
   "submittedBy": zod.number().nullable(),
+  "submittedByName": zod.string().nullish().describe('Display name of the member who requested this file\'s scan; available in channel file listings'),
   "submittedAt": zod.coerce.date().nullable(),
   "error": zod.string().nullish(),
   "completedAt": zod.coerce.date().nullish()
@@ -1321,6 +1322,7 @@ export const FinishChannelFileUploadResponse = zod.object({
   "malicious": zod.number().nullable(),
   "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
   "submittedBy": zod.number().nullable(),
+  "submittedByName": zod.string().nullish().describe('Display name of the member who requested this file\'s scan; available in channel file listings'),
   "submittedAt": zod.coerce.date().nullable(),
   "error": zod.string().nullish(),
   "completedAt": zod.coerce.date().nullish()
@@ -1415,6 +1417,7 @@ export const VerifyChannelFileResponse = zod.object({
   "malicious": zod.number().nullable(),
   "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
   "submittedBy": zod.number().nullable(),
+  "submittedByName": zod.string().nullish().describe('Display name of the member who requested this file\'s scan; available in channel file listings'),
   "submittedAt": zod.coerce.date().nullable(),
   "error": zod.string().nullish(),
   "completedAt": zod.coerce.date().nullish()
@@ -1438,6 +1441,7 @@ export const GetChannelFileScanResponse = zod.object({
   "malicious": zod.number().nullable(),
   "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
   "submittedBy": zod.number().nullable(),
+  "submittedByName": zod.string().nullish().describe('Display name of the member who requested this file\'s scan; available in channel file listings'),
   "submittedAt": zod.coerce.date().nullable(),
   "error": zod.string().nullish(),
   "completedAt": zod.coerce.date().nullish()

@@ -408,7 +408,7 @@ function scanEligibility(file: Pick<typeof channelFilesTable.$inferSelect, "mime
 
 function serializeScan(file: typeof channelFilesTable.$inferSelect, scannerAvailable: boolean) {
   return {
-    status: file.scanStatus === "completed" || scannerAvailable ? file.scanStatus : "unavailable",
+    status: file.scanStatus !== "not_started" || scannerAvailable ? file.scanStatus : "unavailable",
     sha256: file.sha256,
     harmless: file.scanHarmless,
     undetected: file.scanUndetected,
@@ -424,6 +424,9 @@ function serializeScan(file: typeof channelFilesTable.$inferSelect, scannerAvail
 
 async function serializeFile(file: typeof channelFilesTable.$inferSelect, scannerAvailable = Boolean(virusTotalApiKey())) {
   const [uploader] = await db.select({ displayName: usersTable.displayName }).from(usersTable).where(eq(usersTable.id, file.uploadedBy));
+  const [requester] = file.scanSubmittedBy
+    ? await db.select({ displayName: usersTable.displayName }).from(usersTable).where(eq(usersTable.id, file.scanSubmittedBy))
+    : [];
   return {
     id: file.id,
     channelId: file.channelId,
@@ -436,7 +439,7 @@ async function serializeFile(file: typeof channelFilesTable.$inferSelect, scanne
     createdAt: file.createdAt,
     downloadPath: `/api/channels/${file.channelId}/files/${file.id}/download`,
     scanEligibility: scanEligibility(file),
-    scan: serializeScan(file, scannerAvailable),
+    scan: { ...serializeScan(file, scannerAvailable), submittedByName: requester?.displayName ?? null },
   };
 }
 
@@ -977,8 +980,8 @@ router.post("/channels/:channelId/files/:fileId/verify", requireAuth, channelFil
       scanUndetected: prior.scanUndetected,
       scanSuspicious: prior.scanSuspicious,
       scanMalicious: prior.scanMalicious,
-      scanSubmittedBy: prior.scanSubmittedBy,
-      scanSubmittedAt: prior.scanSubmittedAt,
+      scanSubmittedBy: req.session.userId!,
+      scanSubmittedAt: new Date(),
       scanCompletedAt: prior.scanCompletedAt,
       scanError: null,
     }).where(eq(channelFilesTable.id, file.id)).returning();
@@ -1014,7 +1017,7 @@ router.post("/channels/:channelId/files/:fileId/verify", requireAuth, channelFil
         scanStatus: "completed", scanSource: source,
         scanHarmless: lookupStats.harmless, scanUndetected: lookupStats.undetected,
         scanSuspicious: lookupStats.suspicious, scanMalicious: lookupStats.malicious,
-        scanSubmittedBy: null, scanSubmittedAt: null,
+        scanSubmittedBy: req.session.userId!, scanSubmittedAt: submittedAt,
         scanCompletedAt: new Date(), scanError: null,
       }).where(eq(channelFilesTable.id, file.id)).returning();
       const data = serializeScan(updated, true);
@@ -1025,8 +1028,8 @@ router.post("/channels/:channelId/files/:fileId/verify", requireAuth, channelFil
       const [updated] = await db.update(channelFilesTable).set({
         scanStatus: "error",
         scanSource: "hash",
-        scanSubmittedBy: null,
-        scanSubmittedAt: null,
+        scanSubmittedBy: req.session.userId!,
+        scanSubmittedAt: submittedAt,
         scanError: "VirusTotal has a hash report but its analysis statistics are incomplete",
       }).where(eq(channelFilesTable.id, file.id)).returning();
       broadcast(`channel:${channel.id}`, { type: "file:scanned", data: await serializeFile(updated) });

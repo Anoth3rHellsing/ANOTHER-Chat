@@ -3,12 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
   FileText, Download, Trash2, Shield, ShieldAlert,
-  AlertTriangle, UploadCloud, X, Check, FileIcon,
+  AlertTriangle, UploadCloud, X, FileIcon,
   Video, Image as ImageIcon, FileArchive, Search,
   RefreshCw, Clock, AlertCircle
 } from 'lucide-react';
 import { csrfFetch } from '@workspace/api-client-react';
-import { useRealtimeMessages } from '@/providers/realtime-transport';
+import { useRealtimeChannels, useRealtimeMessages } from '@/providers/realtime-transport';
+import { FileScanResult } from '@/components/file-scan-result';
 import { ChunkedUploader } from '@/lib/chunked-upload';
 import { useToast } from '@/hooks/use-toast';
 import { hasPerm, PERM } from '@/lib/permissions';
@@ -38,6 +39,7 @@ export function ChannelFilesPanel({ channelId, currentUser, permissions }: Chann
   const [verifying, setVerifying] = useState(false);
 
   const getFilesQueryKey = (cid: number) => ['/api/channels', cid, 'files'];
+  useRealtimeChannels([channelId]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: getFilesQueryKey(channelId),
@@ -366,80 +368,8 @@ function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVer
     return <FileText className="w-5 h-5 text-muted-foreground" />;
   };
 
-  const getScanBadge = () => {
-    const scanStatus = file.scan?.status;
-    if (scanStatus === 'queued') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-primary/10 text-primary border border-primary/20">
-          En cola
-        </span>
-      );
-    }
-    if (scanStatus === 'in_progress') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-primary/10 text-primary border border-primary/20">
-          <RefreshCw className="w-3 h-3 animate-spin" /> Analizando
-        </span>
-      );
-    }
-    if (scanStatus === 'completed') {
-      const suspectCount = (file.scan.malicious || 0) + (file.scan.suspicious || 0);
-      const harmlessCount = file.scan.harmless || 0;
-      const undetectedCount = file.scan.undetected || 0;
-      if (suspectCount + harmlessCount + undetectedCount === 0) {
-        return (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/5 text-muted-foreground border border-white/10">
-            <AlertCircle className="w-3 h-3" /> Sin resultados concluyentes
-          </span>
-        );
-      }
-      
-      const badgeClass = suspectCount > 0 
-        ? "bg-destructive/10 text-destructive border-destructive/20" 
-        : "bg-primary/10 text-primary border-primary/20";
-        
-      const Icon = suspectCount > 0 ? ShieldAlert : Check;
-      
-      const label = suspectCount > 0 
-        ? `Peligroso (${suspectCount} detecciones)` 
-        : "Sin detecciones";
-
-      return (
-        <div className="flex flex-col gap-1 items-start">
-          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border ${badgeClass}`}>
-            <Icon className="w-3 h-3" /> {label}
-          </span>
-          {(harmlessCount > 0 || undetectedCount > 0 || suspectCount > 0) && (
-            <span className="text-[9px] text-muted-foreground font-mono pl-1">
-              Motores: {harmlessCount} inofensivo, {undetectedCount} sin detectar, {file.scan.suspicious ?? 0} sospechoso, {file.scan.malicious ?? 0} malicioso
-            </span>
-          )}
-          {file.scan.source && (
-            <span className="text-[9px] text-muted-foreground font-mono pl-1">
-              {file.scan.source === 'hash' ? 'Informe por huella; no se envió este archivo' :
-                file.scan.source === 'local' ? 'Informe reutilizado de otro archivo idéntico' : 'Archivo enviado a VirusTotal'}
-              {file.scan.submittedBy ? ` por ${file.scan.submittedBy === file.uploadedBy ? file.uploaderName : `usuario #${file.scan.submittedBy}`}` : ''}
-              {file.scan.submittedAt ? ` · ${format(new Date(file.scan.submittedAt), 'dd/MM/yyyy HH:mm')}` : ''}
-            </span>
-          )}
-        </div>
-      );
-    }
-    if (scanStatus === 'error') {
-      return (
-        <div className="flex flex-col items-start gap-1">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-destructive/10 text-destructive border border-destructive/20">
-            <AlertCircle className="w-3 h-3" /> Error de análisis
-          </span>
-          <span className="text-[10px] text-destructive break-all">{file.scan.error || 'No se pudo completar el análisis'}</span>
-          {scannerAvailable && eligibility?.eligible && (
-            <button onClick={onVerify} className="text-[10px] text-primary hover:underline">
-              Volver a intentar (requiere consentimiento)
-            </button>
-          )}
-        </div>
-      );
-    }
+  const getScanAction = () => {
+    if (file.scan?.status !== 'not_started' && file.scan?.status !== 'unavailable') return null;
     
     // No action at all for ordinary bitmap, audio, video and plain-text files.
     if (!eligibility || eligibility.reason === 'out_of_scope') return null;
@@ -476,7 +406,6 @@ function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVer
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <h4 className="font-medium text-foreground truncate">{file.filename}</h4>
-            {getScanBadge()}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="font-mono">{formatBytes(file.sizeBytes)}</span>
@@ -494,10 +423,13 @@ function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVer
               {file.sha256 ? `hash:${file.sha256.substring(0,8)}...` : ''}
             </span>
           </div>
+          {file.scan && <FileScanResult fileId={file.id} filename={file.filename} scan={file.scan}
+            onRetry={scannerAvailable && eligibility?.eligible ? onVerify : undefined} />}
         </div>
       </div>
       
       <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 justify-end mt-2 sm:mt-0">
+        {getScanAction()}
         <a 
           href={downloadUrl}
           target="_blank"

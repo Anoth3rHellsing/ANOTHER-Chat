@@ -2237,6 +2237,7 @@ components:
           type: ["string", "null"]
           enum: [local, hash, upload, null]
         submittedBy: { type: ["integer", "null"] }
+        submittedByName: { type: ["string", "null"], description: Display name of the member who requested this file's scan; available in channel file listings }
         submittedAt: { type: ["string", "null"], format: date-time }
         error: { type: ["string", "null"] }
         completedAt: { type: ["string", "null"], format: date-time }

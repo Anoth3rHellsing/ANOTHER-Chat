@@ -380,6 +380,11 @@ export interface ChannelFileScan {
   source: ChannelFileScanSource;
   /** @nullable */
   submittedBy: number | null;
+  /**
+     * Display name of the member who requested this file's scan; available in channel file listings
+     * @nullable
+     */
+  submittedByName?: string | null;
   /** @nullable */
   submittedAt: string | null;
   /** @nullable */

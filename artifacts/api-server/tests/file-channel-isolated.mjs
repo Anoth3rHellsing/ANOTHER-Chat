@@ -682,10 +682,12 @@ globalThis.fetch = async (input, init = {}) => {
   const scannerUploader = account(scannerBase);
   const scannerAdmin = account(scannerBase);
   const scannerHelper = account(scannerBase);
+  const scannerOutsider = account(scannerBase);
   for (const [client, username, password] of [
     [scannerUploader, uploaderName, uploader.password],
     [scannerAdmin, adminName, admin.password],
     [scannerHelper, helperName, helper.password],
+    [scannerOutsider, outsiderName, outsider.password],
   ]) {
     client.password = password;
     expectStatus(await client.request("/api/auth/login", {
@@ -909,12 +911,50 @@ globalThis.fetch = async (input, init = {}) => {
   assert.equal(submitted.status, "queued");
   assert.equal(submitted.source, "upload");
   assert.ok(submitted.submittedAt);
+  const pendingListing = expectStatus(await scannerHelper.request(`/api/channels/${channelId}/files`),
+    200, "different channel member sees pending analysis");
+  const pendingFile = pendingListing.files.find(file => file.id === scanFile.id);
+  assert.ok(["queued", "in_progress", "completed"].includes(pendingFile?.scan?.status),
+    "a different member sees the pending or just-completed analysis");
+  assert.equal(pendingFile.scan.submittedBy, Number(sql(`SELECT id FROM users WHERE username = '${uploaderName}'`)));
+  assert.equal(pendingFile.scan.submittedByName, "Temporary File Uploader");
+  assert.ok(pendingFile.scan.submittedAt);
   const completedScan = await waitForScan(scannerUploader, channelId, scanFile.id, "completed", "mock completed analysis");
   assert.deepEqual(
     [completedScan.harmless, completedScan.undetected, completedScan.suspicious, completedScan.malicious],
     [72, 11, 1, 0],
   );
   assert.equal(completedScan.source, "upload");
+  const sharedListing = expectStatus(await scannerHelper.request(`/api/channels/${channelId}/files`),
+    200, "different member reads completed result and requester");
+  const sharedScan = sharedListing.files.find(file => file.id === scanFile.id)?.scan;
+  assert.deepEqual([sharedScan?.harmless, sharedScan?.undetected, sharedScan?.suspicious, sharedScan?.malicious],
+    [72, 11, 1, 0]);
+  assert.equal(sharedScan.submittedByName, "Temporary File Uploader");
+  assert.ok(sharedScan.completedAt);
+  expectStatus(await scannerOutsider.request(`/api/channels/${channelId}/files`), 403,
+    "non-member cannot read the scan in the channel file listing");
+  expectStatus(await scannerOutsider.request(`/api/channels/${channelId}/files/${scanFile.id}/scan`), 403,
+    "non-member cannot read scan detail");
+  console.log("PASS requester identity, pending and detected result shared with another member; outsider denied");
+
+  const cleanFile = await uploadTestFile(
+    scannerUploader, channelId, "simulated-clean.zip", syntheticZip(`clean-${randomUUID()}`),
+    "clean-result metadata fixture",
+  );
+  sql(`UPDATE channel_files SET scan_status = 'completed', scan_source = 'hash', scan_harmless = 55, ` +
+    `scan_undetected = 8, scan_suspicious = 0, scan_malicious = 0, ` +
+    `scan_submitted_by = (SELECT id FROM users WHERE username = '${helperName}'), ` +
+    `scan_submitted_at = now(), scan_completed_at = now() WHERE id = ${cleanFile.id}`);
+  const stateListing = expectStatus(await scannerAdmin.request(`/api/channels/${channelId}/files`),
+    200, "member sees simulated clean and unanalysed state");
+  const simulatedClean = stateListing.files.find(file => file.id === cleanFile.id)?.scan;
+  assert.equal(simulatedClean?.status, "completed");
+  assert.deepEqual([simulatedClean.suspicious, simulatedClean.malicious], [0, 0]);
+  assert.equal(simulatedClean.submittedByName, "Temporary File Member");
+  assert.ok(simulatedClean.submittedAt && simulatedClean.completedAt);
+  assert.equal(stateListing.files.find(file => file.id === consentFixture.id)?.scan?.status, "not_started");
+  console.log("PASS stored clean result and unanalysed result distinguished without any real malware sample");
   const successfulCalls = await mockCalls();
   assert.ok(successfulCalls.some(call => call.method === "GET" && /^\/api\/v3\/files\//.test(call.pathname)),
     "mock should answer hash lookup with 404");
