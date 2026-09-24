@@ -7,6 +7,7 @@
 - [Shared-screen media identity](screen-media-identity.md) — separate microphone and screen tracks must retain stream identity; out-of-order arrivals must not turn a camera into a screen
 - [Watch opt-in membership](watch-opt-in-membership.md) — only the initiator joins automatically; control transfers to a remaining viewer, not an idle caller
 - [Isolated call testing](isolated-call-testing.md) — separate CDP tabs share cookies unless each test user has its own browser context
+- [Call exit controls](call-exit-controls.md) — keep hang-up and expand/minimize fixed outside wrapping secondary actions; clipped exits are a functional safety issue
 - [Private UI visual checks](private-ui-visual-checks.md) — read-only browser response fixtures can inspect authenticated styling without test accounts, but cannot validate real behavior
 - [Artifact build context](artifact-build-context.md) — ad hoc shell builds lack managed artifact environment; root preview routing is not implied by the artifact directory
 - [Complete database baseline](stories-clips-raw-sql.md) — raw-SQL feature tables are now declared in Drizzle and covered by a verified zero migration

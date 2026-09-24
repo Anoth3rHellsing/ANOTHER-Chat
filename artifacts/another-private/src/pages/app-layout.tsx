@@ -27,6 +27,7 @@ import { loadSoundboardSettings, saveSoundboardSettings, type SoundboardSettings
 import { SoundboardPanel, type Clip as SoundboardClip } from '@/components/soundboard-panel';
 import { RemoteAudioStreams, RemoteVideo } from '@/components/remote-audio';
 import { CallStatusBar } from '@/components/call-status-bar';
+import { CallExpandedControls } from '@/components/call-expanded-controls';
 import { CallSourceControls } from '@/components/call-source-controls';
 import { CallScreenGallery } from '@/components/call-screen-gallery';
 import {
@@ -2209,92 +2210,28 @@ export default function AppLayout() {
           </div>
 
           {/* Control bar */}
-          <div className="h-20 border-t border-white/10 flex items-center justify-center gap-4 bg-card/80 backdrop-blur-md">
-            <button
-              type="button"
-              onClick={() => setShowCallSources(open => !open)}
-              aria-label="Controles de participantes y fuentes"
-              aria-expanded={showCallSources}
-              className={`flex h-12 items-center gap-1 rounded-full px-3 transition-colors ${showCallSources ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
-              title="Ajustar voz, cámara y pantalla por participante"
-            >
-              <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
-              <span className="text-xs">Fuentes</span>
-            </button>
-            <button
-              onClick={() => webrtc.toggleMute()}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isMuted ? 'bg-red-500 text-white' : 'bg-secondary text-foreground hover:bg-white/10'}`}
-              title={webrtc.isMuted ? 'Activar micrófono' : 'Silenciar'}
-            >
-              {webrtc.isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={() => webrtc.toggleCamera()}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isCameraOn ? 'bg-secondary text-foreground hover:bg-white/10' : 'bg-secondary text-muted-foreground hover:bg-white/10'}`}
-              title={webrtc.isCameraOn ? 'Apagar cámara' : 'Encender cámara'}
-            >
-              {webrtc.isCameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-            </button>
-            <button
-              onClick={() => webrtc.toggleScreenShare()}
-              type="button"
-              disabled={webrtc.isScreenShareStarting}
-              aria-pressed={webrtc.isScreenSharing}
-              aria-label={webrtc.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 ${webrtc.isScreenSharing ? 'bg-primary text-primary-foreground glow-effect ring-2 ring-primary/50' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
-              title={webrtc.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
-            >
-              {webrtc.isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-            </button>
-            {webrtc.screenShareNotice && (
-              <span role="status" className="max-w-36 text-xs text-muted-foreground">
-                {webrtc.screenShareNotice}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setIsSoundboardOpen(open => !open)}
-              aria-label="Abrir soundboard"
-              aria-pressed={isSoundboardOpen}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isSoundboardOpen ? 'bg-primary text-primary-foreground glow-effect' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
-              title="Soundboard"
-            >
-              <Music2 className="w-5 h-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => !open); }}
-              aria-label={watch.session && !watch.isWatching
-                ? 'Invitación a visionado conjunto; abrir para unirte'
-                : 'Abrir visionado conjunto'}
-              aria-pressed={isWatchVisible}
-              className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isWatchVisible ? 'bg-primary text-primary-foreground glow-effect' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
-              title="Ver y escuchar juntos"
-            >
-              <Clapperboard className="w-5 h-5" />
-              {watch.session && !watch.isWatching && (
-                <span className="absolute -top-4 right-1 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-bold text-primary-foreground">
-                  Invitación
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
-              className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
-              title="Colgar"
-            >
-              <PhoneOff className="w-6 h-6" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsCallMinimized(true)}
-              className="w-12 h-12 rounded-full bg-secondary text-foreground hover:bg-white/10 flex items-center justify-center transition-colors"
-              title="Minimizar llamada"
-              aria-label="Minimizar llamada"
-            >
-              <Minimize2 className="w-5 h-5" />
-            </button>
-          </div>
+          <CallExpandedControls
+            isSourcesOpen={showCallSources}
+            onToggleSources={() => setShowCallSources(open => !open)}
+            isMuted={webrtc.isMuted}
+            onToggleMute={webrtc.toggleMute}
+            isCameraOn={webrtc.isCameraOn}
+            onToggleCamera={webrtc.toggleCamera}
+            isScreenShareStarting={webrtc.isScreenShareStarting}
+            isScreenSharing={webrtc.isScreenSharing}
+            onToggleScreenShare={webrtc.toggleScreenShare}
+            screenShareNotice={webrtc.screenShareNotice}
+            isSoundboardOpen={isSoundboardOpen}
+            onToggleSoundboard={() => setIsSoundboardOpen(open => !open)}
+            isWatching={isWatchVisible}
+            hasWatchInvitation={!!watch.session && !watch.isWatching}
+            onToggleWatch={() => {
+              setIsSoundboardOpen(false);
+              setIsWatchOpen(open => !open);
+            }}
+            onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
+            onMinimize={() => setIsCallMinimized(true)}
+          />
         </div>
       )}
 

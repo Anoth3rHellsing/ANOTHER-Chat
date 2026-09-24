@@ -56,3 +56,45 @@ mtime_ms = 1790261463119
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/a1c0c06f-aa1a-4e2f-91d0-1a2b5d15e714/1a6e0770-852a-4817-8bf3-1904a366c665"
 storage_version_token = "1790261810158167"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "FnACE06hRtHKuqqcogBsv"
+uri = "file://screenshots/call-controls-watch.jpg"
+type = "image"
+title = "Visionado activo — barra de 240 px"
+description = "Captura de los componentes reales aislados: expandir y colgar anclados a la derecha."
+logical_id = "832cb4ae-f5de-4395-a3f2-2b736b620489"
+content_hash = "sha256:11060fd54a1fed04a3a436ce224d630eccd7cddde8145e5ca9cb4796cb3deaf2"
+size = 24021
+mtime_ms = 1790266696111
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/832cb4ae-f5de-4395-a3f2-2b736b620489/5ccb467d-072e-463a-b1a9-2565287f7cdb"
+storage_version_token = "1790266711540464"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Y4668AbA2jgKU27zflwBX"
+uri = "file://screenshots/call-controls-all-narrow.jpg"
+type = "image"
+title = "Todas las funciones — barra de 160 px"
+description = "Captura de estrés con voz silenciada, cámara, pantalla, visionado, soundboard, fuentes e invitación."
+logical_id = "b4799795-e55d-436d-b8e9-afd12ee1ed71"
+content_hash = "sha256:0fa19ec7adb3c5bf331f2fd8489d30c7e1cf8f68028a1e23402ccfaa0158b394"
+size = 27257
+mtime_ms = 1790266697823
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/b4799795-e55d-436d-b8e9-afd12ee1ed71/0b1ce01a-80d7-4dff-983c-deb04547aa80"
+storage_version_token = "1790266712107528"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "IXsSUrXESwPusYSgaRcvS"
+uri = "file://screenshots/call-controls-all-mobile.jpg"
+type = "image"
+title = "Todas las funciones — pantalla pequeña"
+description = "Captura de 280 px de viewport y barra lateral de 120 px; incluye controles expandidos."
+logical_id = "c9fc59db-4339-4c97-bca7-4ab500354683"
+content_hash = "sha256:2a4f0f22820d8a3b346cf8f6e754ee689531aceee05f526ef82717831cc87471"
+size = 22284
+mtime_ms = 1790266699392
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/c9fc59db-4339-4c97-bca7-4ab500354683/54f70604-3c37-4af8-bb74-c731a7a9b8dd"
+storage_version_token = "1790266712699674"
+content_type = "image/jpeg"

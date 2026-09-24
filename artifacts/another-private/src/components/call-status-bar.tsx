@@ -1,4 +1,4 @@
-import { Maximize2, Mic, MicOff, Music2, PhoneOff, Volume2, Clapperboard, SlidersHorizontal } from 'lucide-react';
+import { Maximize2, Mic, MicOff, Music2, PhoneOff, Clapperboard, SlidersHorizontal } from 'lucide-react';
 
 interface CallStatusBarProps {
   name: string;
@@ -22,76 +22,81 @@ export function CallStatusBar({
   onOpenSoundboard, onOpenWatch, isWatching, hasWatchInvitation, onOpenSources, isSourcesOpen,
 }: CallStatusBarProps) {
   return (
-    <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
-      <Volume2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-      <div className="flex-1 min-w-0" title={participants}>
-        <p className="text-xs text-green-400 font-medium truncate">{name}</p>
-        <p className="text-[10px] text-green-400 font-mono truncate">{status} · {participants}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onOpenSoundboard}
-        className="p-1 text-primary hover:bg-primary/15 rounded transition-colors"
-        title="Abrir soundboard"
-        aria-label="Abrir soundboard"
-      >
-        <Music2 className="w-3.5 h-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={onOpenSources}
-        className={`inline-flex items-center gap-1 rounded p-1 transition-colors ${isSourcesOpen ? 'bg-primary/15 text-primary' : 'text-primary hover:bg-primary/15'}`}
-        title="Controlar voz, cámara y pantalla de cada participante"
-        aria-label="Controles de participantes y fuentes"
-        aria-expanded={isSourcesOpen}
-      >
-        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="text-[10px]">Fuentes</span>
-      </button>
-      <button
-        type="button"
-        onClick={onOpenWatch}
-        className={`p-1 rounded transition-colors ${isWatching ? 'text-primary bg-primary/15' : 'text-primary hover:bg-primary/15'}`}
-        title={hasWatchInvitation ? 'Hay un visionado en curso; abre la invitación para ver los detalles y unirte' : 'Abrir visionado conjunto'}
-        aria-label={hasWatchInvitation ? 'Ver la invitación a visionado conjunto' : 'Abrir visionado conjunto'}
-        aria-pressed={isWatching}
-      >
-        <span className="relative inline-flex items-center gap-1">
-          <Clapperboard className="w-3.5 h-3.5" />
-          {hasWatchInvitation && (
-            <span className="text-[9px] font-semibold text-primary">Invitación</span>
+    <div className="w-full min-w-0 shrink-0 border-t border-border bg-card px-2 py-2" data-testid="compact-call-controls">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0" title={participants}>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-primary">{name}</p>
+            <p className="truncate font-mono text-[10px] text-muted-foreground">{status} · {participants}</p>
+          </div>
+        </div>
+        {/* Keep both emergency actions outside the wrapping row, anchored top-right. */}
+        <div className="flex shrink-0 items-center gap-1" aria-label="Acciones principales de la llamada">
+          {isMinimized && (
+            <button
+              type="button"
+              onClick={onExpand}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-primary transition-colors hover:bg-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              title="Expandir llamada"
+              aria-label="Expandir llamada"
+            >
+              <Maximize2 className="h-4 w-4" aria-hidden="true" />
+            </button>
           )}
-        </span>
-      </button>
-      <button
-        type="button"
-        onClick={onToggleMute}
-        className={`p-1 rounded transition-colors ${isMuted ? 'text-red-400 bg-red-500/20' : 'text-green-400 hover:bg-green-500/20'}`}
-        title={isMuted ? 'Activar micrófono' : 'Silenciar'}
-        aria-label={isMuted ? 'Activar micrófono' : 'Silenciar'}
-      >
-        {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-      </button>
-      {isMinimized && (
+          <button
+            type="button"
+            onClick={onHangUp}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition-colors hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            title="Colgar"
+            aria-label="Colgar"
+          >
+            <PhoneOff className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5" aria-label="Controles secundarios de la llamada">
         <button
           type="button"
-          onClick={onExpand}
-          className="p-1 text-green-400 hover:bg-green-500/20 rounded transition-colors"
-          title="Expandir llamada"
-          aria-label="Expandir llamada"
+          onClick={onToggleMute}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${isMuted ? 'bg-destructive text-destructive-foreground' : 'text-primary hover:bg-primary/15'}`}
+          title={isMuted ? 'Activar micrófono' : 'Silenciar'}
+          aria-label={isMuted ? 'Activar micrófono' : 'Silenciar'}
         >
-          <Maximize2 className="w-3.5 h-3.5" />
+          {isMuted ? <MicOff className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-4 w-4" aria-hidden="true" />}
         </button>
-      )}
-      <button
-        type="button"
-        onClick={onHangUp}
-        className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors"
-        title="Desconectar"
-        aria-label="Desconectar"
-      >
-        <PhoneOff className="w-3.5 h-3.5" />
-      </button>
+        <button
+          type="button"
+          onClick={onOpenSoundboard}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-primary transition-colors hover:bg-primary/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          title="Abrir soundboard"
+          aria-label="Abrir soundboard"
+        >
+          <Music2 className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onOpenSources}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${isSourcesOpen ? 'bg-primary/15 text-primary' : 'text-primary hover:bg-primary/15'}`}
+          title="Controlar voz, cámara y pantalla de cada participante"
+          aria-label="Controles de participantes y fuentes"
+          aria-expanded={isSourcesOpen}
+        >
+          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onOpenWatch}
+          className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary ${isWatching ? 'bg-primary/15 text-primary' : 'text-primary hover:bg-primary/15'}`}
+          title={hasWatchInvitation ? 'Hay un visionado en curso; abre la invitación para ver los detalles y unirte' : 'Abrir visionado conjunto'}
+          aria-label={hasWatchInvitation ? 'Ver la invitación a visionado conjunto' : 'Abrir visionado conjunto'}
+          aria-pressed={isWatching}
+        >
+          <Clapperboard className="h-4 w-4" aria-hidden="true" />
+          {hasWatchInvitation && (
+            <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+          )}
+        </button>
+      </div>
     </div>
   );
 }
