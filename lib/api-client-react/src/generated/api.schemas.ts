@@ -318,6 +318,29 @@ export interface ChannelFileUploadStatus {
   completedFileId?: number | null;
 }
 
+/**
+ * @nullable
+ */
+export type ChannelFileScanEligibilityReason = typeof ChannelFileScanEligibilityReason[keyof typeof ChannelFileScanEligibilityReason] | null;
+
+
+export const ChannelFileScanEligibilityReason = {
+  out_of_scope: 'out_of_scope',
+  too_large: 'too_large',
+} as const;
+
+export interface ChannelFileScanEligibility {
+  /** Whether this file may be submitted to VirusTotal */
+  eligible: boolean;
+  /** @nullable */
+  reason: ChannelFileScanEligibilityReason;
+  /** Recognized filename extension does not match the server-detected content type */
+  extensionMismatch: boolean;
+  detectedMimeType: string;
+  /** VirusTotal maximum file size (650 MiB) */
+  maxBytes: number;
+}
+
 export type ChannelFileScanStatus = typeof ChannelFileScanStatus[keyof typeof ChannelFileScanStatus];
 
 
@@ -377,6 +400,7 @@ export interface ChannelFile {
   createdAt: string;
   /** Authenticated API path */
   downloadPath: string;
+  scanEligibility: ChannelFileScanEligibility;
   scan?: ChannelFileScan;
 }
 

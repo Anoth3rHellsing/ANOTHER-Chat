@@ -20,3 +20,4 @@
 - [RNNoise worklet readiness](rnnoise-worklet-readiness.md) — the bundled processor has no ready message while WASM initializes asynchronously
 - [Temporary PostgreSQL clusters](temporary-postgres-clusters.md) — isolated tests need a writable Unix-socket directory even when clients use TCP
 - [Multipart chunk boundary tests](multipart-chunk-boundary-tests.md) — exercise exact chunk-size boundaries over HTTP; seeded fixtures miss parser-level rejection
+- [Isolated provider test accounting](isolated-provider-test-accounting.md) — compare outbound calls per scenario and separate user/provider quota windows in expanded integration suites

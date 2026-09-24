@@ -1187,6 +1187,13 @@ export const ListChannelFilesResponse = zod.object({
   "uploaderName": zod.string().optional(),
   "createdAt": zod.coerce.date(),
   "downloadPath": zod.string().describe('Authenticated API path'),
+  "scanEligibility": zod.object({
+  "eligible": zod.boolean().describe('Whether this file may be submitted to VirusTotal'),
+  "reason": zod.union([zod.literal('out_of_scope'),zod.literal('too_large'),zod.literal(null)]).nullable(),
+  "extensionMismatch": zod.boolean().describe('Recognized filename extension does not match the server-detected content type'),
+  "detectedMimeType": zod.string(),
+  "maxBytes": zod.number().describe('VirusTotal maximum file size (650 MiB)')
+}),
   "scan": zod.object({
   "status": zod.enum(['unavailable', 'not_started', 'queued', 'in_progress', 'completed', 'error']),
   "sha256": zod.string(),
@@ -1298,6 +1305,13 @@ export const FinishChannelFileUploadResponse = zod.object({
   "uploaderName": zod.string().optional(),
   "createdAt": zod.coerce.date(),
   "downloadPath": zod.string().describe('Authenticated API path'),
+  "scanEligibility": zod.object({
+  "eligible": zod.boolean().describe('Whether this file may be submitted to VirusTotal'),
+  "reason": zod.union([zod.literal('out_of_scope'),zod.literal('too_large'),zod.literal(null)]).nullable(),
+  "extensionMismatch": zod.boolean().describe('Recognized filename extension does not match the server-detected content type'),
+  "detectedMimeType": zod.string(),
+  "maxBytes": zod.number().describe('VirusTotal maximum file size (650 MiB)')
+}),
   "scan": zod.object({
   "status": zod.enum(['unavailable', 'not_started', 'queued', 'in_progress', 'completed', 'error']),
   "sha256": zod.string(),
@@ -1380,7 +1394,7 @@ export const DeleteChannelFileResponse = zod.void()
 
 
 /**
- * Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited.
+ * Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited. Files outside scan scope return 422; files larger than 650 MiB return 413 before hash-cache lookups or provider requests.
  * @summary Explicitly submit a file to VirusTotal after user consent
  */
 export const VerifyChannelFileParams = zod.object({

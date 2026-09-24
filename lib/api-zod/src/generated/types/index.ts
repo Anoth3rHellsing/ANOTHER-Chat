@@ -18,6 +18,8 @@ export * from './channelEventCreator';
 export * from './channelFile';
 export * from './channelFileList';
 export * from './channelFileScan';
+export * from './channelFileScanEligibility';
+export * from './channelFileScanEligibilityReason';
 export * from './channelFileScanSource';
 export * from './channelFileScanStatus';
 export * from './channelFileUploadInput';

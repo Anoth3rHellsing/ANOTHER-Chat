@@ -1122,7 +1122,7 @@ paths:
       operationId: verifyChannelFile
       tags: [channelFiles]
       summary: Explicitly submit a file to VirusTotal after user consent
-      description: Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited.
+      description: Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited. Files outside scan scope return 422; files larger than 650 MiB return 413 before hash-cache lookups or provider requests.
       parameters:
         - name: channelId
           in: path
@@ -1152,6 +1152,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ChannelFileScan"
         "400": { description: Explicit consent is required }
+        "413": { description: File exceeds VirusTotal's 650 MiB maximum scan size }
+        "422": { description: File is out of scope for VirusTotal scanning }
         "429": { description: VirusTotal request quota exhausted }
         "503": { description: VirusTotal is not configured }
 
@@ -2172,7 +2174,7 @@ components:
 
     ChannelFile:
       type: object
-      required: [id, channelId, filename, mimeType, sizeBytes, sha256, uploadedBy, createdAt, downloadPath]
+      required: [id, channelId, filename, mimeType, sizeBytes, sha256, uploadedBy, createdAt, downloadPath, scanEligibility]
       properties:
         id: { type: integer }
         channelId: { type: integer }
@@ -2184,8 +2186,22 @@ components:
         uploaderName: { type: string }
         createdAt: { type: string, format: date-time }
         downloadPath: { type: string, description: Authenticated API path, not a public static URL }
+        scanEligibility:
+          $ref: "#/components/schemas/ChannelFileScanEligibility"
         scan:
           $ref: "#/components/schemas/ChannelFileScan"
+
+    ChannelFileScanEligibility:
+      type: object
+      required: [eligible, reason, extensionMismatch, detectedMimeType, maxBytes]
+      properties:
+        eligible: { type: boolean, description: Whether this file may be submitted to VirusTotal }
+        reason:
+          type: ["string", "null"]
+          enum: [out_of_scope, too_large, null]
+        extensionMismatch: { type: boolean, description: Recognized filename extension does not match the server-detected content type }
+        detectedMimeType: { type: string }
+        maxBytes: { type: integer, description: VirusTotal maximum file size (650 MiB) }
 
     ChannelFileList:
       type: object

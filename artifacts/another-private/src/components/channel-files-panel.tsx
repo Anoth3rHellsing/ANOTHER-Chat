@@ -19,6 +19,14 @@ interface ChannelFilesPanelProps {
   permissions: number;
 }
 
+type ScanEligibility = {
+  eligible: boolean;
+  reason: 'out_of_scope' | 'too_large' | null;
+  extensionMismatch: boolean;
+  detectedMimeType: string;
+  maxBytes: number;
+};
+
 export function ChannelFilesPanel({ channelId, currentUser, permissions }: ChannelFilesPanelProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -164,12 +172,19 @@ export function ChannelFilesPanel({ channelId, currentUser, permissions }: Chann
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ consent: true })
       });
-      if (!res.ok) throw new Error('Error al verificar');
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? 'Error al verificar');
+      }
+      const scan = await res.json() as { status: string };
       queryClient.invalidateQueries({ queryKey: getFilesQueryKey(channelId) });
       setVerifyTarget(null);
-      toast({ title: 'Escaneo iniciado', description: 'El archivo está siendo analizado.' });
+      toast({
+        title: scan.status === 'completed' ? 'Informe disponible' : 'Escaneo iniciado',
+        description: scan.status === 'completed' ? 'El informe ya está disponible para este archivo.' : 'El archivo está siendo analizado.',
+      });
     } catch (err) {
-      toast({ title: 'Error', description: 'No se pudo iniciar el escaneo', variant: 'destructive' });
+      toast({ title: 'Error', description: err instanceof Error ? err.message : 'No se pudo iniciar el escaneo', variant: 'destructive' });
     } finally {
       setVerifying(false);
       setVerifyConsent(false);
@@ -190,7 +205,7 @@ export function ChannelFilesPanel({ channelId, currentUser, permissions }: Chann
       </div>
       {data && !data.scannerAvailable && (
         <p className="px-4 py-2 text-xs text-muted-foreground border-b border-border">
-          Verificación con VirusTotal no disponible: falta configurar VIRUSTOTAL_API_KEY. Los informes anteriores siguen visibles.
+          Verificación con VirusTotal no disponible: falta configurar VirusTotal_Key o VIRUSTOTAL_API_KEY. Los informes anteriores siguen visibles.
         </p>
       )}
 
@@ -343,6 +358,7 @@ export function ChannelFilesPanel({ channelId, currentUser, permissions }: Chann
 }
 
 function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVerify }: { file: any, channelId: number, canDelete: boolean, onDelete: () => void, scannerAvailable: boolean, onVerify: () => void }) {
+  const eligibility = file.scanEligibility as ScanEligibility | undefined;
   const getIcon = () => {
     if (file.mimeType.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-primary" />;
     if (file.mimeType.startsWith('video/')) return <Video className="w-5 h-5 text-primary" />;
@@ -370,6 +386,13 @@ function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVer
       const suspectCount = (file.scan.malicious || 0) + (file.scan.suspicious || 0);
       const harmlessCount = file.scan.harmless || 0;
       const undetectedCount = file.scan.undetected || 0;
+      if (suspectCount + harmlessCount + undetectedCount === 0) {
+        return (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-white/5 text-muted-foreground border border-white/10">
+            <AlertCircle className="w-3 h-3" /> Sin resultados concluyentes
+          </span>
+        );
+      }
       
       const badgeClass = suspectCount > 0 
         ? "bg-destructive/10 text-destructive border-destructive/20" 
@@ -409,12 +432,24 @@ function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVer
             <AlertCircle className="w-3 h-3" /> Error de análisis
           </span>
           <span className="text-[10px] text-destructive break-all">{file.scan.error || 'No se pudo completar el análisis'}</span>
-          {scannerAvailable && <button onClick={onVerify} className="text-[10px] text-primary hover:underline">Volver a intentar (requiere consentimiento)</button>}
+          {scannerAvailable && eligibility?.eligible && (
+            <button onClick={onVerify} className="text-[10px] text-primary hover:underline">
+              Volver a intentar (requiere consentimiento)
+            </button>
+          )}
         </div>
       );
     }
     
-    // Not scanned yet
+    // No action at all for ordinary bitmap, audio, video and plain-text files.
+    if (!eligibility || eligibility.reason === 'out_of_scope') return null;
+    if (eligibility.reason === 'too_large') {
+      return (
+        <span className="text-[10px] text-muted-foreground">
+          Demasiado grande para VirusTotal (máximo {formatBytes(eligibility.maxBytes)})
+        </span>
+      );
+    }
     return (
       <button 
         onClick={onVerify}
@@ -447,6 +482,14 @@ function FileRow({ file, channelId, canDelete, onDelete, scannerAvailable, onVer
             <span className="font-mono">{formatBytes(file.sizeBytes)}</span>
             <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {format(new Date(file.createdAt), 'dd/MM/yyyy HH:mm')}</span>
             <span>Por: <strong className="text-foreground/80 font-normal">{file.uploaderName ?? `Usuario ${file.uploadedBy}`}</strong></span>
+            {eligibility?.extensionMismatch && (
+              <span className="text-destructive text-[10px]" title={`El contenido detectado es ${eligibility.detectedMimeType}; no coincide con la extensión del nombre`}>
+                Extensión no coincide con tipo real ({eligibility.detectedMimeType})
+              </span>
+            )}
+            {eligibility?.reason === 'too_large' && file.scan?.status === 'completed' && (
+              <span className="text-[10px]">Supera el límite actual de VirusTotal ({formatBytes(eligibility.maxBytes)})</span>
+            )}
             <span className="font-mono text-[10px] text-muted-foreground/50 truncate max-w-[120px]" title={`SHA-256: ${file.sha256}`}>
               {file.sha256 ? `hash:${file.sha256.substring(0,8)}...` : ''}
             </span>

@@ -3630,7 +3630,7 @@ export const getVerifyChannelFileUrl = (channelId: number,
 }
 
 /**
- * Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited.
+ * Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited. Files outside scan scope return 422; files larger than 650 MiB return 413 before hash-cache lookups or provider requests.
  * @summary Explicitly submit a file to VirusTotal after user consent
  */
 export const verifyChannelFile = async (channelId: number,

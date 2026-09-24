@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ChannelFileScan } from './channelFileScan';
+import type { ChannelFileScanEligibility } from './channelFileScanEligibility';
 
 export interface ChannelFile {
   id: number;
@@ -19,5 +20,6 @@ export interface ChannelFile {
   createdAt: Date;
   /** Authenticated API path */
   downloadPath: string;
+  scanEligibility: ChannelFileScanEligibility;
   scan?: ChannelFileScan;
 }
