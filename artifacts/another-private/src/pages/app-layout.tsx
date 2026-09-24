@@ -234,7 +234,12 @@ export default function AppLayout() {
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [audioVideoSettings, setAudioVideoSettings] = useState<AudioVideoSettings>(loadSettings);
+  const [audioVideoProfile, setAudioVideoProfile] = useState<{ userId: number; settings: AudioVideoSettings } | null>(null);
+  const audioVideoSettings = audioVideoProfile && audioVideoProfile.userId === user?.id
+    ? audioVideoProfile.settings : loadSettings(user?.id ?? 0);
+  useEffect(() => {
+    if (user?.id) setAudioVideoProfile({ userId: user.id, settings: loadSettings(user.id) });
+  }, [user?.id]);
   const [soundboardProfile, setSoundboardProfile] = useState<{ userId: number; settings: SoundboardSettings } | null>(null);
   const soundboardSettings = soundboardProfile && soundboardProfile.userId === user?.id
     ? soundboardProfile.settings : loadSoundboardSettings(user?.id ?? 0);
@@ -2160,7 +2165,10 @@ export default function AppLayout() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={audioVideoSettings}
-        onSettingsChange={setAudioVideoSettings}
+        onSettingsChange={next => {
+          if (user?.id) setAudioVideoProfile({ userId: user.id, settings: next });
+        }}
+        currentUserId={user?.id}
         notificationSettings={notificationSettings}
         onNotificationSettingsChange={updateNotificationSettings}
         soundboardSettings={soundboardSettings}

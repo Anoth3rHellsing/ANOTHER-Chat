@@ -16,3 +16,5 @@
 - [Realtime session mutations](realtime-session-mutations.md) — after asynchronous lookups, recheck membership and read the latest session before mutating shared in-memory state
 - [SoundCloud audio activation](soundcloud-audio-activation.md) — positive widget volume and brief progress do not prove audible autoplay; offer a local user gesture
 - [Embedded player DOM ownership](embedded-player-dom-ownership.md) — React must own only an empty host when a third-party player replaces its mount; clean up before host removal
+- [Browser audio test limits](browser-audio-test-limits.md) — Chromium fake mic may ignore native noise/gain options; WebRTC meters need a playing audio sink
+- [RNNoise worklet readiness](rnnoise-worklet-readiness.md) — the bundled processor has no ready message while WASM initializes asynchronously

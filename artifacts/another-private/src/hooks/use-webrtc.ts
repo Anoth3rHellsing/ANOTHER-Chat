@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { callMediaConstraints, safeCloseAudioContext, videoConstraintsFromQuality, type VideoQuality } from '@/lib/settings-utils';
+import { callMediaConstraints, safeCloseAudioContext, videoConstraintsFromQuality, type AudioVideoSettings as StoredAudioVideoSettings } from '@/lib/settings-utils';
+import { createMicrophoneProcessor, updateNativeMicrophoneTrack, type MicrophoneProcessor } from '@/lib/microphone-processor';
 import { playVoiceJoinSound, playVoiceLeaveSound } from '@/lib/voice-sounds';
 import { csrfFetch } from '@workspace/api-client-react';
 import {
@@ -33,12 +34,7 @@ export interface VoiceMember {
   status: string;
 }
 
-export interface AudioVideoSettings {
-  audioInputId?: string;
-  audioOutputId?: string;
-  volume?: number;
-  videoQuality?: VideoQuality;
-}
+export type AudioVideoSettings = Partial<StoredAudioVideoSettings>;
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connected';
 
@@ -69,6 +65,8 @@ export function useWebRTC(options: {
   settings: AudioVideoSettings;
 }) {
   const { currentUserId, settings } = options;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const { send, retainChannel } = useRealtimeTransport();
 
   const peerConnections = useRef<Map<number, RTCPeerConnection>>(new Map());
@@ -89,6 +87,7 @@ export function useWebRTC(options: {
   const screenAudioContextRef = useRef<AudioContext | null>(null);
   const screenAudioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const screenMicSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const screenMicGainRef = useRef<GainNode | null>(null);
   const screenDisplayAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const screenMicTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenAudioSendersRef = useRef<Map<number, { sender: RTCRtpSender; originalTrack: MediaStreamTrack | null }>>(new Map());
@@ -105,6 +104,12 @@ export function useWebRTC(options: {
   const screenCleaningRef = useRef(false);
   const screenAudioAvailableRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<MicrophoneProcessor | null>(null);
+  const processorOperationRef = useRef(0);
+  const processorTaskRef = useRef<Promise<void>>(Promise.resolve());
+  const activeMicTrackRef = useRef<MediaStreamTrack | null>(null);
+  const nativeSettingsEpochRef = useRef(0);
+  const nativeRecaptureAttemptRef = useRef('');
   const analyserRef = useRef<AnalyserNode | null>(null);
   const speakingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const activeVoiceChannelIdRef = useRef<number | null>(null);
@@ -291,6 +296,62 @@ export function useWebRTC(options: {
 
   useRealtimeMessages(SIGNALING_MESSAGE_TYPES, handleSignalingMessage);
 
+  function outgoingMicTrack(): MediaStreamTrack | null {
+    return activeMicTrackRef.current ?? localStreamRef.current?.getAudioTracks()[0] ?? null;
+  }
+
+  // Only this source feeds the mic input of the screen mixer. The display
+  // source remains directly connected to the destination and never sees RNNoise.
+  function connectScreenMicrophone(track: MediaStreamTrack) {
+    const context = screenAudioContextRef.current;
+    const destination = screenAudioDestinationRef.current;
+    if (!context || !destination || screenMicTrackRef.current === track) return;
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    const gain = context.createGain();
+    const now = context.currentTime;
+    gain.gain.setValueAtTime(screenMicGainRef.current ? 0 : 1, now);
+    source.connect(gain).connect(destination);
+    const oldSource = screenMicSourceRef.current;
+    const oldGain = screenMicGainRef.current;
+    if (oldGain) {
+      oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+      oldGain.gain.linearRampToValueAtTime(0, now + 0.012);
+      gain.gain.linearRampToValueAtTime(1, now + 0.012);
+      window.setTimeout(() => { oldSource?.disconnect(); oldGain.disconnect(); }, 35);
+    }
+    screenMicSourceRef.current = source;
+    screenMicGainRef.current = gain;
+    screenMicTrackRef.current = track;
+  }
+
+  async function routeMicrophone(track: MediaStreamTrack): Promise<boolean> {
+    activeMicTrackRef.current = track;
+    if (screenAudioDestinationRef.current) {
+      connectScreenMicrophone(track);
+      return true;
+    }
+    let succeeded = true;
+    await Promise.all([...sessionsRef.current.values()].map(async session => {
+      const sender = session.pc.getSenders().find(item => item.track?.kind === 'audio');
+      if (sender && sender.track !== track) {
+        try { await sender.replaceTrack(track); }
+        catch (error) {
+          succeeded = false;
+          console.warn('[voz] No se pudo cambiar el procesado del micrófono', error);
+        }
+      }
+    }));
+    return succeeded;
+  }
+
+  function retireMicrophonePath(processor: MicrophoneProcessor | null, oldRaw?: MediaStreamTrack) {
+    const stop = () => { processor?.stop(); oldRaw?.stop(); };
+    // The screen mixer crossfades the microphone branch for 12 ms; do not stop
+    // the former source until its gain has reached zero and disconnected.
+    if (screenAudioDestinationRef.current) window.setTimeout(stop, 45);
+    else stop();
+  }
+
   // ── Peer connection management ──────────────────────────────────────────────
 
   function getSession(peerId: number, mode: PeerMode): PeerSession {
@@ -312,8 +373,8 @@ export function useWebRTC(options: {
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        const outgoing = track.kind === 'audio' && screenAudioDestinationRef.current
-          ? screenAudioDestinationRef.current.stream.getAudioTracks()[0]
+        const outgoing = track.kind === 'audio'
+          ? (screenAudioDestinationRef.current?.stream.getAudioTracks()[0] ?? outgoingMicTrack() ?? track)
           : track;
         const stream = localStreamRef.current!;
         const sender = pc.addTrack(outgoing, stream);
@@ -604,7 +665,10 @@ export function useWebRTC(options: {
     screenAudioDestinationRef.current = null;
     screenDisplayAudioSourceRef.current?.disconnect();
     screenDisplayAudioSourceRef.current = null;
+    screenMicSourceRef.current?.disconnect();
     screenMicSourceRef.current = null;
+    screenMicGainRef.current?.disconnect();
+    screenMicGainRef.current = null;
     screenMicTrackRef.current = null;
     if (context) safeCloseAudioContext(context);
     screenAudioSendersRef.current.clear();
@@ -618,7 +682,7 @@ export function useWebRTC(options: {
     const entries = [...screenAudioSendersRef.current.entries()];
     await Promise.all(entries.map(async ([peerId, entry]) => {
       try {
-        await entry.sender.replaceTrack(entry.originalTrack);
+        await entry.sender.replaceTrack(outgoingMicTrack() ?? entry.originalTrack);
       } catch (error) {
         console.error(`[voz][par ${peerId}] No se pudo restaurar el micrófono tras finalizar el audio de pantalla`, error);
       }
@@ -654,7 +718,7 @@ export function useWebRTC(options: {
         }));
       }
       for (const [peerId, entry] of screenAudioSendersRef.current) {
-        restorations.push(entry.sender.replaceTrack(entry.originalTrack).catch(error => {
+        restorations.push(entry.sender.replaceTrack(outgoingMicTrack() ?? entry.originalTrack).catch(error => {
           console.error(`[voz][par ${peerId}] No se pudo restaurar el micrófono`, error);
         }));
       }
@@ -710,7 +774,9 @@ export function useWebRTC(options: {
     const generation = mediaGenerationRef.current;
     const pending = (async () => {
       try {
-      const constraints = callMediaConstraints(settings.audioInputId, settings.videoQuality ?? 'medium', withVideo);
+      const latestSettings = settingsRef.current;
+      const constraints = callMediaConstraints(latestSettings.audioInputId,
+        latestSettings.videoQuality ?? 'medium', withVideo, latestSettings);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (!mountedRef.current || generation !== mediaGenerationRef.current) {
         stream.getTracks().forEach(track => track.stop());
@@ -720,11 +786,7 @@ export function useWebRTC(options: {
       if (screenAudioContextRef.current && screenAudioDestinationRef.current &&
           stream.getAudioTracks()[0] &&
           screenMicTrackRef.current !== stream.getAudioTracks()[0]) {
-        screenMicSourceRef.current?.disconnect();
-        screenMicSourceRef.current = screenAudioContextRef.current
-          .createMediaStreamSource(new MediaStream([stream.getAudioTracks()[0]]));
-        screenMicSourceRef.current.connect(screenAudioDestinationRef.current);
-        screenMicTrackRef.current = stream.getAudioTracks()[0];
+        connectScreenMicrophone(outgoingMicTrack() ?? stream.getAudioTracks()[0]);
       }
       sessionsRef.current.forEach((session, peerId) => {
         stream.getTracks().forEach(track => {
@@ -736,8 +798,8 @@ export function useWebRTC(options: {
             return;
           }
           if (!session.pc.getSenders().some(sender => sender.track === track)) {
-            const outgoing = track.kind === 'audio' && screenAudioDestinationRef.current
-              ? screenAudioDestinationRef.current.stream.getAudioTracks()[0]
+            const outgoing = track.kind === 'audio'
+              ? (screenAudioDestinationRef.current?.stream.getAudioTracks()[0] ?? outgoingMicTrack() ?? track)
               : track;
             const sender = session.pc.addTrack(
               outgoing,
@@ -763,7 +825,111 @@ export function useWebRTC(options: {
     mediaPromiseRef.current = pending;
     try { return await pending; }
     finally { if (mediaPromiseRef.current === pending) mediaPromiseRef.current = null; }
-  }, [settings.audioInputId, settings.videoQuality]);
+  }, [settings.audioInputId, settings.videoQuality, settings.echoCancellation,
+    settings.noiseSuppression, settings.autoGainControl]);
+
+  useEffect(() => {
+    const rawTrack = localStream?.getAudioTracks()[0];
+    if (!rawTrack) return;
+    const operation = ++processorOperationRef.current;
+    const enabled = settings.advancedNoiseSuppression !== false;
+    processorTaskRef.current = processorTaskRef.current.catch(() => {}).then(async () => {
+      if (localStreamRef.current?.getAudioTracks()[0] !== rawTrack || operation !== processorOperationRef.current) return;
+      if (!enabled) {
+        const routed = await routeMicrophone(rawTrack);
+        if (operation !== processorOperationRef.current) return;
+        if (routed) {
+          retireMicrophonePath(processorRef.current);
+          processorRef.current = null;
+        }
+        return;
+      }
+      if (!processorRef.current) {
+        try {
+          let created: MicrophoneProcessor | null = null;
+          let failureReason: string | null = null;
+          const processor = await createMicrophoneProcessor(rawTrack, reason => {
+            failureReason = reason;
+            console.warn(`[voz] RNNoise no disponible: ${reason}. Se conserva el micrófono nativo.`);
+            if (!created || processorRef.current !== created) return;
+            processorOperationRef.current += 1;
+            void routeMicrophone(rawTrack).finally(() => {
+              if (processorRef.current === created) {
+                processorRef.current = null;
+                retireMicrophonePath(created);
+              }
+            });
+          });
+          created = processor;
+          if (failureReason) {
+            processor.stop();
+            return;
+          }
+          if (operation !== processorOperationRef.current ||
+              localStreamRef.current?.getAudioTracks()[0] !== rawTrack) {
+            processor.stop();
+            return;
+          }
+          processorRef.current = processor;
+        } catch (error) {
+          if (operation === processorOperationRef.current) {
+            console.warn('[voz] RNNoise no disponible; se conserva el procesado nativo', error);
+          }
+          return;
+        }
+      }
+      if (processorRef.current) await routeMicrophone(processorRef.current.track);
+    }).catch(error => console.warn('[voz] No se pudo reconfigurar RNNoise; el micrófono sigue activo', error));
+  }, [localStream, settings.advancedNoiseSuppression]);
+
+  useEffect(() => {
+    const track = localStream?.getAudioTracks()[0];
+    if (!track) return;
+    const requested = {
+      noiseSuppression: settings.noiseSuppression ?? true,
+      echoCancellation: settings.echoCancellation ?? true,
+      autoGainControl: settings.autoGainControl ?? true,
+    };
+    const epoch = ++nativeSettingsEpochRef.current;
+    const attemptKey = `${mediaGenerationRef.current}:${settings.audioInputId ?? ''}:${JSON.stringify(requested)}`;
+    if (nativeRecaptureAttemptRef.current === attemptKey) return;
+    void (async () => {
+      const next = await updateNativeMicrophoneTrack(track, settings.audioInputId, requested);
+      if (next === track) return;
+      nativeRecaptureAttemptRef.current = attemptKey;
+      await processorTaskRef.current.catch(() => {});
+      const stream = localStreamRef.current;
+      if (epoch !== nativeSettingsEpochRef.current || stream?.getAudioTracks()[0] !== track) {
+        next.stop();
+        return;
+      }
+      next.enabled = track.enabled;
+      stream.addTrack(next);
+      // Keep the old processor and raw capture alive until the new track is
+      // actually routed. Neither an existing mixer sender nor an SDP changes.
+      let routed = false;
+      try { routed = await routeMicrophone(next); }
+      catch (error) { console.warn('[voz] No se pudo cambiar la fuente del micrófono', error); }
+      if (!routed) {
+        const restored = await routeMicrophone(processorRef.current?.track ?? track);
+        if (restored) {
+          stream.removeTrack(next);
+          retireMicrophonePath(null, next);
+        } else {
+          // Keep both live if a sender rejected replacement in either
+          // direction; stopping either track could mute some participants.
+          console.error('[voz] Algunos participantes conservan una pista distinta; ambas siguen activas');
+        }
+        return;
+      }
+      processorOperationRef.current += 1;
+      retireMicrophonePath(processorRef.current, track);
+      processorRef.current = null;
+      stream.removeTrack(track);
+      startSpeakingDetection(stream);
+      setLocalStream(new MediaStream(stream.getTracks()));
+    })().catch(error => console.warn('[voz] No se pudieron actualizar los ajustes nativos; sigue el micrófono anterior', error));
+  }, [localStream, settings.audioInputId, settings.noiseSuppression, settings.echoCancellation, settings.autoGainControl]);
 
   const startSpeakingDetection = (stream: MediaStream) => {
     safeCloseAudioContext(audioContextRef.current);
@@ -800,6 +966,12 @@ export function useWebRTC(options: {
   };
 
   const stopLocalMedia = useCallback(() => {
+    nativeSettingsEpochRef.current += 1;
+    nativeRecaptureAttemptRef.current = '';
+    processorOperationRef.current += 1;
+    processorRef.current?.stop();
+    processorRef.current = null;
+    activeMicTrackRef.current = null;
     cameraOperationRef.current += 1;
     mediaGenerationRef.current += 1;
     mediaPromiseRef.current = null;
@@ -1151,11 +1323,9 @@ export function useWebRTC(options: {
           ensureAudioCurrent();
           const destination = context.createMediaStreamDestination();
           screenAudioDestinationRef.current = destination;
-          const microphoneTrack = localStreamRef.current?.getAudioTracks()[0];
+          const microphoneTrack = outgoingMicTrack();
           if (microphoneTrack) {
-            screenMicSourceRef.current = context.createMediaStreamSource(new MediaStream([microphoneTrack]));
-            screenMicSourceRef.current.connect(destination);
-            screenMicTrackRef.current = microphoneTrack;
+            connectScreenMicrophone(microphoneTrack);
           }
           screenDisplayAudioSourceRef.current =
             context.createMediaStreamSource(new MediaStream(displayAudioTracks));

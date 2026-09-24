@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Volume2, Mic, Activity, Video, Bell } from 'lucide-react';
 import { useListChannels } from '@workspace/api-client-react';
-import { type AudioVideoSettings, saveSettings, safeCloseAudioContext } from '@/lib/settings-utils';
+import { callMediaConstraints, type AudioVideoSettings, saveSettings, safeCloseAudioContext } from '@/lib/settings-utils';
 import { type NotificationLevel, type NotificationSettings } from '@/lib/notification-settings';
 
 const SECTIONS = [
@@ -18,6 +18,7 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: AudioVideoSettings;
   onSettingsChange: (s: AudioVideoSettings) => void;
+  currentUserId?: number;
   notificationSettings: NotificationSettings;
   onNotificationSettingsChange: (s: NotificationSettings) => void;
   soundboardSettings: { volume: number; muted: boolean };
@@ -31,6 +32,7 @@ export function SettingsModal({
   onClose,
   settings,
   onSettingsChange,
+  currentUserId,
   notificationSettings,
   onNotificationSettingsChange,
   soundboardSettings,
@@ -84,7 +86,7 @@ export function SettingsModal({
   const startMicTest = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: settings.audioInputId ? { deviceId: { exact: settings.audioInputId } } : true,
+        ...callMediaConstraints(settings.audioInputId, settings.videoQuality, false, settings),
       });
       testStreamRef.current = stream;
       const ctx = new AudioContext();
@@ -107,7 +109,8 @@ export function SettingsModal({
     } catch (err) {
       console.error('Mic test failed', err);
     }
-  }, [settings.audioInputId]);
+  }, [settings.audioInputId, settings.videoQuality, settings.echoCancellation,
+    settings.noiseSuppression, settings.autoGainControl]);
 
   const stopMicTest = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -123,8 +126,20 @@ export function SettingsModal({
   const update = (patch: Partial<AudioVideoSettings>) => {
     const next = { ...settings, ...patch };
     onSettingsChange(next);
-    saveSettings(next);
+    if (currentUserId && !saveSettings(currentUserId, next)) {
+      console.warn('[voz] No se pudieron guardar los ajustes de audio en este navegador');
+    }
   };
+
+  useEffect(() => {
+    const track = testStreamRef.current?.getAudioTracks()[0];
+    if (!track) return;
+    void track.applyConstraints({
+      noiseSuppression: settings.noiseSuppression,
+      echoCancellation: settings.echoCancellation,
+      autoGainControl: settings.autoGainControl,
+    }).catch(error => console.warn('[voz] No se pudo actualizar la prueba de micrófono', error));
+  }, [settings.noiseSuppression, settings.echoCancellation, settings.autoGainControl]);
 
   const updateNotifications = (patch: Partial<NotificationSettings>) => {
     onNotificationSettingsChange({ ...notificationSettings, ...patch });
@@ -525,6 +540,33 @@ function VoiceAudioSection({
         </select>
       </div>
 
+      <div className="space-y-3 rounded-lg border border-border bg-secondary/50 p-4">
+        <h3 className="text-sm font-semibold text-foreground">Procesado del micrófono</h3>
+        <AudioProcessingSwitch
+          label="Supresión avanzada de ruido (RNNoise)"
+          checked={settings.advancedNoiseSuppression}
+          onChange={value => update({ advancedNoiseSuppression: value })}
+          testId="switch-rnnoise"
+        />
+        <p className="text-xs text-muted-foreground">
+          Entrenada para voz: cantar, tocar instrumentos o poner música cerca del micrófono puede sonar degradado. Desactívala en esos casos.
+        </p>
+        <div className="border-t border-border pt-3 space-y-3">
+          <AudioProcessingSwitch label="Supresión de ruido del navegador"
+            checked={settings.noiseSuppression} onChange={value => update({ noiseSuppression: value })}
+            testId="switch-native-noise" />
+          <AudioProcessingSwitch label="Cancelación de eco"
+            checked={settings.echoCancellation} onChange={value => update({ echoCancellation: value })}
+            testId="switch-native-echo" />
+          <AudioProcessingSwitch label="Control automático de ganancia"
+            checked={settings.autoGainControl} onChange={value => update({ autoGainControl: value })}
+            testId="switch-native-gain" />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Los cambios se aplican durante la llamada. Si RNNoise no está disponible, se utiliza el micrófono del navegador. Las opciones nativas dependen de lo que admita tu navegador y micrófono.
+        </p>
+      </div>
+
       {/* Mic level meter */}
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-xs font-mono text-muted-foreground uppercase tracking-wider">
@@ -640,6 +682,27 @@ function VoiceAudioSection({
       </div>
     </div>
   );
+}
+
+function AudioProcessingSwitch({ label, checked, onChange, testId }: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  testId: string;
+}) {
+  return <div className="flex items-center justify-between gap-3">
+    <span id={`${testId}-label`} className="text-sm text-foreground">{label}</span>
+    <button type="button" role="switch" aria-checked={checked}
+      aria-labelledby={`${testId}-label`} data-testid={testId}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        checked ? 'border-primary bg-primary' : 'border-border bg-muted'
+      }`}>
+      <span aria-hidden="true" className={`absolute top-0.5 h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${
+        checked ? 'left-5' : 'left-0.5'
+      }`} />
+    </button>
+  </div>;
 }
 
 function VideoQualitySection({ settings, update }: { settings: AudioVideoSettings; update: (p: Partial<AudioVideoSettings>) => void }) {
