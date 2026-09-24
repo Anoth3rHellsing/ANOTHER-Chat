@@ -103,7 +103,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm flex-shrink-0">
-        <UsersIcon className="w-4 h-4 text-indigo-400 mr-2" />
+        <UsersIcon className="w-4 h-4 text-primary mr-2" />
         <span className="font-medium text-foreground">Amigos</span>
       </div>
 
@@ -156,7 +156,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
                       </p>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => onOpenDm(f.id)} className="p-1.5 text-muted-foreground hover:text-indigo-400 hover:bg-indigo-400/10 rounded-lg transition-colors" title="Mensaje directo">
+                      <button onClick={() => onOpenDm(f.id)} className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Mensaje directo">
                         <MessageSquare className="w-4 h-4" />
                       </button>
                       <button onClick={() => removeFriend(f.id)} className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" title="Eliminar amigo">
@@ -243,7 +243,7 @@ export function FriendsPanel({ onOpenDm }: FriendsPanelProps) {
                 <button
                   onClick={sendRequest}
                   disabled={!addUsername.trim() || adding}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                 >
                   {adding ? '…' : 'Enviar'}
                 </button>

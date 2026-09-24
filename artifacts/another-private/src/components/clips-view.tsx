@@ -137,12 +137,12 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
       {/* Header */}
       <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10 flex-shrink-0">
         <div className="flex items-center gap-2 text-foreground font-medium">
-          <Play className="w-4 h-4 text-purple-400" />
+          <Play className="w-4 h-4 text-primary" />
           <span>Clips</span>
         </div>
         <button
           onClick={() => setUploadOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg text-xs font-mono transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg text-xs font-mono transition-colors"
         >
           <Upload className="w-3.5 h-3.5" />
           Subir clip
@@ -169,7 +169,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
               <div>
                 <label className="text-xs text-muted-foreground font-mono uppercase tracking-wider">Video</label>
                 <div
-                  className="mt-1 border-2 border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-purple-500/50 transition-colors"
+                  className="mt-1 border-2 border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {uploadFile
@@ -183,7 +183,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
                 <button
                   type="submit"
                   disabled={!uploadFile || !uploadTitle.trim() || uploading}
-                  className="flex-1 bg-purple-500 hover:bg-purple-600 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
+                  className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
                 >
                   {uploading ? 'Subiendo...' : 'Subir'}
                 </button>
@@ -265,7 +265,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
                     placeholder="Añade un comentario..."
                     className="flex-1 bg-secondary border border-white/10 rounded-lg px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
-                  <button type="submit" disabled={!commentInput.trim()} className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm disabled:opacity-50">
+                  <button type="submit" disabled={!commentInput.trim()} className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm disabled:opacity-50">
                     OK
                   </button>
                 </form>

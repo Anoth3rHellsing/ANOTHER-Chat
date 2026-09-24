@@ -193,13 +193,13 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
                   {v.avatarUrl && <img src={v.avatarUrl} className="w-full h-full object-cover" alt="" />}
                 </div>
                 <span className="text-white text-xs">{v.displayName}</span>
-                <span className="text-white/40 text-[10px] ml-auto font-mono">
+                <span className="text-white/70 text-[10px] ml-auto font-mono">
                   {new Date(v.viewedAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
             ))}
             {viewers.length === 0 && (
-              <p className="text-white/40 text-xs font-mono">Nadie la ha visto todavía.</p>
+              <p className="text-white/70 text-xs font-mono">Nadie la ha visto todavía.</p>
             )}
           </div>
         )}

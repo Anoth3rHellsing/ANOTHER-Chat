@@ -8,17 +8,17 @@
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
+  --color-border: hsl(var(--border) / 0.1);
+  --color-input: hsl(var(--input) / 0.1);
   --color-ring: hsl(var(--ring));
 
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
-  --color-card-border: hsl(var(--card-border));
+  --color-card-border: hsl(var(--card-border) / 0.1);
 
   --color-popover: hsl(var(--popover));
   --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-popover-border: hsl(var(--popover-border));
+  --color-popover-border: hsl(var(--popover-border) / 0.1);
 
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
@@ -37,7 +37,7 @@
 
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-border: hsl(var(--sidebar-border) / 0.1);
   --color-sidebar-primary: hsl(var(--sidebar-primary));
   --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
   --color-sidebar-accent: hsl(var(--sidebar-accent));
@@ -58,49 +58,73 @@
   --button-outline: rgba(255, 255, 255, 0.1);
   --badge-outline: rgba(255, 255, 255, 0.05);
 
-  --elevate-1: rgba(255, 255, 255, 0.04);
-  --elevate-2: rgba(255, 255, 255, 0.09);
+  --elevate-1: rgba(255, 255, 255, 0.08);
+  --elevate-2: rgba(255, 255, 255, 0.2);
 
-  /* Deep dark purple/black background */
-  --background: 240 10% 4%;
-  --foreground: 0 0% 98%;
+  /*
+   * Previous theme (HSL; restore these values and the five opaque border mappings
+   * above to revert). The old primary and focus color was violet.
+   * background 240 10% 4%; foreground 0 0% 98%;
+   * card/popover 240 10% 6%; card-border/popover-border 240 10% 12%;
+   * card-foreground/popover-foreground 0 0% 98%;
+   * primary/ring/sidebar-primary/sidebar-ring 255 85% 65%;
+   * primary-foreground/sidebar-primary-foreground 0 0% 98%;
+   * secondary/muted/sidebar-accent 240 10% 12%;
+   * secondary-foreground/accent-foreground/sidebar-accent-foreground 0 0% 98%;
+   * muted-foreground 240 5% 65%; accent 240 10% 16%;
+   * border/input/sidebar-border 240 10% 14%;
+   * sidebar 240 10% 6%; sidebar-foreground 240 5% 85%;
+   * elevate-1 rgba(255,255,255,.04); elevate-2 rgba(255,255,255,.09);
+   * button-outline rgba(255,255,255,.1); badge-outline rgba(255,255,255,.05).
+   * Legacy create-dialog hardcodes: panel #1e1f22, field #1a1b1e,
+   * labels #b5bac1, secondary #87898c, placeholder #6d6f78.
+   */
+  /* AeroNight: #051525 deep, #0a2540 mid, #1a4a7a radial center,
+     #6dd5fa cyan. HSL tokens stay the single source for UI color roles. */
+  --aeronight-deep: 210 76.19% 8.24%;
+  --aeronight-mid: 210 72.97% 14.51%;
+  --aeronight-center: 210 64.86% 29.02%;
+  --aeronight-cyan: 195.74 93.38% 70.39%;
+  --background: var(--aeronight-deep);
+  --foreground: 0 0% 100%;
 
-  --card: 240 10% 6%;
-  --card-foreground: 0 0% 98%;
-  --card-border: 240 10% 12%;
+  /* Solid dark backing for glass: 15% white tint is layered at the top. */
+  --card: 210 48% 19%;
+  --card-foreground: 0 0% 100%;
+  --card-border: 0 0% 100%;
 
-  --popover: 240 10% 6%;
-  --popover-foreground: 0 0% 98%;
-  --popover-border: 240 10% 12%;
+  --popover: 210 48% 19%;
+  --popover-foreground: 0 0% 100%;
+  --popover-border: 0 0% 100%;
 
-  /* High security encrypted comms: deep indigo / violet */
-  --primary: 255 85% 65%;
-  --primary-foreground: 0 0% 98%;
+  --primary: var(--aeronight-cyan);
+  --primary-foreground: var(--aeronight-deep);
 
-  --secondary: 240 10% 12%;
-  --secondary-foreground: 0 0% 98%;
+  --secondary: 210 42% 23%;
+  --secondary-foreground: 0 0% 100%;
 
-  --muted: 240 10% 12%;
-  --muted-foreground: 240 5% 65%;
+  --muted: 210 42% 23%;
+  --muted-foreground: 0 0% 80%;
 
-  --accent: 240 10% 16%;
-  --accent-foreground: 0 0% 98%;
+  --accent: 210 40% 27%;
+  --accent-foreground: 0 0% 100%;
 
+  /* Meaningful status colors intentionally retain their original semantics. */
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 240 10% 14%;
-  --input: 240 10% 14%;
-  --ring: 255 85% 65%;
+  --border: 0 0% 100%;
+  --input: 0 0% 100%;
+  --ring: var(--aeronight-cyan);
 
-  --sidebar: 240 10% 6%;
-  --sidebar-foreground: 240 5% 85%;
-  --sidebar-border: 240 10% 14%;
-  --sidebar-primary: 255 85% 65%;
-  --sidebar-primary-foreground: 0 0% 98%;
-  --sidebar-accent: 240 10% 12%;
-  --sidebar-accent-foreground: 0 0% 98%;
-  --sidebar-ring: 255 85% 65%;
+  --sidebar: 210 53% 17%;
+  --sidebar-foreground: 0 0% 91%;
+  --sidebar-border: 0 0% 100%;
+  --sidebar-primary: var(--aeronight-cyan);
+  --sidebar-primary-foreground: var(--aeronight-deep);
+  --sidebar-accent: 210 42% 23%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-ring: var(--aeronight-cyan);
 
   --radius: 0.5rem;
 }
@@ -115,9 +139,116 @@
   }
 }
 
+/* Fixed behind every page. Message lists and inputs retain their own dark
+   surfaces; the sky is never painted on those reading surfaces. */
+#root {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+}
+#root > :not(.aeronight-atmosphere) {
+  position: relative;
+  z-index: 1;
+}
+#root > .bg-background {
+  background-color: transparent;
+}
+.aeronight-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(ellipse 115% 85% at 50% 105%, hsl(var(--aeronight-center)) 0%, hsl(var(--aeronight-mid)) 48%, hsl(var(--aeronight-deep)) 100%);
+}
+.aeronight-stars,
+.aeronight-stars::after {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  will-change: opacity;
+}
+.aeronight-stars {
+  opacity: .55;
+  background-image:
+    radial-gradient(circle at 9% 19%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 21% 48%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 34% 13%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 48% 37%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 65% 11%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 80% 35%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 91% 17%, #fff 0 1px, transparent 1.5px);
+  animation: aeronight-twinkle 7s ease-in-out infinite alternate;
+}
+.aeronight-stars::after {
+  content: '';
+  background-image:
+    radial-gradient(circle at 14% 62%, #6dd5fa 0 1px, transparent 1.6px),
+    radial-gradient(circle at 28% 28%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 41% 55%, #6dd5fa 0 1px, transparent 1.6px),
+    radial-gradient(circle at 58% 21%, #fff 0 1px, transparent 1.5px),
+    radial-gradient(circle at 73% 53%, #6dd5fa 0 1px, transparent 1.6px),
+    radial-gradient(circle at 86% 67%, #fff 0 1px, transparent 1.5px);
+  animation: aeronight-twinkle 5s ease-in-out infinite alternate-reverse;
+}
+.aeronight-wave {
+  position: absolute;
+  left: -20%;
+  bottom: -42%;
+  width: 140%;
+  height: 70%;
+  border-radius: 50% 50% 0 0;
+  border-top: 1px solid rgb(109 213 250 / .13);
+  background: radial-gradient(ellipse at 50% 0%, rgb(109 213 250 / .12), transparent 68%);
+  will-change: transform;
+}
+.aeronight-wave--near {
+  opacity: .7;
+  animation: aeronight-drift-near 16s ease-in-out infinite alternate;
+}
+.aeronight-wave--far {
+  bottom: -49%;
+  opacity: .45;
+  transform: translate3d(5%, -3%, 0) scaleX(1.12);
+  animation: aeronight-drift-far 23s ease-in-out infinite alternate;
+}
+@keyframes aeronight-drift-near {
+  from { transform: translate3d(-4%, 0, 0); }
+  to { transform: translate3d(4%, -4%, 0); }
+}
+@keyframes aeronight-drift-far {
+  from { transform: translate3d(5%, -3%, 0) scaleX(1.12); }
+  to { transform: translate3d(-5%, 0, 0) scaleX(1.12); }
+}
+@keyframes aeronight-twinkle {
+  from { opacity: .28; }
+  to { opacity: .64; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aeronight-stars,
+  .aeronight-stars::after,
+  .aeronight-wave { display: none; animation: none; }
+}
+
+/* The shell is translucent; reading surfaces are opaque enough to keep white
+   body text and muted labels above AA contrast even at the bright radial center. */
+#root > .bg-background > .bg-card\/50,
+#root > .bg-background > .bg-card\/30 {
+  background-color: hsl(var(--card) / .94);
+}
+#root > .bg-background > .bg-background {
+  background-color: hsl(var(--background) / .95);
+}
+:is(.bg-card, .bg-popover, .bg-sidebar, [class*="bg-card/"], [class*="bg-popover/"]) {
+  background-image: linear-gradient(to bottom, rgb(255 255 255 / .15), rgb(255 255 255 / .025) 28%, transparent 65%);
+}
+
 @layer utilities {
   .hover-elevate {
     @apply transition-all duration-200 hover:brightness-110 active:scale-95;
+  }
+  .hover-elevate:hover {
+    background-image: linear-gradient(var(--elevate-2), var(--elevate-2));
   }
   .active-elevate {
     @apply transition-all duration-200 active:brightness-90 active:scale-95;

@@ -136,8 +136,8 @@ export function SettingsModal({ isOpen, onClose, settings, onSettingsChange }: S
                 })}
               </nav>
               <div className="px-4 mt-4 pt-4 border-t border-white/5">
-                <p className="text-[10px] font-mono text-muted-foreground/50 uppercase tracking-wider">A.N.O.T.H.E.R.</p>
-                <p className="text-[10px] text-muted-foreground/40 font-mono">Terminal Privado</p>
+                <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">A.N.O.T.H.E.R.</p>
+                <p className="text-[10px] text-muted-foreground font-mono">Terminal Privado</p>
               </div>
             </div>
 

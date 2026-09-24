@@ -61,7 +61,7 @@ export function CreateServerModal({ isOpen, onClose, onCreated }: CreateServerMo
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md bg-[#1e1f22] rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-md bg-card border border-white/10 rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -69,11 +69,11 @@ export function CreateServerModal({ isOpen, onClose, onCreated }: CreateServerMo
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-xl font-bold text-white">Crear un Servidor</h2>
-              <p className="text-sm text-[#b5bac1] mt-1 leading-relaxed">
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
                 Tu servidor es donde operas con tu equipo. Crea uno y comienza.
               </p>
             </div>
-            <button onClick={onClose} className="p-1 text-[#b5bac1] hover:text-white transition-colors">
+            <button onClick={onClose} className="p-1 text-muted-foreground hover:text-white transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -95,19 +95,19 @@ export function CreateServerModal({ isOpen, onClose, onCreated }: CreateServerMo
                   </div>
                 </>
               ) : (
-                <div className="flex flex-col items-center gap-1 text-[#87898c] group-hover:text-white transition-colors">
+                <div className="flex flex-col items-center gap-1 text-muted-foreground group-hover:text-white transition-colors">
                   <Upload className="w-5 h-5" />
                   <span className="text-[10px] font-mono uppercase tracking-wide">Icono</span>
                 </div>
               )}
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleIconChange} />
-            <p className="text-xs text-[#87898c] mt-2">Opcional</p>
+            <p className="text-xs text-muted-foreground mt-2">Opcional</p>
           </div>
 
           {/* Server name */}
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-[#b5bac1]">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Nombre del servidor
             </label>
             <input
@@ -115,14 +115,14 @@ export function CreateServerModal({ isOpen, onClose, onCreated }: CreateServerMo
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="El Bunker, Sector 7..."
-              className="w-full bg-[#1a1b1e] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-[#6d6f78] focus:outline-none focus:border-primary/50 transition-colors"
+              className="w-full bg-background border border-white/10 rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
               autoFocus
               maxLength={100}
             />
           </div>
 
           {/* Disclaimer */}
-          <p className="text-xs text-[#87898c] leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             Al crear un servidor aceptas las normas internas. Actúa con responsabilidad.
           </p>
 
@@ -131,14 +131,14 @@ export function CreateServerModal({ isOpen, onClose, onCreated }: CreateServerMo
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 text-sm font-medium text-[#b5bac1] hover:text-white transition-colors"
+              className="flex-1 py-2.5 text-sm font-medium text-muted-foreground hover:text-white transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={!name.trim() || createServer.isPending}
-              className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
             >
               {createServer.isPending ? 'Creando...' : 'Crear servidor'}
             </button>

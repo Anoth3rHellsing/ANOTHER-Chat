@@ -666,7 +666,7 @@ export default function AppLayout() {
         <div className="relative group">
           <button
             onClick={() => { setActiveView('dms'); setMobilePanelDepth(1); }}
-            className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all flex items-center justify-center border ${activeView === 'dms' ? 'rounded-[16px] bg-indigo-500/20 text-indigo-400 border-indigo-500/40' : 'bg-secondary text-muted-foreground hover:bg-indigo-500/15 hover:text-indigo-400 border-white/5'}`}
+            className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all flex items-center justify-center border ${activeView === 'dms' ? 'rounded-[16px] bg-primary/20 text-primary border-primary/40 glow-effect' : 'bg-secondary text-muted-foreground hover:bg-primary/15 hover:text-primary border-white/5'}`}
             title="Mensajes directos"
           >
             <MessageSquare className="w-5 h-5" />
@@ -686,7 +686,7 @@ export default function AppLayout() {
               <div className={`absolute left-0 w-1 bg-primary rounded-r-full transition-all duration-200 ${activeServerId === server.id ? 'h-10 top-1' : 'h-2 top-5 opacity-0 group-hover:opacity-100 group-hover:h-5'}`} />
               <button
                 onClick={() => { setActiveServerId(server.id); setShowClips(false); }}
-                className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all overflow-hidden bg-secondary flex items-center justify-center border border-white/5 ${activeServerId === server.id ? 'rounded-[16px] bg-primary/20 text-primary border-primary/50' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
+                className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all overflow-hidden bg-secondary flex items-center justify-center border border-white/5 ${activeServerId === server.id ? 'rounded-[16px] bg-primary/20 text-primary border-primary/50 glow-effect' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
                 title={server.name}
               >
                 {server.iconUrl
@@ -707,7 +707,7 @@ export default function AppLayout() {
 
           <button
             onClick={() => setIsJoinByCodeOpen(true)}
-            className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-blue-400 hover:bg-blue-400/20 flex items-center justify-center group"
+            className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-primary hover:bg-primary/20 flex items-center justify-center group"
             title="Unirse con código"
           >
             <Link2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
@@ -724,12 +724,12 @@ export default function AppLayout() {
               <button className="md:hidden p-1 mr-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(0)}>
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <MessageSquare className="w-4 h-4 text-indigo-400 mr-2" />
+              <MessageSquare className="w-4 h-4 text-primary mr-2" />
               <h2 className="font-bold text-foreground truncate flex-1">Mensajes directos</h2>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   onClick={() => setDmSubView(v => v === 'friends' ? 'messages' : 'friends')}
-                  className={`p-1.5 rounded-md transition-colors ${dmSubView === 'friends' ? 'text-indigo-400 bg-indigo-400/10' : 'text-muted-foreground hover:text-white hover:bg-white/5'}`}
+                  className={`p-1.5 rounded-md transition-colors ${dmSubView === 'friends' ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-white hover:bg-white/5'}`}
                   title="Amigos"
                 >
                   <Bell className="w-4 h-4" />
@@ -757,7 +757,7 @@ export default function AppLayout() {
                   <button
                     key={other?.id}
                     onClick={() => setActiveDmUserId(other?.id)}
-                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-indigo-500/20 text-foreground' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-primary/15 text-foreground glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                   >
                     <div className="relative flex-shrink-0">
                       <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden">
@@ -769,7 +769,7 @@ export default function AppLayout() {
                       <div className="flex items-center justify-between gap-1">
                         <p className="text-sm font-medium text-foreground truncate">{other?.displayName}</p>
                         {unread > 0 && (
-                          <span className="min-w-[18px] h-[18px] bg-indigo-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 flex-shrink-0">
+                          <span className="min-w-[18px] h-[18px] bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1 flex-shrink-0">
                             {unread > 99 ? '99+' : unread}
                           </span>
                         )}
@@ -870,7 +870,7 @@ export default function AppLayout() {
                   <button
                     key={channel.id}
                     onClick={() => { setActiveChannelId(channel.id); setShowClips(false); clearUnread(channel.id); }}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                     style={hasVisual && vc.kind === 'gradient'
                       ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
                       : hasVisual && vc.kind === 'image'
@@ -899,7 +899,7 @@ export default function AppLayout() {
               {activeServerId && (
                 <button
                   onClick={() => setShowClips(v => !v)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors mt-2 ${showClips ? 'bg-white/10 text-foreground font-medium' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors mt-2 ${showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                 >
                   <Play className="w-4 h-4 opacity-60 flex-shrink-0" />
                   <span>Clips</span>
@@ -1002,7 +1002,7 @@ export default function AppLayout() {
                     className={`group flex gap-4 hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors ${isFirst ? 'mt-3 pt-0.5' : 'mt-0.5'}`}
                   >
                     {isFirst ? (
-                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-indigo-500/50 transition-all mt-0.5"
+                      <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5"
                         onClick={e => openProfileCard(msg.senderId, e)}>
                         {msg.sender?.avatarUrl ? <img src={msg.sender.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
@@ -1019,9 +1019,9 @@ export default function AppLayout() {
                         </div>
                       )}
                       {msg.replyTo && !msg.deletedAt && (
-                        <div className="mb-1 flex items-start gap-1.5 text-xs text-muted-foreground border-l-2 border-indigo-500/50 pl-2 py-0.5">
-                          <CornerUpLeft className="w-3 h-3 flex-shrink-0 mt-0.5 text-indigo-400" />
-                          <span className="text-indigo-400 font-medium mr-1">{msg.replyTo.authorDisplayName}</span>
+                        <div className="mb-1 flex items-start gap-1.5 text-xs text-muted-foreground border-l-2 border-primary/50 pl-2 py-0.5">
+                          <CornerUpLeft className="w-3 h-3 flex-shrink-0 mt-0.5 text-primary" />
+                          <span className="text-primary font-medium mr-1">{msg.replyTo.authorDisplayName}</span>
                           <span className="truncate">{msg.replyTo.contentPreview}</span>
                         </div>
                       )}
@@ -1033,7 +1033,7 @@ export default function AppLayout() {
                         </div>
                         {!msg.deletedAt && isOwn && (
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
-                            <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-blue-400 transition-colors" title="Responder">
+                            <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary transition-colors" title="Responder">
                               <CornerUpLeft className="w-3.5 h-3.5" />
                             </button>
                             <div className="w-[1px] h-4 bg-white/10" />
@@ -1044,7 +1044,7 @@ export default function AppLayout() {
                         )}
                         {!msg.deletedAt && !isOwn && (
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
-                            <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-blue-400 transition-colors" title="Responder">
+                            <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary transition-colors" title="Responder">
                               <CornerUpLeft className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -1061,7 +1061,7 @@ export default function AppLayout() {
             <div className="p-4 pt-0">
               <div className="h-6 flex items-end px-2">
                 {dmTypingUsers.size > 0 && (
-                  <span className="text-xs text-indigo-400 font-mono animate-pulse">
+                  <span className="text-xs text-primary font-mono animate-pulse">
                     {(activeDmConvo as any).otherUser?.displayName} está escribiendo...
                   </span>
                 )}
@@ -1069,9 +1069,9 @@ export default function AppLayout() {
               {dmReplyingTo && (
                 <div className="flex items-center justify-between bg-secondary border border-white/10 rounded-t-xl px-4 py-2 text-xs border-b-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    <CornerUpLeft className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                    <CornerUpLeft className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                     <span className="text-muted-foreground">Respondiendo a</span>
-                    <span className="text-indigo-400 font-medium truncate">{dmReplyingTo.sender?.displayName ?? 'Usuario'}</span>
+                    <span className="text-primary font-medium truncate">{dmReplyingTo.sender?.displayName ?? 'Usuario'}</span>
                     <span className="text-muted-foreground truncate">— {dmReplyingTo.content?.slice(0, 60)}{dmReplyingTo.content?.length > 60 ? '…' : ''}</span>
                   </div>
                   <button onClick={() => setDmReplyingTo(null)} className="text-muted-foreground hover:text-white flex-shrink-0 ml-2">
@@ -1091,7 +1091,7 @@ export default function AppLayout() {
                   className="flex-1 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
                   onKeyDown={e => { if (e.key === 'Escape' && dmReplyingTo) setDmReplyingTo(null); }}
                 />
-                <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-50">
+                <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50">
                   <Send className="w-5 h-5" />
                 </button>
               </form>
@@ -1127,7 +1127,7 @@ export default function AppLayout() {
                   placeholder="Escribe un mensaje..."
                   className="flex-1 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
                 />
-                <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-50">
+                <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50">
                   <Send className="w-5 h-5" />
                 </button>
               </form>
@@ -1268,7 +1268,7 @@ export default function AppLayout() {
                             {/* Reply */}
                             <button
                               onClick={() => setReplyingTo(msg)}
-                              className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-blue-400 transition-colors"
+                              className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary transition-colors"
                               title="Responder"
                             >
                               <CornerUpLeft className="w-3.5 h-3.5" />
@@ -1696,7 +1696,7 @@ export default function AppLayout() {
             </button>
             <button
               onClick={() => webrtc.toggleScreenShare()}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isScreenSharing ? 'bg-primary text-white' : 'bg-secondary text-foreground hover:bg-white/10'}`}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${webrtc.isScreenSharing ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-white/10'}`}
               title={webrtc.isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla'}
             >
               {webrtc.isScreenSharing ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}

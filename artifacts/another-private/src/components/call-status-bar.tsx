@@ -19,7 +19,7 @@ export function CallStatusBar({
       <Volume2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
       <div className="flex-1 min-w-0" title={participants}>
         <p className="text-xs text-green-400 font-medium truncate">{name}</p>
-        <p className="text-[10px] text-green-500/60 font-mono truncate">{status} · {participants}</p>
+        <p className="text-[10px] text-green-400 font-mono truncate">{status} · {participants}</p>
       </div>
       <button
         type="button"

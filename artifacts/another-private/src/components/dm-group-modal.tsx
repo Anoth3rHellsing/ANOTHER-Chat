@@ -68,7 +68,7 @@ export function DmGroupModal({ isOpen, onClose, currentUserId, friends, onCreate
       <div className="bg-card border border-white/10 rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div className="flex items-center gap-2 text-foreground">
-            <UsersIcon className="w-5 h-5 text-indigo-400" />
+            <UsersIcon className="w-5 h-5 text-primary" />
             <span className="font-bold font-mono uppercase tracking-wider text-sm">Nuevo grupo de mensajes</span>
           </div>
           <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10">
@@ -118,7 +118,7 @@ export function DmGroupModal({ isOpen, onClose, currentUserId, friends, onCreate
             <button
               onClick={handleCreate}
               disabled={!name.trim() || selected.size === 0 || creating}
-              className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-40"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-40"
             >
               {creating ? 'Creando…' : 'Crear grupo'}
             </button>

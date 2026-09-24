@@ -506,7 +506,7 @@ export function ServerSettingsModal({
                     <button
                       onClick={handleSaveRole}
                       disabled={!roleName.trim() || createRole.isPending || updateRole.isPending}
-                      className="flex-1 bg-primary hover:bg-primary/90 text-white rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
+                      className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg py-2 text-sm font-medium transition-colors disabled:opacity-50"
                     >
                       {isCreating ? 'Crear' : 'Guardar'}
                     </button>
@@ -711,7 +711,7 @@ export function ServerSettingsModal({
                 <button
                   onClick={handleCreateInvite}
                   disabled={createInvite.isPending}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-mono transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-mono transition-colors disabled:opacity-50"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Nuevo código
@@ -815,7 +815,7 @@ export function ServerSettingsModal({
                 <p className="text-sm text-muted-foreground">Las palabras filtradas son censuradas automáticamente con *** en los mensajes del servidor.</p>
                 <div className="flex gap-2">
                   <input value={newWord} onChange={e => setNewWord(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddWord()} placeholder="Añadir palabra o frase…" className="flex-1 bg-secondary border border-white/10 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50" />
-                  <button onClick={handleAddWord} disabled={!newWord.trim()} className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-40">Añadir</button>
+                  <button onClick={handleAddWord} disabled={!newWord.trim()} className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors disabled:opacity-40">Añadir</button>
                 </div>
               </div>
               <div className="space-y-2">
@@ -907,7 +907,7 @@ export function ServerSettingsModal({
                     value={deleteConfirmName}
                     onChange={e => setDeleteConfirmName(e.target.value)}
                     placeholder={serverName}
-                    className="w-full bg-background border border-red-500/30 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-red-500/60 placeholder:text-muted-foreground/50"
+                    className="w-full bg-background border border-red-500/30 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-red-500/60 placeholder:text-muted-foreground"
                   />
                 </div>
                 <button

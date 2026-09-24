@@ -244,7 +244,7 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
                               value={link.url}
                               onChange={e => updateLink(idx, 'url', e.target.value)}
                               placeholder={platform?.placeholder ?? 'https://...'}
-                              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none min-w-0"
+                              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none min-w-0"
                             />
                             {link.platform === 'custom' && (
                               <input
@@ -252,7 +252,7 @@ export function ProfileModal({ user, isOpen, onClose }: ProfileModalProps) {
                                 value={link.label}
                                 onChange={e => updateLink(idx, 'label', e.target.value)}
                                 placeholder="Etiqueta"
-                                className="w-24 bg-transparent text-xs text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none border-l border-white/10 pl-2"
+                                className="w-24 bg-transparent text-xs text-muted-foreground placeholder:text-muted-foreground focus:outline-none border-l border-white/10 pl-2"
                               />
                             )}
                             <button onClick={() => removeLink(idx)} className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0">

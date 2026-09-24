@@ -33,6 +33,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <div className="aeronight-atmosphere" aria-hidden="true">
+          <div className="aeronight-stars" />
+          <div className="aeronight-wave aeronight-wave--near" />
+          <div className="aeronight-wave aeronight-wave--far" />
+        </div>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <Router />
         </WouterRouter>

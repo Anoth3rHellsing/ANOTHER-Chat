@@ -5,5 +5,6 @@
 - [Connection-bound voice membership](voice-ws-close.md) — voice presence follows bound connection IDs; never evict sibling tabs by user ID
 - [Voice bind readiness](voice-bind-readiness.md) — HTTP membership can precede WS binding; negotiate only with confirmed bound peers
 - [Isolated call testing](isolated-call-testing.md) — separate CDP tabs share cookies unless each test user has its own browser context
+- [Private UI visual checks](private-ui-visual-checks.md) — read-only browser response fixtures can inspect authenticated styling without test accounts, but cannot validate real behavior
 - [Complete database baseline](stories-clips-raw-sql.md) — raw-SQL feature tables are now declared in Drizzle and covered by a verified zero migration
 - [CSRF token re-emission](csrf-token-reemission.md) — /auth/me reemits the session token instead of rotating it, avoiding concurrent-load mismatches
