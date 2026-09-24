@@ -25,6 +25,7 @@
 - [WebRTC sender silence](webrtc-sender-silence.md) — replaceTrack(null) can stop output while receiver track stays live and unmuted; source availability needs sender state
 - [RNNoise worklet readiness](rnnoise-worklet-readiness.md) — the bundled processor has no ready message while WASM initializes asynchronously
 - [Temporary PostgreSQL clusters](temporary-postgres-clusters.md) — isolated tests need a writable Unix-socket directory even when clients use TCP
+- [Regression runtime budget](regression-runtime-budget.md) — benchmark the entire parallel suite in both orders; shell timeouts may bypass child cleanup
 - [Multipart chunk boundary tests](multipart-chunk-boundary-tests.md) — exercise exact chunk-size boundaries over HTTP; seeded fixtures miss parser-level rejection
 - [Isolated provider test accounting](isolated-provider-test-accounting.md) — compare outbound calls per scenario and separate user/provider quota windows in expanded integration suites
 - [Event calendar channel scope](event-calendar-channel-scope.md) — show event creation in text channels where its announcement can appear in the chat stream

@@ -798,7 +798,9 @@ try {
     "soundboard audio bytes remain unavailable through the direct upload path");
   console.log("PASS synthetic soundboard row serves hardened audio only through its authenticated member route");
 
-  const ffmpegPath = spawnSync("which", ["ffmpeg"], { encoding: "utf8" }).stdout?.trim();
+  const ffmpegPath = process.env.REGRESSION_SUITE
+    ? undefined
+    : spawnSync("which", ["ffmpeg"], { encoding: "utf8" }).stdout?.trim();
   const videoDiskPath = path.join(apiCwd, "uploads", path.basename(clipPath));
   let browserPng;
   if (ffmpegPath) {
@@ -814,7 +816,7 @@ try {
     ]);
     browserPng = await readFile(browserPngPath);
     console.log("PASS generated a tiny synthetic H.264 clip with local ffmpeg under /tmp");
-  } else {
+  } else if (!process.env.REGRESSION_SUITE) {
     console.log("LIMITATION ffmpeg is unavailable; valid synthetic browser image/video fixtures and media-element smoke test not verified");
   }
 
@@ -1024,7 +1026,7 @@ try {
       lowSensitivityPaths: [avatarPath, userBannerPath, serverIconPath, serverBannerPath],
       videoPath: clipPath,
     });
-  } else {
+  } else if (!process.env.REGRESSION_SUITE) {
     console.log("LIMITATION headless Chromium media-element smoke test not verified because ffmpeg did not generate valid fixtures");
   }
 

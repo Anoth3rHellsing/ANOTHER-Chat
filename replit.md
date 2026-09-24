@@ -6,10 +6,23 @@ A private, invite-only Discord-style encrypted chat web application. Dark theme,
 
 - `pnpm --filter @workspace/another-private run dev` — run the frontend (port 19327, served at `/`)
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080, served at `/api` and `/ws`)
+- `pnpm run test:regression` — run the disposable server regression suite before publishing
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+
+### Server regression suite
+
+Run `pnpm run test:regression` from the workspace root. It uses Node's built-in test runner (no extra runner dependency), PostgreSQL 16 tools (`initdb`, `pg_ctl`, `createdb`, `psql`), the installed pnpm workspace, and temporary space under `/tmp`. No browser is needed. Each of the six independent scenarios starts its own PostgreSQL cluster and API working directory, applies the complete **versioned Drizzle migration history** to an empty database, creates synthetic users/files, and removes them afterward. Two complete runs with the current concurrency limit took 99 and 86 seconds. Scenarios can run in any order; to rerun just one while debugging, use `REGRESSION_ONLY=auth-crypto-isolated pnpm run test:regression` (or another scenario filename). `REGRESSION_REVERSE_ORDER=1` checks the opposite execution order.
+
+The runner never passes the workspace database URL or provider secrets to a scenario. It supplies a deliberately unreachable loopback `DATABASE_URL` so a scenario that forgets to create its own temporary URL fails closed. It rejects `REGRESSION_DATABASE_URL` and `TEST_DATABASE_URL` overrides, disables live VirusTotal mode, and blocks non-loopback Node network connections. Giphy and VirusTotal responses in the suite are local fixtures, never live API calls. Do not run the older standalone verification scripts as a substitute for this guarded entrypoint.
+
+Covered: first-admin/invite login, session integrity, CSRF, GCM and legacy message encryption; restricted channels, transactional attachment claims, HTTP and WebSocket authorization/fanout/voice binding; event time zones and auth/Giphy rate limits; protected-media revocation, cache headers and conditional responses; private file-library flows and mocked VirusTotal consent/hash miss/upload/analysis; story access and expiry. The six scenarios reported 24, 57, 14, 159, 16, and 37 observable PASS checks respectively. These are scenario logs, **not** 307 independently runnable unit tests. The quick suite skips the existing optional Chromium/ffmpeg media smoke. For broader file/scanner coverage without a rate-window wait, use `REGRESSION_EXTENDED=1 pnpm run test:regression`; running the older file-channel script directly also exercises its slower quota/large-file matrix.
+
+**Known failing behavior:** an event in `America/New_York` with the nonexistent local time 02:30 during the spring DST transition is currently accepted. The test records this as a known expected failure so the standard suite remains usable; run `REGRESSION_STRICT_KNOWN_BUGS=1 pnpm run test:regression` to make it fail until the application is fixed. This is not a claim that DST validation passes.
+
+Not covered: browser end-to-end behavior, visual rendering, real external providers, published production data, full WebRTC media negotiation, and the slower optional scanner quota/large-file scenarios. A passing suite is not a substitute for those checks. Publishing is **not** wired to run tests automatically; run this command manually before publishing. No deployment configuration is changed by the suite.
 
 ## Required Environment Secrets
 
