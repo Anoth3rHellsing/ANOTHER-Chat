@@ -11,3 +11,4 @@ export * from "./dmGroups";
 export * from "./moderation";
 export * from "./sessions";
 export * from "./events";
+export * from "./channelFiles";

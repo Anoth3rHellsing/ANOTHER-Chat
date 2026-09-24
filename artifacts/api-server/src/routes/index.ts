@@ -17,6 +17,7 @@ import dmGroupsRouter from "./dm-groups";
 import moderationRouter from "./moderation";
 import soundboardRouter from "./soundboard";
 import eventsRouter from "./events";
+import channelFilesRouter from "./channel-files";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(dmGroupsRouter);
 router.use(moderationRouter);
 router.use(soundboardRouter);
 router.use(eventsRouter);
+router.use(channelFilesRouter);
 
 export default router;

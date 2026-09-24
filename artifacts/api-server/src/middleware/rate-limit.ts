@@ -42,3 +42,12 @@ export const soundboardTriggerRateLimit = rateLimit({
   keyGenerator: keyBySessionOrIp,
   message: { error: "Espera 2 segundos antes de disparar otro sonido." },
 });
+
+export const channelFileVerifyRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 4,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: keyBySessionOrIp,
+  message: { error: "File verification requests are limited to 4 per minute." },
+});

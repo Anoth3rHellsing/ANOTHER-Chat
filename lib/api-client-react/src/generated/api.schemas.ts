@@ -273,6 +273,124 @@ export interface Attachment {
   size: number;
 }
 
+export interface ChannelFileUploadInput {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  filename: string;
+  /** @minimum 1 */
+  sizeBytes: number;
+}
+
+export interface ChannelFileUploadSession {
+  /**
+     * @minLength 36
+     * @maxLength 36
+     */
+  uploadId: string;
+  chunkSize: number;
+  maxBytes: number;
+  offset: number;
+  expiresAt: string;
+}
+
+export interface ChannelFileUploadProgress {
+  /**
+     * @minLength 36
+     * @maxLength 36
+     */
+  uploadId: string;
+  offset: number;
+  complete: boolean;
+}
+
+export interface ChannelFileUploadStatus {
+  /**
+     * @minLength 36
+     * @maxLength 36
+     */
+  uploadId: string;
+  offset: number;
+  expectedBytes: number;
+  chunkSize: number;
+  /** @nullable */
+  completedFileId?: number | null;
+}
+
+export type ChannelFileScanStatus = typeof ChannelFileScanStatus[keyof typeof ChannelFileScanStatus];
+
+
+export const ChannelFileScanStatus = {
+  unavailable: 'unavailable',
+  not_started: 'not_started',
+  queued: 'queued',
+  in_progress: 'in_progress',
+  completed: 'completed',
+  error: 'error',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ChannelFileScanSource = typeof ChannelFileScanSource[keyof typeof ChannelFileScanSource] | null;
+
+
+export const ChannelFileScanSource = {
+  local: 'local',
+  hash: 'hash',
+  upload: 'upload',
+} as const;
+
+export interface ChannelFileScan {
+  status: ChannelFileScanStatus;
+  sha256: string;
+  /** @nullable */
+  harmless: number | null;
+  /** @nullable */
+  undetected: number | null;
+  /** @nullable */
+  suspicious: number | null;
+  /** @nullable */
+  malicious: number | null;
+  /** @nullable */
+  source: ChannelFileScanSource;
+  /** @nullable */
+  submittedBy: number | null;
+  /** @nullable */
+  submittedAt: string | null;
+  /** @nullable */
+  error?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+}
+
+export interface ChannelFile {
+  id: number;
+  channelId: number;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  uploadedBy: number;
+  uploaderName?: string;
+  createdAt: string;
+  /** Authenticated API path */
+  downloadPath: string;
+  scan?: ChannelFileScan;
+}
+
+export interface ChannelFileList {
+  files: ChannelFile[];
+  maxBytes: number;
+  scannerAvailable: boolean;
+}
+
+export const ChannelFileVerifyInputValue = {
+  consent: true,
+} as const;
+export type ChannelFileVerifyInput = typeof ChannelFileVerifyInputValue;
+
 export interface MessageReaction {
   emoji: string;
   count: number;
@@ -599,6 +717,17 @@ limit?: number;
 
 export type UploadAttachmentBody = {
   file: Blob;
+};
+
+export type UploadChannelFileChunkParams = {
+/**
+ * @minimum 0
+ */
+offset: number;
+};
+
+export type UploadChannelFileChunkBody = {
+  chunk: Blob;
 };
 
 export type GetDmGroupMessagesParams = {

@@ -30,6 +30,8 @@ tags:
     description: Server invitation management
   - name: attachments
     description: File attachments
+  - name: channelFiles
+    description: Private files stored in media channels
   - name: reactions
     description: Message emoji reactions
   - name: dms
@@ -925,6 +927,256 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Attachment"
+
+  /channels/{channelId}/files:
+    get:
+      operationId: listChannelFiles
+      tags: [channelFiles]
+      summary: List files in an accessible media channel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Files, upload limit, and VirusTotal availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileList"
+        "403": { description: Channel access denied or channel is not media }
+        "404": { description: Channel not found }
+  /channels/{channelId}/files/uploads:
+    post:
+      operationId: createChannelFileUpload
+      tags: [channelFiles]
+      summary: Create a resumable upload session
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelFileUploadInput"
+      responses:
+        "201":
+          description: Upload session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileUploadSession"
+        "413": { description: Declared size exceeds configured maximum }
+
+  /channels/{channelId}/files/uploads/{uploadId}/chunks:
+    post:
+      operationId: uploadChannelFileChunk
+      tags: [channelFiles]
+      summary: Upload one 4 MiB chunk at its declared byte offset
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: uploadId
+          in: path
+          required: true
+          schema: { type: string, minLength: 36, maxLength: 36 }
+        - name: offset
+          in: query
+          required: true
+          schema: { type: integer, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [chunk]
+              properties:
+                chunk: { type: string, format: binary }
+      responses:
+        "200":
+          description: Chunk accepted (including an identical retry)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileUploadProgress"
+        "409": { description: Offset does not match session state }
+        "413": { description: Chunk exceeds 4 MiB or remaining file limit }
+
+  /channels/{channelId}/files/uploads/{uploadId}/finish:
+    post:
+      operationId: finishChannelFileUpload
+      tags: [channelFiles]
+      summary: Validate and finalize a complete upload
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: uploadId
+          in: path
+          required: true
+          schema: { type: string, minLength: 36, maxLength: 36 }
+      responses:
+        "200":
+          description: The same file returned by a previous successful finish retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFile"
+        "201":
+          description: File stored privately
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFile"
+        "409": { description: Upload is incomplete or has expired }
+        "415": { description: File signature or type is not allowed }
+        "413": { description: File exceeds configured maximum }
+
+  /channels/{channelId}/files/uploads/{uploadId}:
+    get:
+      operationId: getChannelFileUploadStatus
+      tags: [channelFiles]
+      summary: Get authoritative resumable upload progress
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: uploadId
+          in: path
+          required: true
+          schema: { type: string, minLength: 36, maxLength: 36 }
+      responses:
+        "200":
+          description: Current upload offset and optional finalized file ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileUploadStatus"
+        "404": { description: Upload session not found or expired }
+    delete:
+      operationId: abortChannelFileUpload
+      tags: [channelFiles]
+      summary: Abort and remove a resumable upload
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: uploadId
+          in: path
+          required: true
+          schema: { type: string, minLength: 36, maxLength: 36 }
+      responses:
+        "204": { description: Upload session removed }
+        "404": { description: Upload session not found }
+
+  /channels/{channelId}/files/{fileId}/download:
+    get:
+      operationId: downloadChannelFile
+      tags: [channelFiles]
+      summary: Download a private channel file
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: fileId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: File bytes with hardened attachment headers }
+        "403": { description: Channel access denied }
+        "404": { description: File not found }
+
+  /channels/{channelId}/files/{fileId}:
+    delete:
+      operationId: deleteChannelFile
+      tags: [channelFiles]
+      summary: Delete a file as its uploader or a server administrator
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: fileId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: File and bytes deleted }
+        "403": { description: Caller is not permitted to delete the file }
+        "404": { description: File not found }
+
+  /channels/{channelId}/files/{fileId}/verify:
+    post:
+      operationId: verifyChannelFile
+      tags: [channelFiles]
+      summary: Explicitly submit a file to VirusTotal after user consent
+      description: Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited.
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: fileId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelFileVerifyInput"
+      responses:
+        "202":
+          description: Scan queued or in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileScan"
+        "200":
+          description: Existing completed same-hash scan reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileScan"
+        "400": { description: Explicit consent is required }
+        "429": { description: VirusTotal request quota exhausted }
+        "503": { description: VirusTotal is not configured }
+
+  /channels/{channelId}/files/{fileId}/scan:
+    get:
+      operationId: getChannelFileScan
+      tags: [channelFiles]
+      summary: Get current VirusTotal scan state
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: fileId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Current or never-started scan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFileScan"
+        "404": { description: File not found }
 
   /messages/{messageId}/reactions:
     post:
@@ -1882,6 +2134,96 @@ components:
           type: string
         size:
           type: integer
+
+    ChannelFileUploadInput:
+      type: object
+      required: [filename, sizeBytes]
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 255 }
+        sizeBytes: { type: integer, minimum: 1 }
+
+    ChannelFileUploadSession:
+      type: object
+      required: [uploadId, chunkSize, maxBytes, offset, expiresAt]
+      properties:
+        uploadId: { type: string, minLength: 36, maxLength: 36 }
+        chunkSize: { type: integer }
+        maxBytes: { type: integer }
+        offset: { type: integer }
+        expiresAt: { type: string, format: date-time }
+
+    ChannelFileUploadProgress:
+      type: object
+      required: [uploadId, offset, complete]
+      properties:
+        uploadId: { type: string, minLength: 36, maxLength: 36 }
+        offset: { type: integer }
+        complete: { type: boolean }
+
+    ChannelFileUploadStatus:
+      type: object
+      required: [uploadId, offset, expectedBytes, chunkSize]
+      properties:
+        uploadId: { type: string, minLength: 36, maxLength: 36 }
+        offset: { type: integer }
+        expectedBytes: { type: integer }
+        chunkSize: { type: integer }
+        completedFileId: { type: ["integer", "null"] }
+
+    ChannelFile:
+      type: object
+      required: [id, channelId, filename, mimeType, sizeBytes, sha256, uploadedBy, createdAt, downloadPath]
+      properties:
+        id: { type: integer }
+        channelId: { type: integer }
+        filename: { type: string }
+        mimeType: { type: string }
+        sizeBytes: { type: integer }
+        sha256: { type: string }
+        uploadedBy: { type: integer }
+        uploaderName: { type: string }
+        createdAt: { type: string, format: date-time }
+        downloadPath: { type: string, description: Authenticated API path, not a public static URL }
+        scan:
+          $ref: "#/components/schemas/ChannelFileScan"
+
+    ChannelFileList:
+      type: object
+      required: [files, maxBytes, scannerAvailable]
+      properties:
+        files:
+          type: array
+          items: { $ref: "#/components/schemas/ChannelFile" }
+        maxBytes: { type: integer }
+        scannerAvailable: { type: boolean }
+
+    ChannelFileVerifyInput:
+      type: object
+      required: [consent]
+      properties:
+        consent:
+          type: boolean
+          const: true
+
+    ChannelFileScan:
+      type: object
+      required: [status, sha256, harmless, undetected, suspicious, malicious, source, submittedBy, submittedAt]
+      properties:
+        status:
+          type: string
+          enum: [unavailable, not_started, queued, in_progress, completed, error]
+        sha256: { type: string }
+        harmless: { type: ["integer", "null"] }
+        undetected: { type: ["integer", "null"] }
+        suspicious: { type: ["integer", "null"] }
+        malicious: { type: ["integer", "null"] }
+        source:
+          type: ["string", "null"]
+          enum: [local, hash, upload, null]
+        submittedBy: { type: ["integer", "null"] }
+        submittedAt: { type: ["string", "null"], format: date-time }
+        error: { type: ["string", "null"] }
+        completedAt: { type: ["string", "null"], format: date-time }
 
     MessageReaction:
       type: object

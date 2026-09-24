@@ -39,6 +39,7 @@ import { StoryBar } from '@/components/story-bar';
 import { ClipsView } from '@/components/clips-view';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
 import { ChannelEventsPanel, EventMessageCard, useEventRealtime } from '@/components/channel-events';
+import { ChannelFilesPanel } from '@/components/channel-files-panel';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
@@ -1540,8 +1541,16 @@ export default function AppLayout() {
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-0">
+            {(activeChannel as any).channelType === 'media' ? (
+              <ChannelFilesPanel
+                channelId={activeChannel.id}
+                currentUser={user}
+                permissions={myPermissions}
+              />
+            ) : (
+              <>
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-0">
               {messages?.map((msg, idx) => {
                 const isFirst = idx === 0 || messages[idx - 1].userId !== msg.userId || new Date(msg.createdAt).getTime() - new Date(messages[idx - 1].createdAt).getTime() > 300000;
                 const isOwn = msg.userId === user.id;
@@ -1855,6 +1864,8 @@ export default function AppLayout() {
                 </button>
               </form>
             </div>
+            </>
+            )}
           </>
         ) : activeView === 'servers' ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">

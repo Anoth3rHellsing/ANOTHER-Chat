@@ -26,6 +26,14 @@ import type {
   AvatarUploadResult,
   Channel,
   ChannelEvent,
+  ChannelFile,
+  ChannelFileList,
+  ChannelFileScan,
+  ChannelFileUploadInput,
+  ChannelFileUploadProgress,
+  ChannelFileUploadSession,
+  ChannelFileUploadStatus,
+  ChannelFileVerifyInput,
   ChannelInput,
   ChannelUpdate,
   DirectMessage,
@@ -58,6 +66,8 @@ import type {
   ServerRole,
   ServerRoleInput,
   UploadAttachmentBody,
+  UploadChannelFileChunkBody,
+  UploadChannelFileChunkParams,
   UploadServerBannerBody,
   UploadServerIconBody,
   User,
@@ -2992,6 +3002,780 @@ export const useUploadAttachment = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUploadAttachmentMutationOptions(options));
     }
+
+export const getListChannelFilesUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files`
+}
+
+/**
+ * @summary List files in an accessible media channel
+ */
+export const listChannelFiles = async (channelId: number, options?: RequestInit): Promise<ChannelFileList> => {
+
+  return customFetch<ChannelFileList>(getListChannelFilesUrl(channelId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChannelFilesQueryKey = (channelId: number,) => {
+    return [
+    `/api/channels/${channelId}/files`
+    ] as const;
+    }
+
+
+export const getListChannelFilesQueryOptions = <TData = Awaited<ReturnType<typeof listChannelFiles>>, TError = ErrorType<void>>(channelId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChannelFilesQueryKey(channelId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChannelFiles>>> = ({ signal }) => listChannelFiles(channelId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChannelFiles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChannelFilesQueryResult = NonNullable<Awaited<ReturnType<typeof listChannelFiles>>>
+export type ListChannelFilesQueryError = ErrorType<void>
+
+
+/**
+ * @summary List files in an accessible media channel
+ */
+
+export function useListChannelFiles<TData = Awaited<ReturnType<typeof listChannelFiles>>, TError = ErrorType<void>>(
+ channelId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChannelFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChannelFilesQueryOptions(channelId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateChannelFileUploadUrl = (channelId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/uploads`
+}
+
+/**
+ * @summary Create a resumable upload session
+ */
+export const createChannelFileUpload = async (channelId: number,
+    channelFileUploadInput: ChannelFileUploadInput, options?: RequestInit): Promise<ChannelFileUploadSession> => {
+
+  return customFetch<ChannelFileUploadSession>(getCreateChannelFileUploadUrl(channelId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(channelFileUploadInput)
+  }
+);}
+
+
+
+
+
+export const getCreateChannelFileUploadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChannelFileUpload>>, TError,{channelId: number;data: BodyType<ChannelFileUploadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChannelFileUpload>>, TError,{channelId: number;data: BodyType<ChannelFileUploadInput>}, TContext> => {
+
+const mutationKey = ['createChannelFileUpload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChannelFileUpload>>, {channelId: number;data: BodyType<ChannelFileUploadInput>}> = (props) => {
+          const {channelId,data} = props ?? {};
+
+          return  createChannelFileUpload(channelId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateChannelFileUploadMutationResult = NonNullable<Awaited<ReturnType<typeof createChannelFileUpload>>>
+    export type CreateChannelFileUploadMutationBody = BodyType<ChannelFileUploadInput>
+    export type CreateChannelFileUploadMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a resumable upload session
+ */
+export const useCreateChannelFileUpload = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChannelFileUpload>>, TError,{channelId: number;data: BodyType<ChannelFileUploadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createChannelFileUpload>>,
+        TError,
+        {channelId: number;data: BodyType<ChannelFileUploadInput>},
+        TContext
+      > => {
+      return useMutation(getCreateChannelFileUploadMutationOptions(options));
+    }
+
+export const getUploadChannelFileChunkUrl = (channelId: number,
+    uploadId: string,
+    params: UploadChannelFileChunkParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/channels/${channelId}/files/uploads/${uploadId}/chunks?${stringifiedParams}` : `/api/channels/${channelId}/files/uploads/${uploadId}/chunks`
+}
+
+/**
+ * @summary Upload one 4 MiB chunk at its declared byte offset
+ */
+export const uploadChannelFileChunk = async (channelId: number,
+    uploadId: string,
+    uploadChannelFileChunkBody: UploadChannelFileChunkBody,
+    params: UploadChannelFileChunkParams, options?: RequestInit): Promise<ChannelFileUploadProgress> => {
+    const formData = new FormData();
+formData.append(`chunk`, uploadChannelFileChunkBody.chunk);
+
+  return customFetch<ChannelFileUploadProgress>(getUploadChannelFileChunkUrl(channelId,uploadId,params),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getUploadChannelFileChunkMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadChannelFileChunk>>, TError,{channelId: number;uploadId: string;data: BodyType<UploadChannelFileChunkBody>;params: UploadChannelFileChunkParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadChannelFileChunk>>, TError,{channelId: number;uploadId: string;data: BodyType<UploadChannelFileChunkBody>;params: UploadChannelFileChunkParams}, TContext> => {
+
+const mutationKey = ['uploadChannelFileChunk'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadChannelFileChunk>>, {channelId: number;uploadId: string;data: BodyType<UploadChannelFileChunkBody>;params: UploadChannelFileChunkParams}> = (props) => {
+          const {channelId,uploadId,data,params} = props ?? {};
+
+          return  uploadChannelFileChunk(channelId,uploadId,data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadChannelFileChunkMutationResult = NonNullable<Awaited<ReturnType<typeof uploadChannelFileChunk>>>
+    export type UploadChannelFileChunkMutationBody = BodyType<UploadChannelFileChunkBody>
+    export type UploadChannelFileChunkMutationError = ErrorType<void>
+
+    /**
+ * @summary Upload one 4 MiB chunk at its declared byte offset
+ */
+export const useUploadChannelFileChunk = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadChannelFileChunk>>, TError,{channelId: number;uploadId: string;data: BodyType<UploadChannelFileChunkBody>;params: UploadChannelFileChunkParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadChannelFileChunk>>,
+        TError,
+        {channelId: number;uploadId: string;data: BodyType<UploadChannelFileChunkBody>;params: UploadChannelFileChunkParams},
+        TContext
+      > => {
+      return useMutation(getUploadChannelFileChunkMutationOptions(options));
+    }
+
+export const getFinishChannelFileUploadUrl = (channelId: number,
+    uploadId: string,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/uploads/${uploadId}/finish`
+}
+
+/**
+ * @summary Validate and finalize a complete upload
+ */
+export const finishChannelFileUpload = async (channelId: number,
+    uploadId: string, options?: RequestInit): Promise<ChannelFile> => {
+
+  return customFetch<ChannelFile>(getFinishChannelFileUploadUrl(channelId,uploadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getFinishChannelFileUploadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finishChannelFileUpload>>, TError,{channelId: number;uploadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof finishChannelFileUpload>>, TError,{channelId: number;uploadId: string}, TContext> => {
+
+const mutationKey = ['finishChannelFileUpload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof finishChannelFileUpload>>, {channelId: number;uploadId: string}> = (props) => {
+          const {channelId,uploadId} = props ?? {};
+
+          return  finishChannelFileUpload(channelId,uploadId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FinishChannelFileUploadMutationResult = NonNullable<Awaited<ReturnType<typeof finishChannelFileUpload>>>
+
+    export type FinishChannelFileUploadMutationError = ErrorType<void>
+
+    /**
+ * @summary Validate and finalize a complete upload
+ */
+export const useFinishChannelFileUpload = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finishChannelFileUpload>>, TError,{channelId: number;uploadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof finishChannelFileUpload>>,
+        TError,
+        {channelId: number;uploadId: string},
+        TContext
+      > => {
+      return useMutation(getFinishChannelFileUploadMutationOptions(options));
+    }
+
+export const getGetChannelFileUploadStatusUrl = (channelId: number,
+    uploadId: string,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/uploads/${uploadId}`
+}
+
+/**
+ * @summary Get authoritative resumable upload progress
+ */
+export const getChannelFileUploadStatus = async (channelId: number,
+    uploadId: string, options?: RequestInit): Promise<ChannelFileUploadStatus> => {
+
+  return customFetch<ChannelFileUploadStatus>(getGetChannelFileUploadStatusUrl(channelId,uploadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelFileUploadStatusQueryKey = (channelId: number,
+    uploadId: string,) => {
+    return [
+    `/api/channels/${channelId}/files/uploads/${uploadId}`
+    ] as const;
+    }
+
+
+export const getGetChannelFileUploadStatusQueryOptions = <TData = Awaited<ReturnType<typeof getChannelFileUploadStatus>>, TError = ErrorType<void>>(channelId: number,
+    uploadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelFileUploadStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelFileUploadStatusQueryKey(channelId,uploadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelFileUploadStatus>>> = ({ signal }) => getChannelFileUploadStatus(channelId,uploadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined && uploadId !== null && uploadId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelFileUploadStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelFileUploadStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelFileUploadStatus>>>
+export type GetChannelFileUploadStatusQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get authoritative resumable upload progress
+ */
+
+export function useGetChannelFileUploadStatus<TData = Awaited<ReturnType<typeof getChannelFileUploadStatus>>, TError = ErrorType<void>>(
+ channelId: number,
+    uploadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelFileUploadStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelFileUploadStatusQueryOptions(channelId,uploadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAbortChannelFileUploadUrl = (channelId: number,
+    uploadId: string,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/uploads/${uploadId}`
+}
+
+/**
+ * @summary Abort and remove a resumable upload
+ */
+export const abortChannelFileUpload = async (channelId: number,
+    uploadId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getAbortChannelFileUploadUrl(channelId,uploadId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getAbortChannelFileUploadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof abortChannelFileUpload>>, TError,{channelId: number;uploadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof abortChannelFileUpload>>, TError,{channelId: number;uploadId: string}, TContext> => {
+
+const mutationKey = ['abortChannelFileUpload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof abortChannelFileUpload>>, {channelId: number;uploadId: string}> = (props) => {
+          const {channelId,uploadId} = props ?? {};
+
+          return  abortChannelFileUpload(channelId,uploadId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AbortChannelFileUploadMutationResult = NonNullable<Awaited<ReturnType<typeof abortChannelFileUpload>>>
+
+    export type AbortChannelFileUploadMutationError = ErrorType<void>
+
+    /**
+ * @summary Abort and remove a resumable upload
+ */
+export const useAbortChannelFileUpload = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof abortChannelFileUpload>>, TError,{channelId: number;uploadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof abortChannelFileUpload>>,
+        TError,
+        {channelId: number;uploadId: string},
+        TContext
+      > => {
+      return useMutation(getAbortChannelFileUploadMutationOptions(options));
+    }
+
+export const getDownloadChannelFileUrl = (channelId: number,
+    fileId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/${fileId}/download`
+}
+
+/**
+ * @summary Download a private channel file
+ */
+export const downloadChannelFile = async (channelId: number,
+    fileId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDownloadChannelFileUrl(channelId,fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadChannelFileQueryKey = (channelId: number,
+    fileId: number,) => {
+    return [
+    `/api/channels/${channelId}/files/${fileId}/download`
+    ] as const;
+    }
+
+
+export const getDownloadChannelFileQueryOptions = <TData = Awaited<ReturnType<typeof downloadChannelFile>>, TError = ErrorType<void>>(channelId: number,
+    fileId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadChannelFile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadChannelFileQueryKey(channelId,fileId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadChannelFile>>> = ({ signal }) => downloadChannelFile(channelId,fileId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined && fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadChannelFile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DownloadChannelFileQueryResult = NonNullable<Awaited<ReturnType<typeof downloadChannelFile>>>
+export type DownloadChannelFileQueryError = ErrorType<void>
+
+
+/**
+ * @summary Download a private channel file
+ */
+
+export function useDownloadChannelFile<TData = Awaited<ReturnType<typeof downloadChannelFile>>, TError = ErrorType<void>>(
+ channelId: number,
+    fileId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadChannelFile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDownloadChannelFileQueryOptions(channelId,fileId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteChannelFileUrl = (channelId: number,
+    fileId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/${fileId}`
+}
+
+/**
+ * @summary Delete a file as its uploader or a server administrator
+ */
+export const deleteChannelFile = async (channelId: number,
+    fileId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteChannelFileUrl(channelId,fileId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteChannelFileMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChannelFile>>, TError,{channelId: number;fileId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChannelFile>>, TError,{channelId: number;fileId: number}, TContext> => {
+
+const mutationKey = ['deleteChannelFile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChannelFile>>, {channelId: number;fileId: number}> = (props) => {
+          const {channelId,fileId} = props ?? {};
+
+          return  deleteChannelFile(channelId,fileId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChannelFileMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChannelFile>>>
+
+    export type DeleteChannelFileMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a file as its uploader or a server administrator
+ */
+export const useDeleteChannelFile = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChannelFile>>, TError,{channelId: number;fileId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChannelFile>>,
+        TError,
+        {channelId: number;fileId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteChannelFileMutationOptions(options));
+    }
+
+export const getVerifyChannelFileUrl = (channelId: number,
+    fileId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/${fileId}/verify`
+}
+
+/**
+ * Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited.
+ * @summary Explicitly submit a file to VirusTotal after user consent
+ */
+export const verifyChannelFile = async (channelId: number,
+    fileId: number,
+    channelFileVerifyInput: ChannelFileVerifyInput, options?: RequestInit): Promise<ChannelFileScan> => {
+
+  return customFetch<ChannelFileScan>(getVerifyChannelFileUrl(channelId,fileId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(channelFileVerifyInput)
+  }
+);}
+
+
+
+
+
+export const getVerifyChannelFileMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyChannelFile>>, TError,{channelId: number;fileId: number;data: BodyType<ChannelFileVerifyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyChannelFile>>, TError,{channelId: number;fileId: number;data: BodyType<ChannelFileVerifyInput>}, TContext> => {
+
+const mutationKey = ['verifyChannelFile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyChannelFile>>, {channelId: number;fileId: number;data: BodyType<ChannelFileVerifyInput>}> = (props) => {
+          const {channelId,fileId,data} = props ?? {};
+
+          return  verifyChannelFile(channelId,fileId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyChannelFileMutationResult = NonNullable<Awaited<ReturnType<typeof verifyChannelFile>>>
+    export type VerifyChannelFileMutationBody = BodyType<ChannelFileVerifyInput>
+    export type VerifyChannelFileMutationError = ErrorType<void>
+
+    /**
+ * @summary Explicitly submit a file to VirusTotal after user consent
+ */
+export const useVerifyChannelFile = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyChannelFile>>, TError,{channelId: number;fileId: number;data: BodyType<ChannelFileVerifyInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyChannelFile>>,
+        TError,
+        {channelId: number;fileId: number;data: BodyType<ChannelFileVerifyInput>},
+        TContext
+      > => {
+      return useMutation(getVerifyChannelFileMutationOptions(options));
+    }
+
+export const getGetChannelFileScanUrl = (channelId: number,
+    fileId: number,) => {
+
+
+
+
+  return `/api/channels/${channelId}/files/${fileId}/scan`
+}
+
+/**
+ * @summary Get current VirusTotal scan state
+ */
+export const getChannelFileScan = async (channelId: number,
+    fileId: number, options?: RequestInit): Promise<ChannelFileScan> => {
+
+  return customFetch<ChannelFileScan>(getGetChannelFileScanUrl(channelId,fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChannelFileScanQueryKey = (channelId: number,
+    fileId: number,) => {
+    return [
+    `/api/channels/${channelId}/files/${fileId}/scan`
+    ] as const;
+    }
+
+
+export const getGetChannelFileScanQueryOptions = <TData = Awaited<ReturnType<typeof getChannelFileScan>>, TError = ErrorType<void>>(channelId: number,
+    fileId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelFileScan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChannelFileScanQueryKey(channelId,fileId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChannelFileScan>>> = ({ signal }) => getChannelFileScan(channelId,fileId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: channelId !== null && channelId !== undefined && fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChannelFileScan>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChannelFileScanQueryResult = NonNullable<Awaited<ReturnType<typeof getChannelFileScan>>>
+export type GetChannelFileScanQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get current VirusTotal scan state
+ */
+
+export function useGetChannelFileScan<TData = Awaited<ReturnType<typeof getChannelFileScan>>, TError = ErrorType<void>>(
+ channelId: number,
+    fileId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChannelFileScan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChannelFileScanQueryOptions(channelId,fileId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getToggleReactionUrl = (messageId: number,) => {
 

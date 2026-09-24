@@ -43,6 +43,20 @@
       "when": 1790228037935,
       "tag": "0005_stiff_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790230380255,
+      "tag": "0006_sticky_madame_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790231273843,
+      "tag": "0007_natural_salo",
+      "breakpoints": true
     }
   ]
 }

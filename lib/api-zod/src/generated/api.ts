@@ -1169,6 +1169,268 @@ export const UploadAttachmentResponse = zod.object({
 
 
 /**
+ * @summary List files in an accessible media channel
+ */
+export const ListChannelFilesParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const ListChannelFilesResponse = zod.object({
+  "files": zod.array(zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "filename": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "sha256": zod.string(),
+  "uploadedBy": zod.number(),
+  "uploaderName": zod.string().optional(),
+  "createdAt": zod.coerce.date(),
+  "downloadPath": zod.string().describe('Authenticated API path'),
+  "scan": zod.object({
+  "status": zod.enum(['unavailable', 'not_started', 'queued', 'in_progress', 'completed', 'error']),
+  "sha256": zod.string(),
+  "harmless": zod.number().nullable(),
+  "undetected": zod.number().nullable(),
+  "suspicious": zod.number().nullable(),
+  "malicious": zod.number().nullable(),
+  "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
+  "submittedBy": zod.number().nullable(),
+  "submittedAt": zod.coerce.date().nullable(),
+  "error": zod.string().nullish(),
+  "completedAt": zod.coerce.date().nullish()
+}).optional()
+})),
+  "maxBytes": zod.number(),
+  "scannerAvailable": zod.boolean()
+})
+
+
+/**
+ * @summary Create a resumable upload session
+ */
+export const CreateChannelFileUploadParams = zod.object({
+  "channelId": zod.coerce.number()
+})
+
+export const createChannelFileUploadBodyFilenameMax = 255;
+
+
+
+
+export const CreateChannelFileUploadBody = zod.object({
+  "filename": zod.string().min(1).max(createChannelFileUploadBodyFilenameMax),
+  "sizeBytes": zod.number().min(1)
+})
+
+export const createChannelFileUploadResponseUploadIdMin = 36;
+export const createChannelFileUploadResponseUploadIdMax = 36;
+
+
+
+export const CreateChannelFileUploadResponse = zod.object({
+  "uploadId": zod.string().min(createChannelFileUploadResponseUploadIdMin).max(createChannelFileUploadResponseUploadIdMax),
+  "chunkSize": zod.number(),
+  "maxBytes": zod.number(),
+  "offset": zod.number(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Upload one 4 MiB chunk at its declared byte offset
+ */
+export const uploadChannelFileChunkPathUploadIdMin = 36;
+export const uploadChannelFileChunkPathUploadIdMax = 36;
+
+
+
+export const UploadChannelFileChunkParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "uploadId": zod.coerce.string().min(uploadChannelFileChunkPathUploadIdMin).max(uploadChannelFileChunkPathUploadIdMax)
+})
+
+export const uploadChannelFileChunkQueryOffsetMin = 0;
+
+
+
+export const UploadChannelFileChunkQueryParams = zod.object({
+  "offset": zod.coerce.number().min(uploadChannelFileChunkQueryOffsetMin)
+})
+
+export const UploadChannelFileChunkBody = zod.object({
+  "chunk": zod.any()
+})
+
+export const uploadChannelFileChunkResponseUploadIdMin = 36;
+export const uploadChannelFileChunkResponseUploadIdMax = 36;
+
+
+
+export const UploadChannelFileChunkResponse = zod.object({
+  "uploadId": zod.string().min(uploadChannelFileChunkResponseUploadIdMin).max(uploadChannelFileChunkResponseUploadIdMax),
+  "offset": zod.number(),
+  "complete": zod.boolean()
+})
+
+
+/**
+ * @summary Validate and finalize a complete upload
+ */
+export const finishChannelFileUploadPathUploadIdMin = 36;
+export const finishChannelFileUploadPathUploadIdMax = 36;
+
+
+
+export const FinishChannelFileUploadParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "uploadId": zod.coerce.string().min(finishChannelFileUploadPathUploadIdMin).max(finishChannelFileUploadPathUploadIdMax)
+})
+
+export const FinishChannelFileUploadResponse = zod.object({
+  "id": zod.number(),
+  "channelId": zod.number(),
+  "filename": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "sha256": zod.string(),
+  "uploadedBy": zod.number(),
+  "uploaderName": zod.string().optional(),
+  "createdAt": zod.coerce.date(),
+  "downloadPath": zod.string().describe('Authenticated API path'),
+  "scan": zod.object({
+  "status": zod.enum(['unavailable', 'not_started', 'queued', 'in_progress', 'completed', 'error']),
+  "sha256": zod.string(),
+  "harmless": zod.number().nullable(),
+  "undetected": zod.number().nullable(),
+  "suspicious": zod.number().nullable(),
+  "malicious": zod.number().nullable(),
+  "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
+  "submittedBy": zod.number().nullable(),
+  "submittedAt": zod.coerce.date().nullable(),
+  "error": zod.string().nullish(),
+  "completedAt": zod.coerce.date().nullish()
+}).optional()
+})
+
+
+/**
+ * @summary Get authoritative resumable upload progress
+ */
+export const getChannelFileUploadStatusPathUploadIdMin = 36;
+export const getChannelFileUploadStatusPathUploadIdMax = 36;
+
+
+
+export const GetChannelFileUploadStatusParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "uploadId": zod.coerce.string().min(getChannelFileUploadStatusPathUploadIdMin).max(getChannelFileUploadStatusPathUploadIdMax)
+})
+
+export const getChannelFileUploadStatusResponseUploadIdMin = 36;
+export const getChannelFileUploadStatusResponseUploadIdMax = 36;
+
+
+
+export const GetChannelFileUploadStatusResponse = zod.object({
+  "uploadId": zod.string().min(getChannelFileUploadStatusResponseUploadIdMin).max(getChannelFileUploadStatusResponseUploadIdMax),
+  "offset": zod.number(),
+  "expectedBytes": zod.number(),
+  "chunkSize": zod.number(),
+  "completedFileId": zod.number().nullish()
+})
+
+
+/**
+ * @summary Abort and remove a resumable upload
+ */
+export const abortChannelFileUploadPathUploadIdMin = 36;
+export const abortChannelFileUploadPathUploadIdMax = 36;
+
+
+
+export const AbortChannelFileUploadParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "uploadId": zod.coerce.string().min(abortChannelFileUploadPathUploadIdMin).max(abortChannelFileUploadPathUploadIdMax)
+})
+
+export const AbortChannelFileUploadResponse = zod.void()
+
+
+/**
+ * @summary Download a private channel file
+ */
+export const DownloadChannelFileParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "fileId": zod.coerce.number()
+})
+
+export const DownloadChannelFileResponse = zod.unknown()
+
+
+/**
+ * @summary Delete a file as its uploader or a server administrator
+ */
+export const DeleteChannelFileParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "fileId": zod.coerce.number()
+})
+
+export const DeleteChannelFileResponse = zod.void()
+
+
+/**
+ * Requires {consent:true}. No automatic external submissions occur. VirusTotal public API use is noncommercial and rate limited.
+ * @summary Explicitly submit a file to VirusTotal after user consent
+ */
+export const VerifyChannelFileParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "fileId": zod.coerce.number()
+})
+
+export const VerifyChannelFileBody = zod.object({
+  "consent": zod.boolean()
+})
+
+export const VerifyChannelFileResponse = zod.object({
+  "status": zod.enum(['unavailable', 'not_started', 'queued', 'in_progress', 'completed', 'error']),
+  "sha256": zod.string(),
+  "harmless": zod.number().nullable(),
+  "undetected": zod.number().nullable(),
+  "suspicious": zod.number().nullable(),
+  "malicious": zod.number().nullable(),
+  "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
+  "submittedBy": zod.number().nullable(),
+  "submittedAt": zod.coerce.date().nullable(),
+  "error": zod.string().nullish(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Get current VirusTotal scan state
+ */
+export const GetChannelFileScanParams = zod.object({
+  "channelId": zod.coerce.number(),
+  "fileId": zod.coerce.number()
+})
+
+export const GetChannelFileScanResponse = zod.object({
+  "status": zod.enum(['unavailable', 'not_started', 'queued', 'in_progress', 'completed', 'error']),
+  "sha256": zod.string(),
+  "harmless": zod.number().nullable(),
+  "undetected": zod.number().nullable(),
+  "suspicious": zod.number().nullable(),
+  "malicious": zod.number().nullable(),
+  "source": zod.union([zod.literal('local'),zod.literal('hash'),zod.literal('upload'),zod.literal(null)]).nullable(),
+  "submittedBy": zod.number().nullable(),
+  "submittedAt": zod.coerce.date().nullable(),
+  "error": zod.string().nullish(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
  * Requires channel read access. Accepts exactly one emoji sequence (including common modifiers, ZWJ sequences, flags, and keycaps); at most 20 distinct emoji reactions may exist per message. Returns full grouped state. Broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
  * @summary Toggle a single Unicode emoji reaction on a channel message
  */

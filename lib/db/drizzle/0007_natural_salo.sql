@@ -1,0 +1,2 @@
+ALTER TABLE "channel_file_uploads" ADD COLUMN "completed_file_id" integer;--> statement-breakpoint
+ALTER TABLE "channel_file_uploads" ADD CONSTRAINT "channel_file_uploads_completed_file_id_fkey" FOREIGN KEY ("completed_file_id") REFERENCES "public"."channel_files"("id") ON DELETE cascade ON UPDATE no action;

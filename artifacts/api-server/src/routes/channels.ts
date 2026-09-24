@@ -9,6 +9,8 @@ import {
   serverMembersTable,
   serversTable,
   usersTable,
+  channelFilesTable,
+  channelFileUploadsTable,
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { encryptMessage } from "../lib/crypto";
@@ -22,6 +24,7 @@ import {
 } from "../lib/permissions";
 import { fetchFirstLinkPreview } from "../lib/link-preview";
 import { groupReactions } from "../lib/reactions";
+import { removePrivateFile } from "../lib/channel-file-storage";
 
 const router: IRouter = Router();
 
@@ -207,6 +210,12 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
   if (!isAllowed) {
     res.status(403).json({ error: "No tienes permiso para eliminar canales" }); return;
   }
+
+  const [privateFiles, uploadSessions] = await Promise.all([
+    db.select({ storageKey: channelFilesTable.storageKey }).from(channelFilesTable).where(eq(channelFilesTable.channelId, channelId)),
+    db.select({ storageKey: channelFileUploadsTable.storageKey }).from(channelFileUploadsTable).where(eq(channelFileUploadsTable.channelId, channelId)),
+  ]);
+  for (const file of [...privateFiles, ...uploadSessions]) await removePrivateFile(file.storageKey);
 
   await db.delete(messageAttachmentsTable).where(
     inArray(messageAttachmentsTable.messageId,

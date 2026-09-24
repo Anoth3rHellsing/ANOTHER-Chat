@@ -19,3 +19,4 @@
 - [Browser audio test limits](browser-audio-test-limits.md) — Chromium fake mic may ignore native noise/gain options; WebRTC meters need a playing audio sink
 - [RNNoise worklet readiness](rnnoise-worklet-readiness.md) — the bundled processor has no ready message while WASM initializes asynchronously
 - [Temporary PostgreSQL clusters](temporary-postgres-clusters.md) — isolated tests need a writable Unix-socket directory even when clients use TCP
+- [Multipart chunk boundary tests](multipart-chunk-boundary-tests.md) — exercise exact chunk-size boundaries over HTTP; seeded fixtures miss parser-level rejection
