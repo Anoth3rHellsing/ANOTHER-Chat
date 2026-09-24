@@ -767,14 +767,19 @@ export const UploadAttachmentResponse = zod.object({
 
 
 /**
- * @summary Toggle an emoji reaction on a message (adds if missing, removes if present)
+ * Requires channel read access. Accepts exactly one emoji sequence (including common modifiers, ZWJ sequences, flags, and keycaps); at most 20 distinct emoji reactions may exist per message. Returns full grouped state. Broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
+ * @summary Toggle a single Unicode emoji reaction on a channel message
  */
 export const ToggleReactionParams = zod.object({
   "messageId": zod.coerce.number()
 })
 
+export const toggleReactionBodyEmojiMax = 64;
+
+
+
 export const ToggleReactionBody = zod.object({
-  "emoji": zod.string()
+  "emoji": zod.string().min(1).max(toggleReactionBodyEmojiMax).describe('Exactly one bounded Unicode emoji grapheme (for example a modifier, ZWJ composition, flag, or keycap sequence).')
 })
 
 export const ToggleReactionResponseItem = zod.object({
@@ -786,7 +791,8 @@ export const ToggleReactionResponse = zod.array(ToggleReactionResponseItem)
 
 
 /**
- * @summary Remove an emoji reaction from a message
+ * Requires channel read access. The decoded emoji path parameter must be exactly one valid Unicode emoji sequence. Returns full grouped state and broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
+ * @summary Remove an emoji reaction from a channel message
  */
 export const DeleteReactionParams = zod.object({
   "messageId": zod.coerce.number(),
@@ -799,6 +805,160 @@ export const DeleteReactionResponseItem = zod.object({
   "userIds": zod.array(zod.number())
 })
 export const DeleteReactionResponse = zod.array(DeleteReactionResponseItem)
+
+
+/**
+ * Only the sender and recipient may react. Accepts exactly one valid Unicode emoji sequence and at most 20 distinct emojis may exist per message. Returns full grouped state and broadcasts dm_reaction_update with data { messageId, reactions } to every WebSocket connection of both participants.
+ * @summary Toggle an emoji reaction on a direct message
+ */
+export const ToggleDmReactionParams = zod.object({
+  "dmId": zod.coerce.number()
+})
+
+export const toggleDmReactionBodyEmojiMax = 64;
+
+
+
+export const ToggleDmReactionBody = zod.object({
+  "emoji": zod.string().min(1).max(toggleDmReactionBodyEmojiMax).describe('Exactly one bounded Unicode emoji grapheme (for example a modifier, ZWJ composition, flag, or keycap sequence).')
+})
+
+export const ToggleDmReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})
+export const ToggleDmReactionResponse = zod.array(ToggleDmReactionResponseItem)
+
+
+/**
+ * Only the sender and recipient may remove reactions. The decoded emoji must be exactly one valid Unicode emoji sequence. Returns full grouped state and broadcasts dm_reaction_update with data { messageId, reactions } to every WebSocket connection of both participants.
+ * @summary Remove the caller's emoji reaction from a direct message
+ */
+export const DeleteDmReactionParams = zod.object({
+  "dmId": zod.coerce.number(),
+  "emoji": zod.coerce.string()
+})
+
+export const DeleteDmReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})
+export const DeleteDmReactionResponse = zod.array(DeleteDmReactionResponseItem)
+
+
+/**
+ * Requires current membership in the group. Returns up to 50 non-deleted messages, oldest first, with grouped reactions on each message.
+ * @summary Get the latest group DM messages with their grouped reactions
+ */
+export const GetDmGroupMessagesParams = zod.object({
+  "groupId": zod.coerce.number()
+})
+
+export const GetDmGroupMessagesQueryParams = zod.object({
+  "before": zod.coerce.number().optional().describe('Return messages with IDs older than this cursor.')
+})
+
+export const GetDmGroupMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "groupId": zod.number(),
+  "userId": zod.number(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "author": zod.object({
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).describe('Full current grouped reaction state.')
+})
+export const GetDmGroupMessagesResponse = zod.array(GetDmGroupMessagesResponseItem)
+
+
+/**
+ * Requires current membership. Newly sent messages have an empty reactions array.
+ * @summary Send a message to a DM group
+ */
+export const SendDmGroupMessageParams = zod.object({
+  "groupId": zod.coerce.number()
+})
+
+
+
+
+export const SendDmGroupMessageBody = zod.object({
+  "content": zod.string().min(1)
+})
+
+export const SendDmGroupMessageResponse = zod.object({
+  "id": zod.number(),
+  "groupId": zod.number(),
+  "userId": zod.number(),
+  "content": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "author": zod.object({
+  "username": zod.string(),
+  "displayName": zod.string(),
+  "avatarUrl": zod.string().nullable()
+}),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).describe('Full current grouped reaction state.')
+})
+
+
+/**
+ * Requires current group membership; the message must belong to the path group and not be deleted. Accepts exactly one bounded Unicode emoji sequence using the shared emoji validator. At most 20 distinct emojis may exist per message. Returns full grouped state and broadcasts dm_group:reaction_update with data { groupId, messageId, reactions } to every current group member's WebSocket connections using user-targeted delivery.
+ * @summary Toggle the caller's emoji reaction on a group DM message
+ */
+export const ToggleDmGroupReactionParams = zod.object({
+  "groupId": zod.coerce.number(),
+  "messageId": zod.coerce.number()
+})
+
+export const toggleDmGroupReactionBodyEmojiMax = 64;
+
+
+
+export const ToggleDmGroupReactionBody = zod.object({
+  "emoji": zod.string().min(1).max(toggleDmGroupReactionBodyEmojiMax).describe('Exactly one bounded Unicode emoji grapheme (for example a modifier, ZWJ composition, flag, or keycap sequence).')
+})
+
+export const ToggleDmGroupReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})
+export const ToggleDmGroupReactionResponse = zod.array(ToggleDmGroupReactionResponseItem)
+
+
+/**
+ * Requires current group membership; the message must belong to the path group and not be deleted. The decoded path emoji must be exactly one bounded Unicode emoji sequence using the shared emoji validator. Returns full grouped state and broadcasts dm_group:reaction_update with data { groupId, messageId, reactions } to every current group member's WebSocket connections using user-targeted delivery.
+ * @summary Remove the caller's emoji reaction from a group DM message
+ */
+export const deleteDmGroupReactionPathEmojiMax = 64;
+
+
+
+export const DeleteDmGroupReactionParams = zod.object({
+  "groupId": zod.coerce.number(),
+  "messageId": zod.coerce.number(),
+  "emoji": zod.coerce.string().max(deleteDmGroupReactionPathEmojiMax)
+})
+
+export const DeleteDmGroupReactionResponseItem = zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})
+export const DeleteDmGroupReactionResponse = zod.array(DeleteDmGroupReactionResponseItem)
 
 
 /**
@@ -1122,7 +1282,12 @@ export const ListDmConversationsResponseItem = zod.object({
   "id": zod.number(),
   "authorDisplayName": zod.string(),
   "contentPreview": zod.string()
-}).nullish()
+}).nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).describe('Current grouped reactions; same MessageReaction shape as channel messages.')
 }).nullable(),
   "unreadCount": zod.number()
 })
@@ -1164,7 +1329,12 @@ export const GetDmHistoryResponseItem = zod.object({
   "id": zod.number(),
   "authorDisplayName": zod.string(),
   "contentPreview": zod.string()
-}).nullish()
+}).nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).describe('Current grouped reactions; same MessageReaction shape as channel messages.')
 })
 export const GetDmHistoryResponse = zod.array(GetDmHistoryResponseItem)
 
@@ -1213,7 +1383,12 @@ export const SendDmResponse = zod.object({
   "id": zod.number(),
   "authorDisplayName": zod.string(),
   "contentPreview": zod.string()
-}).nullish()
+}).nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).describe('Current grouped reactions; same MessageReaction shape as channel messages.')
 })
 
 
@@ -1262,7 +1437,12 @@ export const DeleteDmResponse = zod.object({
   "id": zod.number(),
   "authorDisplayName": zod.string(),
   "contentPreview": zod.string()
-}).nullish()
+}).nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.number(),
+  "userIds": zod.array(zod.number())
+})).describe('Current grouped reactions; same MessageReaction shape as channel messages.')
 })
 
 

@@ -1,10 +1,21 @@
 import { Router, type IRouter } from "express";
 import { eq, and, or, desc, gt, sql, inArray } from "drizzle-orm";
-import { db, directMessagesTable, dmReadCursorsTable, usersTable } from "@workspace/db";
+import {
+  db,
+  directMessagesTable,
+  dmReadCursorsTable,
+  dmReactionsTable,
+  usersTable,
+} from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { encryptMessage } from "../lib/crypto";
 import { decryptDirectMessage } from "../lib/message-crypto";
 import { logger } from "../lib/logger";
+import {
+  groupReactions,
+  isSingleEmoji,
+  MAX_DISTINCT_REACTIONS_PER_MESSAGE,
+} from "../lib/reactions";
 
 const router: IRouter = Router();
 
@@ -19,6 +30,7 @@ async function buildDmResponse(
   sender: typeof usersTable.$inferSelect | undefined,
   replyMsg?: typeof directMessagesTable.$inferSelect | null,
   replySender?: typeof usersTable.$inferSelect | null,
+  reactions: ReturnType<typeof groupReactions> = [],
 ) {
   let content = "[mensaje eliminado]";
   if (!msg.deletedAt) {
@@ -48,6 +60,7 @@ async function buildDmResponse(
     replyToId: msg.replyToId ?? null,
     deletedAt: msg.deletedAt?.toISOString() ?? null,
     createdAt: msg.createdAt.toISOString(),
+    reactions,
     sender: sender ? {
       id: sender.id,
       username: sender.username,
@@ -115,6 +128,19 @@ router.get("/dms", requireAuth, async (req, res): Promise<void> => {
     .from(dmReadCursorsTable)
     .where(and(eq(dmReadCursorsTable.userId, userId)));
   const cursorMap = new Map(cursors.map(c => [c.otherUserId, c.lastReadAt]));
+  const lastMessageIds = partnerOrder
+    .map(partnerId => lastMessageByPartner.get(partnerId)!.id);
+  const lastMessageReactionRows = await db.select({
+    emoji: dmReactionsTable.emoji,
+    userId: dmReactionsTable.userId,
+    messageId: dmReactionsTable.messageId,
+  }).from(dmReactionsTable).where(inArray(dmReactionsTable.messageId, lastMessageIds));
+  const lastMessageReactions = new Map<number, Array<{ emoji: string; userId: number }>>();
+  for (const row of lastMessageReactionRows) {
+    const rows = lastMessageReactions.get(row.messageId) ?? [];
+    rows.push({ emoji: row.emoji, userId: row.userId });
+    lastMessageReactions.set(row.messageId, rows);
+  }
 
   // Count unreads per partner
   const conversations = await Promise.all(
@@ -126,7 +152,13 @@ router.get("/dms", requireAuth, async (req, res): Promise<void> => {
 
       const lastMsg = lastMessageByPartner.get(partnerId)!;
       const sender = userMap.get(lastMsg.senderId);
-      const lastMessageObj = await buildDmResponse(lastMsg, sender);
+      const lastMessageObj = await buildDmResponse(
+        lastMsg,
+        sender,
+        undefined,
+        undefined,
+        groupReactions(lastMessageReactions.get(lastMsg.id) ?? []),
+      );
 
       return {
         otherUser: (() => {
@@ -192,16 +224,143 @@ router.get("/dms/:userId", requireAuth, async (req, res): Promise<void> => {
     ? await db.select().from(usersTable).where(inArray(usersTable.id, replySenderIds))
     : [];
   const replySenderMap = new Map(replySenders.map(u => [u.id, u]));
+  const reactionRows = msgs.length
+    ? await db.select({
+        emoji: dmReactionsTable.emoji,
+        userId: dmReactionsTable.userId,
+        messageId: dmReactionsTable.messageId,
+      }).from(dmReactionsTable).where(inArray(dmReactionsTable.messageId, msgs.map(m => m.id)))
+    : [];
+  const reactionsByMessage = new Map<number, Array<{ emoji: string; userId: number }>>();
+  for (const row of reactionRows) {
+    const rows = reactionsByMessage.get(row.messageId) ?? [];
+    rows.push({ emoji: row.emoji, userId: row.userId });
+    reactionsByMessage.set(row.messageId, rows);
+  }
 
   const result = await Promise.all(
     msgs.map(msg => {
       const replyMsg = msg.replyToId ? replyMap.get(msg.replyToId) : null;
       const replySender = replyMsg ? replySenderMap.get(replyMsg.senderId) : null;
-      return buildDmResponse(msg, senderMap.get(msg.senderId), replyMsg, replySender);
+      return buildDmResponse(
+        msg,
+        senderMap.get(msg.senderId),
+        replyMsg,
+        replySender,
+        groupReactions(reactionsByMessage.get(msg.id) ?? []),
+      );
     })
   );
 
   res.json(result);
+});
+
+// ─── POST /dms/messages/:dmId/reactions — toggle reaction ──────────────────────
+router.post("/dms/messages/:dmId/reactions", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const dmId = parseId(req.params.dmId);
+  const emoji = req.body?.emoji;
+  if (!Number.isInteger(dmId) || dmId < 1) {
+    res.status(400).json({ error: "ID de mensaje inválido" }); return;
+  }
+  if (!isSingleEmoji(emoji)) {
+    res.status(400).json({ error: "Emoji inválido" }); return;
+  }
+
+  const [msg] = await db.select().from(directMessagesTable).where(eq(directMessagesTable.id, dmId));
+  if (!msg || msg.deletedAt) { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  if (msg.senderId !== userId && msg.recipientId !== userId) {
+    res.status(403).json({ error: "Sin acceso a este mensaje" }); return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [lockedMessage] = await tx.select({
+      id: directMessagesTable.id,
+      deletedAt: directMessagesTable.deletedAt,
+    }).from(directMessagesTable)
+      .where(eq(directMessagesTable.id, dmId))
+      .for("update");
+    if (!lockedMessage || lockedMessage.deletedAt) return { status: "missing" as const };
+
+    const [existing] = await tx.select({ id: dmReactionsTable.id }).from(dmReactionsTable).where(and(
+      eq(dmReactionsTable.messageId, dmId),
+      eq(dmReactionsTable.userId, userId),
+      eq(dmReactionsTable.emoji, emoji),
+    ));
+    if (existing) {
+      await tx.delete(dmReactionsTable).where(eq(dmReactionsTable.id, existing.id));
+    } else {
+      const rows = await tx.select({ emoji: dmReactionsTable.emoji })
+        .from(dmReactionsTable).where(eq(dmReactionsTable.messageId, dmId));
+      if (!rows.some((row) => row.emoji === emoji)
+          && new Set(rows.map((row) => row.emoji)).size >= MAX_DISTINCT_REACTIONS_PER_MESSAGE) {
+        return { status: "limit" as const };
+      }
+      await tx.insert(dmReactionsTable).values({ messageId: dmId, userId, emoji })
+        .onConflictDoNothing({
+          target: [dmReactionsTable.messageId, dmReactionsTable.userId, dmReactionsTable.emoji],
+        });
+    }
+
+    const rows = await tx.select({ emoji: dmReactionsTable.emoji, userId: dmReactionsTable.userId })
+      .from(dmReactionsTable).where(eq(dmReactionsTable.messageId, dmId));
+    return { status: "ok" as const, reactions: groupReactions(rows) };
+  });
+  if (result.status === "missing") { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  if (result.status === "limit") {
+    res.status(400).json({ error: "El mensaje ya tiene el máximo de 20 emojis distintos" }); return;
+  }
+
+  const reactions = result.reactions;
+  const payload = { type: "dm_reaction_update", data: { messageId: dmId, reactions } };
+  const { broadcastToUser } = await import("../lib/websocket");
+  broadcastToUser(msg.senderId, payload);
+  broadcastToUser(msg.recipientId, payload);
+  res.json(reactions);
+});
+
+// ─── DELETE /dms/messages/:dmId/reactions/:emoji ───────────────────────────────
+router.delete("/dms/messages/:dmId/reactions/:emoji", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const dmId = parseId(req.params.dmId);
+  const emoji = Array.isArray(req.params.emoji) ? req.params.emoji[0] : req.params.emoji;
+  if (!Number.isInteger(dmId) || dmId < 1) {
+    res.status(400).json({ error: "ID de mensaje inválido" }); return;
+  }
+  if (!isSingleEmoji(emoji)) {
+    res.status(400).json({ error: "Emoji inválido" }); return;
+  }
+
+  const [msg] = await db.select().from(directMessagesTable).where(eq(directMessagesTable.id, dmId));
+  if (!msg || msg.deletedAt) { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  if (msg.senderId !== userId && msg.recipientId !== userId) {
+    res.status(403).json({ error: "Sin acceso a este mensaje" }); return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [lockedMessage] = await tx.select({
+      id: directMessagesTable.id,
+      deletedAt: directMessagesTable.deletedAt,
+    }).from(directMessagesTable)
+      .where(eq(directMessagesTable.id, dmId))
+      .for("update");
+    if (!lockedMessage || lockedMessage.deletedAt) return { status: "missing" as const };
+    await tx.delete(dmReactionsTable).where(and(
+      eq(dmReactionsTable.messageId, dmId),
+      eq(dmReactionsTable.userId, userId),
+      eq(dmReactionsTable.emoji, emoji),
+    ));
+    const rows = await tx.select({ emoji: dmReactionsTable.emoji, userId: dmReactionsTable.userId })
+      .from(dmReactionsTable).where(eq(dmReactionsTable.messageId, dmId));
+    return { status: "ok" as const, reactions: groupReactions(rows) };
+  });
+  if (result.status === "missing") { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  const reactions = result.reactions;
+  const payload = { type: "dm_reaction_update", data: { messageId: dmId, reactions } };
+  const { broadcastToUser } = await import("../lib/websocket");
+  broadcastToUser(msg.senderId, payload);
+  broadcastToUser(msg.recipientId, payload);
+  res.json(reactions);
 });
 
 // ─── POST /dms/:userId — send DM ─────────────────────────────────────────────

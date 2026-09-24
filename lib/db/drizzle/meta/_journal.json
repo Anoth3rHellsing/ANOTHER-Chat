@@ -15,6 +15,20 @@
       "when": 1789783307125,
       "tag": "0001_faithful_darwin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790212570288,
+      "tag": "0002_sparkling_tusk",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790213046135,
+      "tag": "0003_secret_madame_masque",
+      "breakpoints": true
     }
   ]
 }

@@ -7,5 +7,10 @@
  */
 
 export interface ReactionInput {
+  /**
+     * Exactly one bounded Unicode emoji grapheme (for example a modifier, ZWJ composition, flag, or keycap sequence).
+     * @minLength 1
+     * @maxLength 64
+     */
   emoji: string;
 }

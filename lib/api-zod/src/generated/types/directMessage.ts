@@ -5,6 +5,7 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
+import type { MessageReaction } from './messageReaction';
 import type { ReplyPreview } from './replyPreview';
 import type { UserProfile } from './userProfile';
 
@@ -20,4 +21,6 @@ export interface DirectMessage {
   createdAt: Date;
   sender: UserProfile;
   replyTo?: ReplyPreview | null;
+  /** Current grouped reactions; same MessageReaction shape as channel messages. */
+  reactions: MessageReaction[];
 }

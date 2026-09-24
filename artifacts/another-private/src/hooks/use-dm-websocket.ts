@@ -4,10 +4,12 @@ import {
   useRealtimeMessages,
   useRealtimeTransport,
 } from '@/providers/realtime-transport';
+import { updateDmReactions } from '@/lib/reactions';
 
 const DM_MESSAGE_TYPES = [
   'dm_message',
   'dm_message_delete',
+  'dm_reaction_update',
   'dm_typing:start',
   'dm_typing:stop',
 ] as const;
@@ -71,6 +73,10 @@ export function useDmWebSocket(activeDmUserId?: number | null) {
         queryClient.invalidateQueries({ predicate: query => query.queryKey[0] === '/api/dms' });
         break;
       }
+
+      case 'dm_reaction_update':
+        updateDmReactions(queryClient, payload.data.messageId, payload.data.reactions);
+        break;
 
       case 'dm_typing:start': {
         const { userId } = payload.data;

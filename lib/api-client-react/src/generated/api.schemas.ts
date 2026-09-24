@@ -234,6 +234,11 @@ export interface ReplyPreview {
 }
 
 export interface ReactionInput {
+  /**
+     * Exactly one bounded Unicode emoji grapheme (for example a modifier, ZWJ composition, flag, or keycap sequence).
+     * @minLength 1
+     * @maxLength 64
+     */
   emoji: string;
 }
 
@@ -425,6 +430,26 @@ export interface DirectMessage {
   createdAt: string;
   sender: UserProfile;
   replyTo?: ReplyPreview | null;
+  /** Current grouped reactions; same MessageReaction shape as channel messages. */
+  reactions: MessageReaction[];
+}
+
+export type GroupMessageAuthor = {
+  username: string;
+  displayName: string;
+  /** @nullable */
+  avatarUrl: string | null;
+};
+
+export interface GroupMessage {
+  id: number;
+  groupId: number;
+  userId: number;
+  content: string;
+  createdAt: string;
+  author: GroupMessageAuthor;
+  /** Full current grouped reaction state. */
+  reactions: MessageReaction[];
 }
 
 export interface DmConversation {
@@ -440,6 +465,11 @@ export interface DmInput {
      */
   content: string;
   replyToId?: number | null;
+}
+
+export interface GroupMessageInput {
+  /** @minLength 1 */
+  content: string;
 }
 
 export interface InviteInput {
@@ -467,5 +497,12 @@ limit?: number;
 
 export type UploadAttachmentBody = {
   file: Blob;
+};
+
+export type GetDmGroupMessagesParams = {
+/**
+ * Return messages with IDs older than this cursor.
+ */
+before?: number;
 };
 

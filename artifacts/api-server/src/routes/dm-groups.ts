@@ -2,6 +2,11 @@ import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { encryptMessage } from "../lib/crypto";
 import { decryptGroupMessage } from "../lib/message-crypto";
+import {
+  groupReactions,
+  isSingleEmoji,
+  MAX_DISTINCT_REACTIONS_PER_MESSAGE,
+} from "../lib/reactions";
 
 const router: IRouter = Router();
 
@@ -9,6 +14,22 @@ async function rawQuery(text: string, values?: any[]) {
   const { pool } = await import("@workspace/db");
   const client = await pool.connect();
   try { return await client.query(text, values); } finally { client.release(); }
+}
+
+async function rawTransaction<T>(work: (client: any) => Promise<T>): Promise<T> {
+    const { pool } = await import("@workspace/db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await work(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
 }
 
 // GET /dm-groups — list my DM groups
@@ -114,6 +135,20 @@ router.get("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promis
     q += ` ORDER BY m.created_at DESC LIMIT 50`;
 
     const result = await rawQuery(q, params);
+    const reactionRows = result.rows.length
+      ? await rawQuery(
+        `SELECT message_id, emoji, user_id FROM dm_group_reactions WHERE message_id = ANY($1::int[])`,
+        [result.rows.map((r: any) => Number(r.id))],
+      )
+      : { rows: [] };
+    const reactionsByMessage = new Map<number, Array<{ emoji: string; userId: number }>>();
+    for (const row of reactionRows.rows) {
+      const messageId = Number(row.message_id);
+      const rows = reactionsByMessage.get(messageId) ?? [];
+      rows.push({ emoji: row.emoji, userId: Number(row.user_id) });
+      reactionsByMessage.set(messageId, rows);
+    }
+
     const messages = await Promise.all(result.rows.reverse().map(async r => {
       let content = "[mensaje cifrado]";
       try {
@@ -126,9 +161,127 @@ router.get("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promis
         content,
         createdAt: r.created_at,
         author: { username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url },
+        reactions: groupReactions(reactionsByMessage.get(Number(r.id)) ?? []),
       };
     }));
     res.json(messages);
+});
+
+// POST /dm-groups/:groupId/messages/:messageId/reactions — toggle reaction
+router.post("/dm-groups/:groupId/messages/:messageId/reactions", requireAuth, async (req, res): Promise<void> => {
+    const userId = req.session.userId!;
+    const groupId = parseInt(req.params.groupId as string, 10);
+    const messageId = parseInt(req.params.messageId as string, 10);
+    const emoji = req.body?.emoji;
+    if (!Number.isInteger(groupId) || groupId < 1 || !Number.isInteger(messageId) || messageId < 1) {
+      res.status(400).json({ error: "ID inválido" }); return;
+    }
+    if (!isSingleEmoji(emoji)) { res.status(400).json({ error: "Emoji inválido" }); return; }
+
+    const result = await rawTransaction(async client => {
+      const member = await client.query(
+        `SELECT 1 FROM dm_group_members WHERE group_id=$1 AND user_id=$2 FOR KEY SHARE`,
+        [groupId, userId],
+      );
+      if (!member.rows.length) return { status: "forbidden" as const };
+
+      const locked = await client.query(
+        `SELECT id FROM dm_group_messages WHERE id=$1 AND group_id=$2 AND deleted_at IS NULL FOR UPDATE`,
+        [messageId, groupId],
+      );
+      if (!locked.rows.length) return { status: "missing" as const };
+
+      const existing = await client.query(
+        `SELECT id FROM dm_group_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3`,
+        [messageId, userId, emoji],
+      );
+      if (existing.rows.length) {
+        await client.query(`DELETE FROM dm_group_reactions WHERE id=$1`, [existing.rows[0].id]);
+      } else {
+        const distinct = await client.query(
+          `SELECT DISTINCT emoji FROM dm_group_reactions WHERE message_id=$1`,
+          [messageId],
+        );
+        if (!distinct.rows.some((row: any) => row.emoji === emoji)
+            && distinct.rows.length >= MAX_DISTINCT_REACTIONS_PER_MESSAGE) {
+          return { status: "limit" as const };
+        }
+        await client.query(
+          `INSERT INTO dm_group_reactions (message_id, user_id, emoji) VALUES ($1,$2,$3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING`,
+          [messageId, userId, emoji],
+        );
+      }
+      const rows = await client.query(
+        `SELECT emoji, user_id FROM dm_group_reactions WHERE message_id=$1`,
+        [messageId],
+      );
+      return {
+        status: "ok" as const,
+        reactions: groupReactions(rows.rows.map((row: any) => ({ emoji: row.emoji, userId: Number(row.user_id) }))),
+      };
+    });
+    if (result.status === "forbidden") { res.status(403).json({ error: "Sin acceso" }); return; }
+    if (result.status === "missing") { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+    if (result.status === "limit") {
+      res.status(400).json({ error: "El mensaje ya tiene el máximo de 20 emojis distintos" }); return;
+    }
+
+    const { broadcastToUser } = await import("../lib/websocket");
+    const members = await rawQuery(`SELECT user_id FROM dm_group_members WHERE group_id=$1`, [groupId]);
+    const payload = {
+      type: "dm_group:reaction_update",
+      data: { groupId, messageId, reactions: result.reactions },
+    };
+    for (const member of members.rows) broadcastToUser(Number(member.user_id), payload);
+    res.json(result.reactions);
+});
+
+// DELETE /dm-groups/:groupId/messages/:messageId/reactions/:emoji
+router.delete("/dm-groups/:groupId/messages/:messageId/reactions/:emoji", requireAuth, async (req, res): Promise<void> => {
+    const userId = req.session.userId!;
+    const groupId = parseInt(req.params.groupId as string, 10);
+    const messageId = parseInt(req.params.messageId as string, 10);
+    const emoji = Array.isArray(req.params.emoji) ? req.params.emoji[0] : req.params.emoji;
+    if (!Number.isInteger(groupId) || groupId < 1 || !Number.isInteger(messageId) || messageId < 1) {
+      res.status(400).json({ error: "ID inválido" }); return;
+    }
+    if (!isSingleEmoji(emoji)) { res.status(400).json({ error: "Emoji inválido" }); return; }
+
+    const result = await rawTransaction(async client => {
+      const member = await client.query(
+        `SELECT 1 FROM dm_group_members WHERE group_id=$1 AND user_id=$2 FOR KEY SHARE`,
+        [groupId, userId],
+      );
+      if (!member.rows.length) return { status: "forbidden" as const };
+      const locked = await client.query(
+        `SELECT id FROM dm_group_messages WHERE id=$1 AND group_id=$2 AND deleted_at IS NULL FOR UPDATE`,
+        [messageId, groupId],
+      );
+      if (!locked.rows.length) return { status: "missing" as const };
+      await client.query(
+        `DELETE FROM dm_group_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3`,
+        [messageId, userId, emoji],
+      );
+      const rows = await client.query(
+        `SELECT emoji, user_id FROM dm_group_reactions WHERE message_id=$1`,
+        [messageId],
+      );
+      return {
+        status: "ok" as const,
+        reactions: groupReactions(rows.rows.map((row: any) => ({ emoji: row.emoji, userId: Number(row.user_id) }))),
+      };
+    });
+    if (result.status === "forbidden") { res.status(403).json({ error: "Sin acceso" }); return; }
+    if (result.status === "missing") { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+
+    const { broadcastToUser } = await import("../lib/websocket");
+    const members = await rawQuery(`SELECT user_id FROM dm_group_members WHERE group_id=$1`, [groupId]);
+    const payload = {
+      type: "dm_group:reaction_update",
+      data: { groupId, messageId, reactions: result.reactions },
+    };
+    for (const member of members.rows) broadcastToUser(Number(member.user_id), payload);
+    res.json(result.reactions);
 });
 
 // POST /dm-groups/:groupId/messages
@@ -152,6 +305,7 @@ router.post("/dm-groups/:groupId/messages", requireAuth, async (req, res): Promi
       id: result.rows[0].id, groupId, userId,
       content: content.trim(), createdAt: result.rows[0].created_at,
       author: { username: u.username, displayName: u.display_name, avatarUrl: u.avatar_url },
+      reactions: [],
     };
 
     // Broadcast via WS

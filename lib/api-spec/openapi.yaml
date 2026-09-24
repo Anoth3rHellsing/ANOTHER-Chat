@@ -718,7 +718,8 @@ paths:
     post:
       operationId: toggleReaction
       tags: [reactions]
-      summary: Toggle an emoji reaction on a message (adds if missing, removes if present)
+      summary: Toggle a single Unicode emoji reaction on a channel message
+      description: Requires channel read access. Accepts exactly one emoji sequence (including common modifiers, ZWJ sequences, flags, and keycaps); at most 20 distinct emoji reactions may exist per message. Returns full grouped state. Broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
       parameters:
         - name: messageId
           in: path
@@ -745,7 +746,8 @@ paths:
     delete:
       operationId: deleteReaction
       tags: [reactions]
-      summary: Remove an emoji reaction from a message
+      summary: Remove an emoji reaction from a channel message
+      description: Requires channel read access. The decoded emoji path parameter must be exactly one valid Unicode emoji sequence. Returns full grouped state and broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
       parameters:
         - name: messageId
           in: path
@@ -766,6 +768,207 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MessageReaction"
+
+  /dms/messages/{dmId}/reactions:
+    post:
+      operationId: toggleDmReaction
+      tags: [reactions, dms]
+      summary: Toggle an emoji reaction on a direct message
+      description: Only the sender and recipient may react. Accepts exactly one valid Unicode emoji sequence and at most 20 distinct emojis may exist per message. Returns full grouped state and broadcasts dm_reaction_update with data { messageId, reactions } to every WebSocket connection of both participants.
+      parameters:
+        - name: dmId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionInput"
+      responses:
+        "200":
+          description: Full grouped DM reaction state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+        "400":
+          description: Invalid emoji or per-message distinct-emoji limit reached
+        "403":
+          description: Caller is not a message participant
+        "404":
+          description: Message not found
+
+  /dms/messages/{dmId}/reactions/{emoji}:
+    delete:
+      operationId: deleteDmReaction
+      tags: [reactions, dms]
+      summary: Remove the caller's emoji reaction from a direct message
+      description: Only the sender and recipient may remove reactions. The decoded emoji must be exactly one valid Unicode emoji sequence. Returns full grouped state and broadcasts dm_reaction_update with data { messageId, reactions } to every WebSocket connection of both participants.
+      parameters:
+        - name: dmId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: emoji
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full grouped DM reaction state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+        "400":
+          description: Invalid emoji
+        "403":
+          description: Caller is not a message participant
+        "404":
+          description: Message not found
+
+  /dm-groups/{groupId}/messages:
+    get:
+      operationId: getDmGroupMessages
+      tags: [dms]
+      summary: Get the latest group DM messages with their grouped reactions
+      description: Requires current membership in the group. Returns up to 50 non-deleted messages, oldest first, with grouped reactions on each message.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: before
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Return messages with IDs older than this cursor.
+      responses:
+        "200":
+          description: Group messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupMessage"
+        "403":
+          description: Caller is not a current group member
+    post:
+      operationId: sendDmGroupMessage
+      tags: [dms]
+      summary: Send a message to a DM group
+      description: Requires current membership. Newly sent messages have an empty reactions array.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMessageInput"
+      responses:
+        "201":
+          description: Group message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMessage"
+        "403":
+          description: Caller is not a current group member
+
+  /dm-groups/{groupId}/messages/{messageId}/reactions:
+    post:
+      operationId: toggleDmGroupReaction
+      tags: [reactions, dms]
+      summary: Toggle the caller's emoji reaction on a group DM message
+      description: Requires current group membership; the message must belong to the path group and not be deleted. Accepts exactly one bounded Unicode emoji sequence using the shared emoji validator. At most 20 distinct emojis may exist per message. Returns full grouped state and broadcasts dm_group:reaction_update with data { groupId, messageId, reactions } to every current group member's WebSocket connections using user-targeted delivery.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionInput"
+      responses:
+        "200":
+          description: Full grouped reaction state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+        "400":
+          description: Invalid emoji or per-message distinct-emoji limit reached
+        "403":
+          description: Caller is not a current group member
+        "404":
+          description: Message not found in this group or deleted
+
+  /dm-groups/{groupId}/messages/{messageId}/reactions/{emoji}:
+    delete:
+      operationId: deleteDmGroupReaction
+      tags: [reactions, dms]
+      summary: Remove the caller's emoji reaction from a group DM message
+      description: Requires current group membership; the message must belong to the path group and not be deleted. The decoded path emoji must be exactly one bounded Unicode emoji sequence using the shared emoji validator. Returns full grouped state and broadcasts dm_group:reaction_update with data { groupId, messageId, reactions } to every current group member's WebSocket connections using user-targeted delivery.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: emoji
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        "200":
+          description: Full grouped reaction state
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageReaction"
+        "400":
+          description: Invalid emoji
+        "403":
+          description: Caller is not a current group member
+        "404":
+          description: Message not found in this group or deleted
 
   /channels/{channelId}/messages/{messageId}:
     patch:
@@ -1425,6 +1628,9 @@ components:
       properties:
         emoji:
           type: string
+          minLength: 1
+          maxLength: 64
+          description: Exactly one bounded Unicode emoji grapheme (for example a modifier, ZWJ composition, flag, or keycap sequence).
 
     Message:
       type: object
@@ -1642,7 +1848,7 @@ components:
 
     DirectMessage:
       type: object
-      required: [id, senderId, recipientId, content, createdAt, sender]
+      required: [id, senderId, recipientId, content, createdAt, sender, reactions]
       properties:
         id:
           type: integer
@@ -1665,6 +1871,42 @@ components:
         replyTo:
           $ref: "#/components/schemas/ReplyPreview"
           nullable: true
+        reactions:
+          type: array
+          description: Current grouped reactions; same MessageReaction shape as channel messages.
+          items:
+            $ref: "#/components/schemas/MessageReaction"
+
+    GroupMessage:
+      type: object
+      required: [id, groupId, userId, content, createdAt, author, reactions]
+      properties:
+        id:
+          type: integer
+        groupId:
+          type: integer
+        userId:
+          type: integer
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        author:
+          type: object
+          required: [username, displayName, avatarUrl]
+          properties:
+            username:
+              type: string
+            displayName:
+              type: string
+            avatarUrl:
+              type: ["string", "null"]
+        reactions:
+          type: array
+          description: Full current grouped reaction state.
+          items:
+            $ref: "#/components/schemas/MessageReaction"
 
     DmConversation:
       type: object
@@ -1689,6 +1931,14 @@ components:
         replyToId:
           type: integer
           nullable: true
+
+    GroupMessageInput:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
 
     InviteInput:
       type: object

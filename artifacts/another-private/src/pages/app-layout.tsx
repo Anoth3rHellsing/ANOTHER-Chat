@@ -12,7 +12,7 @@ import {
   useListDmConversations, useGetDmHistory, useSendDm, useMarkDmRead, useDeleteDm,
   getListDmConversationsQueryKey, getGetDmHistoryQueryKey,
 } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useChatWebSocket } from '@/hooks/use-chat-websocket';
 import { useDmWebSocket } from '@/hooks/use-dm-websocket';
 import { useWebRTC } from '@/hooks/use-webrtc';
@@ -37,13 +37,17 @@ import {
   FileText, ExternalLink, Download, MessageSquare, Play,
   Cog, Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Monitor, MonitorOff,
   PhoneIncoming, Minimize2,
-  Search, ChevronLeft, Flag, Bell
+  Search, ChevronLeft, Flag, Bell, ShoppingBag
 } from 'lucide-react';
 import { SearchModal } from '@/components/search-modal';
 import { FriendsPanel } from '@/components/friends-panel';
 import { ReportModal } from '@/components/report-modal';
 import { MentionList, useMentionAutocomplete } from '@/components/mention-autocomplete';
 import { DmGroupModal } from '@/components/dm-group-modal';
+import { DmGroupConversation } from '@/components/dm-group-conversation';
+import { EmojiPicker, QUICK_EMOJIS, insertEmojiAtCursor } from '@/components/emoji-picker';
+import { ReactionIndicators } from '@/components/reaction-indicators';
+import { updateChannelReactions, updateDmReactions, type MessageReaction } from '@/lib/reactions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -52,14 +56,6 @@ const CHANNEL_TYPE_ICON = {
   voice: Volume2,
   media: ImageIcon,
 } as const;
-
-// Common emoji palette for the picker
-const COMMON_EMOJIS = [
-  '👍','👎','❤️','😂','😮','😢','😡','🎉',
-  '✅','🔥','💯','🙏','👏','😎','🤔','💪',
-  '🚀','⭐','💡','🎯','👀','😅','🤣','😊',
-  '😍','🥳','🤗','😏','🙃','😤','😬','🫡',
-];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -185,33 +181,21 @@ function ReplyQuote({ replyTo, onClick }: { replyTo: any; onClick?: () => void }
   );
 }
 
-function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) {
-  const [search, setSearch] = useState('');
-  const filtered = search
-    ? COMMON_EMOJIS.filter(e => e.includes(search))
-    : COMMON_EMOJIS;
-
+function QuickReactionButtons({ onSelect }: { onSelect: (emoji: string) => void }) {
   return (
-    <div className="absolute bottom-full mb-1 right-0 bg-card border border-white/10 rounded-xl shadow-2xl p-3 z-30 w-52">
-      <input
-        type="text"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar emoji..."
-        className="w-full bg-secondary border border-white/10 rounded-lg px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none mb-2"
-        autoFocus
-      />
-      <div className="grid grid-cols-8 gap-1">
-        {filtered.map(emoji => (
-          <button
-            key={emoji}
-            onClick={() => { onSelect(emoji); onClose(); }}
-            className="text-lg hover:bg-white/10 rounded p-0.5 transition-colors"
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center border-r border-border pr-1" aria-label="Reacciones rápidas">
+      {QUICK_EMOJIS.slice(0, 4).map(emoji => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onSelect(emoji)}
+          title={`Reaccionar con ${emoji}`}
+          aria-label={`Reaccionar con ${emoji}`}
+          className="p-1 text-sm rounded hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {emoji}
+        </button>
+      ))}
     </div>
   );
 }
@@ -232,7 +216,9 @@ export default function AppLayout() {
   // DM state
   const [activeView, setActiveView] = useState<'servers' | 'dms'>('servers');
   const [activeDmUserId, setActiveDmUserId] = useState<number | null>(null);
+  const [activeDmGroupId, setActiveDmGroupId] = useState<number | null>(null);
   const [dmInput, setDmInput] = useState('');
+  const dmInputRef = useRef<HTMLInputElement>(null);
   const [dmReplyingTo, setDmReplyingTo] = useState<any | null>(null);
   const dmMessagesEndRef = useRef<HTMLDivElement>(null);
   const dmTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -268,6 +254,9 @@ export default function AppLayout() {
 
   // Emoji picker state
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<number | null>(null);
+  const [dmEmojiPickerMsgId, setDmEmojiPickerMsgId] = useState<number | null>(null);
+  const [composerEmojiPicker, setComposerEmojiPicker] = useState<'channel' | 'dm' | null>(null);
+  const [pendingReactions, setPendingReactions] = useState<Set<string>>(new Set());
 
   // Dismissed link previews (by message id)
   const [dismissedPreviews, setDismissedPreviews] = useState<Set<number>>(new Set());
@@ -339,6 +328,16 @@ export default function AppLayout() {
   // DM data
   const { data: dmConversations, refetch: refetchDmConversations } = useListDmConversations({ query: { enabled: !!user } as any });
   const { data: dmMessages } = useGetDmHistory(activeDmUserId as number, { query: { enabled: !!activeDmUserId } as any });
+  const { data: dmGroups = [] } = useQuery<Array<{ id: number; name: string; memberCount: number }>>({
+    queryKey: ['/api/dm-groups'],
+    queryFn: async () => {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+      const response = await csrfFetch(`${base}/api/dm-groups`, { credentials: 'include' });
+      if (!response.ok) throw new Error('No se pudieron cargar los grupos');
+      return response.json();
+    },
+    enabled: !!user && activeView === 'dms',
+  });
   const totalDmUnread = useMemo(() => (dmConversations ?? []).reduce((sum: number, c: any) => sum + (c.unreadCount ?? 0), 0), [dmConversations]);
   const sendDm = useSendDm();
   const markDmRead = useMarkDmRead();
@@ -400,19 +399,21 @@ export default function AppLayout() {
   useEffect(() => {
     if (activeDmUserId !== null) setMobilePanelDepth(2);
   }, [activeDmUserId]);
+  useEffect(() => {
+    if (activeDmGroupId !== null) setMobilePanelDepth(2);
+  }, [activeDmGroupId]);
 
   const openDm = useCallback((targetUserId: number) => {
     setActiveView('dms');
+    setActiveDmGroupId(null);
     setActiveDmUserId(targetUserId);
   }, []);
 
-  // Close emoji picker on outside click
   useEffect(() => {
-    if (emojiPickerMsgId == null) return;
-    const close = () => setEmojiPickerMsgId(null);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [emojiPickerMsgId]);
+    setEmojiPickerMsgId(null);
+    setDmEmojiPickerMsgId(null);
+    setComposerEmojiPicker(null);
+  }, [activeView, activeChannelId, activeDmUserId, activeDmGroupId]);
 
   // ─── File upload helpers ──────────────────────────────────────────────────
 
@@ -563,7 +564,38 @@ export default function AppLayout() {
   };
 
   const handleReact = (messageId: number, emoji: string) => {
-    toggleReaction.mutate({ messageId, data: { emoji } });
+    if (!activeChannelId) return;
+    const channelId = activeChannelId;
+    const key = `channel:${messageId}:${emoji}`;
+    if (pendingReactions.has(key)) return;
+    setPendingReactions(prev => new Set(prev).add(key));
+    toggleReaction.mutate({ messageId, data: { emoji } }, {
+      onSuccess: reactions => updateChannelReactions(queryClient, channelId, messageId, reactions as MessageReaction[]),
+      onError: () => toast({ title: 'No se pudo actualizar la reacción', variant: 'destructive' }),
+      onSettled: () => setPendingReactions(prev => { const next = new Set(prev); next.delete(key); return next; }),
+    });
+  };
+
+  const handleDmReact = async (messageId: number, emoji: string) => {
+    if (!activeDmUserId) return;
+    const key = `dm:${messageId}:${emoji}`;
+    if (pendingReactions.has(key)) return;
+    setPendingReactions(prev => new Set(prev).add(key));
+    try {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+      const response = await csrfFetch(`${base}/api/dms/messages/${messageId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ emoji }),
+      });
+      if (!response.ok) throw new Error('No se pudo actualizar la reacción');
+      updateDmReactions(queryClient, messageId, await response.json() as MessageReaction[]);
+    } catch {
+      toast({ title: 'No se pudo actualizar la reacción', variant: 'destructive' });
+    } finally {
+      setPendingReactions(prev => { const next = new Set(prev); next.delete(key); return next; });
+    }
   };
 
   const scrollToMessage = (msgId: number) => {
@@ -656,7 +688,7 @@ export default function AppLayout() {
       {/* 1. SERVER LIST COLUMN */}
       <div className={`${mobilePanelDepth === 0 ? 'flex w-full h-full' : 'hidden'} md:flex md:w-[72px] bg-card border-r border-white/5 flex-col items-center py-4 gap-3 md:flex-shrink-0 z-20`}>
         <div
-          className="w-12 h-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary cursor-pointer hover:rounded-xl transition-all"
+          className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer hover:rounded-xl transition-all ${activeView === 'servers' ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground hover:bg-primary/15 hover:text-primary'}`}
           onClick={() => { setActiveView('servers'); setLocation('/app'); }}
         >
           <Shield className="w-7 h-7" />
@@ -683,10 +715,16 @@ export default function AppLayout() {
         <div className="flex-1 w-full overflow-y-auto hide-scrollbar flex flex-col items-center gap-3">
           {servers?.map(server => (
             <div key={server.id} className="relative group flex justify-center w-full">
-              <div className={`absolute left-0 w-1 bg-primary rounded-r-full transition-all duration-200 ${activeServerId === server.id ? 'h-10 top-1' : 'h-2 top-5 opacity-0 group-hover:opacity-100 group-hover:h-5'}`} />
+              <div className={`absolute left-0 w-1 bg-primary rounded-r-full transition-all duration-200 ${activeView === 'servers' && activeServerId === server.id ? 'h-10 top-1' : 'h-2 top-5 opacity-0 group-hover:opacity-100 group-hover:h-5'}`} />
               <button
-                onClick={() => { setActiveServerId(server.id); setShowClips(false); }}
-                className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all overflow-hidden bg-secondary flex items-center justify-center border border-white/5 ${activeServerId === server.id ? 'rounded-[16px] bg-primary/20 text-primary border-primary/50 glow-effect' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
+                onClick={() => {
+                  setActiveView('servers');
+                  setActiveServerId(server.id);
+                  setShowClips(false);
+                  setMobilePanelDepth(1);
+                  setLocation('/app');
+                }}
+                className={`w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all overflow-hidden bg-secondary flex items-center justify-center border border-white/5 ${activeView === 'servers' && activeServerId === server.id ? 'rounded-[16px] bg-primary/20 text-primary border-primary/50 glow-effect' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}
                 title={server.name}
               >
                 {server.iconUrl
@@ -712,6 +750,16 @@ export default function AppLayout() {
           >
             <Link2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
           </button>
+          <a
+            href="https://anotherstore.neocities.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Abrir la tienda en una pestaña nueva"
+            title="Tienda — se abre en una pestaña nueva"
+            className="w-12 h-12 rounded-[24px] hover:rounded-[16px] transition-all bg-secondary border border-white/10 text-muted-foreground hover:bg-primary/20 hover:text-primary flex items-center justify-center group"
+          >
+            <ShoppingBag className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          </a>
         </div>
       </div>
 
@@ -752,11 +800,11 @@ export default function AppLayout() {
               {(dmConversations as any[] ?? []).map((convo: any) => {
                 const other = convo.otherUser;
                 const unread = convo.unreadCount ?? 0;
-                const isActive = activeDmUserId === other?.id;
+                const isActive = !activeDmGroupId && activeDmUserId === other?.id;
                 return (
                   <button
                     key={other?.id}
-                    onClick={() => setActiveDmUserId(other?.id)}
+                    onClick={() => { setActiveDmGroupId(null); setActiveDmUserId(other?.id); setDmSubView('messages'); }}
                     className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-primary/15 text-foreground glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
                   >
                     <div className="relative flex-shrink-0">
@@ -783,6 +831,19 @@ export default function AppLayout() {
                   </button>
                 );
               })}
+              {dmGroups.map(group => (
+                <button
+                  key={`group-${group.id}`}
+                  onClick={() => { setActiveDmUserId(null); setActiveDmGroupId(group.id); setDmSubView('messages'); }}
+                  className={`w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm transition-colors ${activeDmGroupId === group.id ? 'bg-primary/15 text-foreground glow-effect' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'}`}
+                  aria-label={`Grupo ${group.name}`}
+                >
+                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+                    <UsersIcon className="w-4 h-4" />
+                  </div>
+                  <span className="truncate font-medium">{group.name}</span>
+                </button>
+              ))}
             </div>
 
             {/* Compact call indicator (DM mode) */}
@@ -942,12 +1003,12 @@ export default function AppLayout() {
         {/* ── Friends panel ─────────────────────────────────────────────── */}
         {activeView === 'dms' && dmSubView === 'friends' && (
           <FriendsPanel
-            onOpenDm={uid => { setActiveDmUserId(uid); setDmSubView('messages'); setMobilePanelDepth(2); }}
+            onOpenDm={uid => { setActiveDmGroupId(null); setActiveDmUserId(uid); setDmSubView('messages'); setMobilePanelDepth(2); }}
           />
         )}
 
         {/* ── DM chat pane ─────────────────────────────────────────────── */}
-        {activeView === 'dms' && dmSubView === 'messages' && activeDmUserId && activeDmConvo && (
+        {activeView === 'dms' && dmSubView === 'messages' && !activeDmGroupId && activeDmUserId && activeDmConvo && (
           <>
             {/* DM header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10 gap-3 flex-shrink-0">
@@ -1032,7 +1093,12 @@ export default function AppLayout() {
                             : msg.content}
                         </div>
                         {!msg.deletedAt && isOwn && (
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
+                          <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
+                            <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
+                            <button type="button" onClick={() => setDmEmojiPickerMsgId(dmEmojiPickerMsgId === msg.id ? null : msg.id)} className="p-1.5 text-muted-foreground hover:text-primary" title="Más emojis" aria-label="Elegir reacción">
+                              <Smile className="w-3.5 h-3.5" />
+                            </button>
+                            {dmEmojiPickerMsgId === msg.id && <EmojiPicker onSelect={emoji => handleDmReact(msg.id, emoji)} onClose={() => setDmEmojiPickerMsgId(null)} />}
                             <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary transition-colors" title="Responder">
                               <CornerUpLeft className="w-3.5 h-3.5" />
                             </button>
@@ -1043,13 +1109,27 @@ export default function AppLayout() {
                           </div>
                         )}
                         {!msg.deletedAt && !isOwn && (
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0">
+                          <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
+                            <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
+                            <button type="button" onClick={() => setDmEmojiPickerMsgId(dmEmojiPickerMsgId === msg.id ? null : msg.id)} className="p-1.5 text-muted-foreground hover:text-primary" title="Más emojis" aria-label="Elegir reacción">
+                              <Smile className="w-3.5 h-3.5" />
+                            </button>
+                            {dmEmojiPickerMsgId === msg.id && <EmojiPicker onSelect={emoji => handleDmReact(msg.id, emoji)} onClose={() => setDmEmojiPickerMsgId(null)} />}
                             <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary transition-colors" title="Responder">
                               <CornerUpLeft className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         )}
                       </div>
+                      {!msg.deletedAt && (
+                        <ReactionIndicators
+                          reactions={msg.reactions}
+                          currentUserId={user.id}
+                          onToggle={emoji => handleDmReact(msg.id, emoji)}
+                          isPending={emoji => pendingReactions.has(`dm:${msg.id}:${emoji}`)}
+                          getName={id => id === user.id ? user.displayName : id === (activeDmConvo as any).otherUser?.id ? (activeDmConvo as any).otherUser.displayName : `Usuario ${id}`}
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -1083,7 +1163,12 @@ export default function AppLayout() {
                 onSubmit={handleSendDm}
                 className={`relative flex items-center bg-card border border-white/10 ${dmReplyingTo ? 'rounded-b-xl rounded-t-none border-t-0' : 'rounded-xl'}`}
               >
+                <button type="button" onClick={() => setComposerEmojiPicker(composerEmojiPicker === 'dm' ? null : 'dm')} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
+                  <Smile className="w-5 h-5" />
+                </button>
+                {composerEmojiPicker === 'dm' && <EmojiPicker onSelect={emoji => insertEmojiAtCursor(dmInputRef.current, dmInput, emoji, setDmInput)} onClose={() => setComposerEmojiPicker(null)} />}
                 <input
+                  ref={dmInputRef}
                   type="text"
                   value={dmInput}
                   onChange={handleDmInputChange}
@@ -1100,7 +1185,7 @@ export default function AppLayout() {
         )}
 
         {/* DM mode — no conversation selected */}
-        {activeView === 'dms' && dmSubView === 'messages' && !activeDmUserId && (
+        {activeView === 'dms' && dmSubView === 'messages' && !activeDmUserId && !activeDmGroupId && (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
             <MessageSquare className="w-16 h-16 opacity-20" />
             <p>Selecciona una conversación o haz clic en "Mensaje directo" en el perfil de alguien.</p>
@@ -1108,7 +1193,7 @@ export default function AppLayout() {
         )}
 
         {/* DM mode — conversation selected but not in list (first message) */}
-        {activeView === 'dms' && activeDmUserId && !activeDmConvo && (
+        {activeView === 'dms' && dmSubView === 'messages' && !activeDmGroupId && activeDmUserId && !activeDmConvo && (
           <>
             <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10">
               <span className="font-semibold text-foreground">Nueva conversación</span>
@@ -1120,7 +1205,12 @@ export default function AppLayout() {
             <div className="p-4 pt-0">
               <div className="h-6" />
               <form onSubmit={handleSendDm} className="relative flex items-center bg-card border border-white/10 rounded-xl">
+                <button type="button" onClick={() => setComposerEmojiPicker(composerEmojiPicker === 'dm' ? null : 'dm')} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
+                  <Smile className="w-5 h-5" />
+                </button>
+                {composerEmojiPicker === 'dm' && <EmojiPicker onSelect={emoji => insertEmojiAtCursor(dmInputRef.current, dmInput, emoji, setDmInput)} onClose={() => setComposerEmojiPicker(null)} />}
                 <input
+                  ref={dmInputRef}
                   type="text"
                   value={dmInput}
                   onChange={handleDmInputChange}
@@ -1133,6 +1223,16 @@ export default function AppLayout() {
               </form>
             </div>
           </>
+        )}
+
+        {activeView === 'dms' && dmSubView === 'messages' && activeDmGroupId && dmGroups.find(group => group.id === activeDmGroupId) && (
+          <DmGroupConversation
+            key={activeDmGroupId}
+            groupId={activeDmGroupId}
+            groupName={dmGroups.find(group => group.id === activeDmGroupId)!.name}
+            currentUserId={user.id}
+            onBack={() => setMobilePanelDepth(1)}
+          />
         )}
 
         {/* ── Server / channel chat pane ──────────────────────────────── */}
@@ -1247,13 +1347,15 @@ export default function AppLayout() {
 
                         {/* Hover action bar */}
                         {!msg.deletedAt && editingMessageId !== msg.id && (
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center bg-card border border-white/5 rounded-md overflow-hidden flex-shrink-0 relative">
+                          <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
                             {/* React */}
+                            <QuickReactionButtons onSelect={emoji => handleReact(msg.id, emoji)} />
                             <div className="relative" onClick={e => e.stopPropagation()}>
                               <button
                                 onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
-                                className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-yellow-400 transition-colors"
-                                title="Reaccionar"
+                                className="p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                                title="Más emojis"
+                                aria-label="Elegir reacción"
                               >
                                 <Smile className="w-3.5 h-3.5" />
                               </button>
@@ -1319,24 +1421,14 @@ export default function AppLayout() {
                         />
                       )}
 
-                      {/* Reactions */}
-                      {!msg.deletedAt && msgAny.reactions?.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {msgAny.reactions.map((r: any) => {
-                            const hasReacted = r.userIds?.includes(user.id);
-                            return (
-                              <button
-                                key={r.emoji}
-                                onClick={() => handleReact(msg.id, r.emoji)}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${hasReacted ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-secondary border-white/10 text-muted-foreground hover:bg-white/10 hover:border-white/20'}`}
-                                title={`${r.count} reacción${r.count !== 1 ? 'es' : ''}`}
-                              >
-                                <span>{r.emoji}</span>
-                                <span className="font-mono font-medium">{r.count}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
+                      {!msg.deletedAt && (
+                        <ReactionIndicators
+                          reactions={msgAny.reactions}
+                          currentUserId={user.id}
+                          onToggle={emoji => handleReact(msg.id, emoji)}
+                          isPending={emoji => pendingReactions.has(`channel:${msg.id}:${emoji}`)}
+                          getName={id => id === user.id ? user.displayName : members?.find(member => member.userId === id)?.user.displayName ?? `Usuario ${id}`}
+                        />
                       )}
                     </div>
                   </div>
@@ -1442,6 +1534,18 @@ export default function AppLayout() {
                   <Paperclip className="w-5 h-5" />
                 </button>
 
+                <button type="button" onClick={() => setComposerEmojiPicker(composerEmojiPicker === 'channel' ? null : 'channel')} className="p-3 text-muted-foreground hover:text-primary" title="Insertar emoji" aria-label="Insertar emoji">
+                  <Smile className="w-5 h-5" />
+                </button>
+                {composerEmojiPicker === 'channel' && (
+                  <EmojiPicker
+                    onSelect={emoji => insertEmojiAtCursor(msgInputRef.current, messageInput, emoji, value => {
+                      setMessageInput(value);
+                      setMentionCursorPos(msgInputRef.current?.selectionStart ?? value.length);
+                    })}
+                    onClose={() => setComposerEmojiPicker(null)}
+                  />
+                )}
                 <input 
                   ref={msgInputRef}
                   type="text"
@@ -1471,12 +1575,12 @@ export default function AppLayout() {
               </form>
             </div>
           </>
-        ) : (
+        ) : activeView === 'servers' ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
             <Hash className="w-16 h-16 opacity-20 mb-4" />
             <p>Selecciona o crea un canal para comenzar.</p>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* 4. MEMBER LIST COLUMN — only in server mode */}
@@ -1786,8 +1890,13 @@ export default function AppLayout() {
           onClose={() => setShowDmGroupModal(false)}
           currentUserId={user.id}
           friends={dmFriends}
-          onCreated={() => {
+          onCreated={group => {
             setShowDmGroupModal(false);
+            queryClient.invalidateQueries({ queryKey: ['/api/dm-groups'] });
+            setActiveView('dms');
+            setDmSubView('messages');
+            setActiveDmUserId(null);
+            setActiveDmGroupId(group.id);
           }}
         />
       )}

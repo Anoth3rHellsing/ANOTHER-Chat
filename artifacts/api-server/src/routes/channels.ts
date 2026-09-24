@@ -21,7 +21,7 @@ import {
   hasPerm,
 } from "../lib/permissions";
 import { fetchFirstLinkPreview } from "../lib/link-preview";
-import { groupReactions } from "./messages";
+import { groupReactions } from "../lib/reactions";
 
 const router: IRouter = Router();
 

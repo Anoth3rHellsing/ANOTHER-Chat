@@ -30,6 +30,9 @@ import type {
   DirectMessage,
   DmConversation,
   DmInput,
+  GetDmGroupMessagesParams,
+  GroupMessage,
+  GroupMessageInput,
   HealthStatus,
   InviteCode,
   InviteInput,
@@ -2463,7 +2466,8 @@ export const getToggleReactionUrl = (messageId: number,) => {
 }
 
 /**
- * @summary Toggle an emoji reaction on a message (adds if missing, removes if present)
+ * Requires channel read access. Accepts exactly one emoji sequence (including common modifiers, ZWJ sequences, flags, and keycaps); at most 20 distinct emoji reactions may exist per message. Returns full grouped state. Broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
+ * @summary Toggle a single Unicode emoji reaction on a channel message
  */
 export const toggleReaction = async (messageId: number,
     reactionInput: ReactionInput, options?: RequestInit): Promise<MessageReaction[]> => {
@@ -2513,7 +2517,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ToggleReactionMutationError = ErrorType<unknown>
 
     /**
- * @summary Toggle an emoji reaction on a message (adds if missing, removes if present)
+ * @summary Toggle a single Unicode emoji reaction on a channel message
  */
 export const useToggleReaction = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleReaction>>, TError,{messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -2536,7 +2540,8 @@ export const getDeleteReactionUrl = (messageId: number,
 }
 
 /**
- * @summary Remove an emoji reaction from a message
+ * Requires channel read access. The decoded emoji path parameter must be exactly one valid Unicode emoji sequence. Returns full grouped state and broadcasts message_reaction_update with data { channelId, messageId, reactions } to channel subscribers.
+ * @summary Remove an emoji reaction from a channel message
  */
 export const deleteReaction = async (messageId: number,
     emoji: string, options?: RequestInit): Promise<MessageReaction[]> => {
@@ -2586,7 +2591,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteReactionMutationError = ErrorType<unknown>
 
     /**
- * @summary Remove an emoji reaction from a message
+ * @summary Remove an emoji reaction from a channel message
  */
 export const useDeleteReaction = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteReaction>>, TError,{messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -2597,6 +2602,467 @@ export const useDeleteReaction = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteReactionMutationOptions(options));
+    }
+
+export const getToggleDmReactionUrl = (dmId: number,) => {
+
+
+
+
+  return `/api/dms/messages/${dmId}/reactions`
+}
+
+/**
+ * Only the sender and recipient may react. Accepts exactly one valid Unicode emoji sequence and at most 20 distinct emojis may exist per message. Returns full grouped state and broadcasts dm_reaction_update with data { messageId, reactions } to every WebSocket connection of both participants.
+ * @summary Toggle an emoji reaction on a direct message
+ */
+export const toggleDmReaction = async (dmId: number,
+    reactionInput: ReactionInput, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getToggleDmReactionUrl(dmId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reactionInput)
+  }
+);}
+
+
+
+
+
+export const getToggleDmReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDmReaction>>, TError,{dmId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleDmReaction>>, TError,{dmId: number;data: BodyType<ReactionInput>}, TContext> => {
+
+const mutationKey = ['toggleDmReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleDmReaction>>, {dmId: number;data: BodyType<ReactionInput>}> = (props) => {
+          const {dmId,data} = props ?? {};
+
+          return  toggleDmReaction(dmId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleDmReactionMutationResult = NonNullable<Awaited<ReturnType<typeof toggleDmReaction>>>
+    export type ToggleDmReactionMutationBody = BodyType<ReactionInput>
+    export type ToggleDmReactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Toggle an emoji reaction on a direct message
+ */
+export const useToggleDmReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDmReaction>>, TError,{dmId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleDmReaction>>,
+        TError,
+        {dmId: number;data: BodyType<ReactionInput>},
+        TContext
+      > => {
+      return useMutation(getToggleDmReactionMutationOptions(options));
+    }
+
+export const getDeleteDmReactionUrl = (dmId: number,
+    emoji: string,) => {
+
+
+
+
+  return `/api/dms/messages/${dmId}/reactions/${emoji}`
+}
+
+/**
+ * Only the sender and recipient may remove reactions. The decoded emoji must be exactly one valid Unicode emoji sequence. Returns full grouped state and broadcasts dm_reaction_update with data { messageId, reactions } to every WebSocket connection of both participants.
+ * @summary Remove the caller's emoji reaction from a direct message
+ */
+export const deleteDmReaction = async (dmId: number,
+    emoji: string, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getDeleteDmReactionUrl(dmId,emoji),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDmReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmReaction>>, TError,{dmId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDmReaction>>, TError,{dmId: number;emoji: string}, TContext> => {
+
+const mutationKey = ['deleteDmReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDmReaction>>, {dmId: number;emoji: string}> = (props) => {
+          const {dmId,emoji} = props ?? {};
+
+          return  deleteDmReaction(dmId,emoji,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDmReactionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDmReaction>>>
+
+    export type DeleteDmReactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Remove the caller's emoji reaction from a direct message
+ */
+export const useDeleteDmReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmReaction>>, TError,{dmId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDmReaction>>,
+        TError,
+        {dmId: number;emoji: string},
+        TContext
+      > => {
+      return useMutation(getDeleteDmReactionMutationOptions(options));
+    }
+
+export const getGetDmGroupMessagesUrl = (groupId: number,
+    params?: GetDmGroupMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/dm-groups/${groupId}/messages?${stringifiedParams}` : `/api/dm-groups/${groupId}/messages`
+}
+
+/**
+ * Requires current membership in the group. Returns up to 50 non-deleted messages, oldest first, with grouped reactions on each message.
+ * @summary Get the latest group DM messages with their grouped reactions
+ */
+export const getDmGroupMessages = async (groupId: number,
+    params?: GetDmGroupMessagesParams, options?: RequestInit): Promise<GroupMessage[]> => {
+
+  return customFetch<GroupMessage[]>(getGetDmGroupMessagesUrl(groupId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDmGroupMessagesQueryKey = (groupId: number,
+    params?: GetDmGroupMessagesParams,) => {
+    return [
+    `/api/dm-groups/${groupId}/messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetDmGroupMessagesQueryOptions = <TData = Awaited<ReturnType<typeof getDmGroupMessages>>, TError = ErrorType<void>>(groupId: number,
+    params?: GetDmGroupMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmGroupMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDmGroupMessagesQueryKey(groupId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDmGroupMessages>>> = ({ signal }) => getDmGroupMessages(groupId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: groupId !== null && groupId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDmGroupMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDmGroupMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof getDmGroupMessages>>>
+export type GetDmGroupMessagesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the latest group DM messages with their grouped reactions
+ */
+
+export function useGetDmGroupMessages<TData = Awaited<ReturnType<typeof getDmGroupMessages>>, TError = ErrorType<void>>(
+ groupId: number,
+    params?: GetDmGroupMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDmGroupMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDmGroupMessagesQueryOptions(groupId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendDmGroupMessageUrl = (groupId: number,) => {
+
+
+
+
+  return `/api/dm-groups/${groupId}/messages`
+}
+
+/**
+ * Requires current membership. Newly sent messages have an empty reactions array.
+ * @summary Send a message to a DM group
+ */
+export const sendDmGroupMessage = async (groupId: number,
+    groupMessageInput: GroupMessageInput, options?: RequestInit): Promise<GroupMessage> => {
+
+  return customFetch<GroupMessage>(getSendDmGroupMessageUrl(groupId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(groupMessageInput)
+  }
+);}
+
+
+
+
+
+export const getSendDmGroupMessageMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmGroupMessage>>, TError,{groupId: number;data: BodyType<GroupMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendDmGroupMessage>>, TError,{groupId: number;data: BodyType<GroupMessageInput>}, TContext> => {
+
+const mutationKey = ['sendDmGroupMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendDmGroupMessage>>, {groupId: number;data: BodyType<GroupMessageInput>}> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  sendDmGroupMessage(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendDmGroupMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendDmGroupMessage>>>
+    export type SendDmGroupMessageMutationBody = BodyType<GroupMessageInput>
+    export type SendDmGroupMessageMutationError = ErrorType<void>
+
+    /**
+ * @summary Send a message to a DM group
+ */
+export const useSendDmGroupMessage = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendDmGroupMessage>>, TError,{groupId: number;data: BodyType<GroupMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendDmGroupMessage>>,
+        TError,
+        {groupId: number;data: BodyType<GroupMessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendDmGroupMessageMutationOptions(options));
+    }
+
+export const getToggleDmGroupReactionUrl = (groupId: number,
+    messageId: number,) => {
+
+
+
+
+  return `/api/dm-groups/${groupId}/messages/${messageId}/reactions`
+}
+
+/**
+ * Requires current group membership; the message must belong to the path group and not be deleted. Accepts exactly one bounded Unicode emoji sequence using the shared emoji validator. At most 20 distinct emojis may exist per message. Returns full grouped state and broadcasts dm_group:reaction_update with data { groupId, messageId, reactions } to every current group member's WebSocket connections using user-targeted delivery.
+ * @summary Toggle the caller's emoji reaction on a group DM message
+ */
+export const toggleDmGroupReaction = async (groupId: number,
+    messageId: number,
+    reactionInput: ReactionInput, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getToggleDmGroupReactionUrl(groupId,messageId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reactionInput)
+  }
+);}
+
+
+
+
+
+export const getToggleDmGroupReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDmGroupReaction>>, TError,{groupId: number;messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof toggleDmGroupReaction>>, TError,{groupId: number;messageId: number;data: BodyType<ReactionInput>}, TContext> => {
+
+const mutationKey = ['toggleDmGroupReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof toggleDmGroupReaction>>, {groupId: number;messageId: number;data: BodyType<ReactionInput>}> = (props) => {
+          const {groupId,messageId,data} = props ?? {};
+
+          return  toggleDmGroupReaction(groupId,messageId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ToggleDmGroupReactionMutationResult = NonNullable<Awaited<ReturnType<typeof toggleDmGroupReaction>>>
+    export type ToggleDmGroupReactionMutationBody = BodyType<ReactionInput>
+    export type ToggleDmGroupReactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Toggle the caller's emoji reaction on a group DM message
+ */
+export const useToggleDmGroupReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof toggleDmGroupReaction>>, TError,{groupId: number;messageId: number;data: BodyType<ReactionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof toggleDmGroupReaction>>,
+        TError,
+        {groupId: number;messageId: number;data: BodyType<ReactionInput>},
+        TContext
+      > => {
+      return useMutation(getToggleDmGroupReactionMutationOptions(options));
+    }
+
+export const getDeleteDmGroupReactionUrl = (groupId: number,
+    messageId: number,
+    emoji: string,) => {
+
+
+
+
+  return `/api/dm-groups/${groupId}/messages/${messageId}/reactions/${emoji}`
+}
+
+/**
+ * Requires current group membership; the message must belong to the path group and not be deleted. The decoded path emoji must be exactly one bounded Unicode emoji sequence using the shared emoji validator. Returns full grouped state and broadcasts dm_group:reaction_update with data { groupId, messageId, reactions } to every current group member's WebSocket connections using user-targeted delivery.
+ * @summary Remove the caller's emoji reaction from a group DM message
+ */
+export const deleteDmGroupReaction = async (groupId: number,
+    messageId: number,
+    emoji: string, options?: RequestInit): Promise<MessageReaction[]> => {
+
+  return customFetch<MessageReaction[]>(getDeleteDmGroupReactionUrl(groupId,messageId,emoji),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDmGroupReactionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmGroupReaction>>, TError,{groupId: number;messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDmGroupReaction>>, TError,{groupId: number;messageId: number;emoji: string}, TContext> => {
+
+const mutationKey = ['deleteDmGroupReaction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDmGroupReaction>>, {groupId: number;messageId: number;emoji: string}> = (props) => {
+          const {groupId,messageId,emoji} = props ?? {};
+
+          return  deleteDmGroupReaction(groupId,messageId,emoji,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDmGroupReactionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDmGroupReaction>>>
+
+    export type DeleteDmGroupReactionMutationError = ErrorType<void>
+
+    /**
+ * @summary Remove the caller's emoji reaction from a group DM message
+ */
+export const useDeleteDmGroupReaction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDmGroupReaction>>, TError,{groupId: number;messageId: number;emoji: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDmGroupReaction>>,
+        TError,
+        {groupId: number;messageId: number;emoji: string},
+        TContext
+      > => {
+      return useMutation(getDeleteDmGroupReactionMutationOptions(options));
     }
 
 export const getEditMessageUrl = (channelId: number,

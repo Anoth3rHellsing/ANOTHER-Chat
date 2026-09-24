@@ -13,6 +13,11 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 import { canAccessChannel } from "../lib/permissions";
+import {
+  groupReactions,
+  isSingleEmoji,
+  MAX_DISTINCT_REACTIONS_PER_MESSAGE,
+} from "../lib/reactions";
 
 const router: IRouter = Router();
 
@@ -85,20 +90,6 @@ const upload = multer({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Group raw reaction rows into [{emoji, count, userIds}] */
-export function groupReactions(rows: Array<{ emoji: string; userId: number }>) {
-  const map = new Map<string, number[]>();
-  for (const r of rows) {
-    if (!map.has(r.emoji)) map.set(r.emoji, []);
-    map.get(r.emoji)!.push(r.userId);
-  }
-  return Array.from(map.entries()).map(([emoji, userIds]) => ({
-    emoji,
-    count: userIds.length,
-    userIds,
-  }));
-}
-
 // ─── POST /channels/:channelId/attachments ────────────────────────────────────
 router.post(
   "/channels/:channelId/attachments",
@@ -153,9 +144,12 @@ router.post(
 router.post("/messages/:messageId/reactions", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const messageId = parseInt(Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId, 10);
-  const { emoji } = req.body;
+  const emoji = req.body?.emoji;
 
-  if (!emoji || typeof emoji !== "string" || emoji.length > 8) {
+  if (!Number.isInteger(messageId) || messageId < 1) {
+    res.status(400).json({ error: "ID de mensaje inválido" }); return;
+  }
+  if (!isSingleEmoji(emoji)) {
     res.status(400).json({ error: "Emoji inválido" }); return;
   }
 
@@ -168,35 +162,58 @@ router.post("/messages/:messageId/reactions", requireAuth, async (req, res): Pro
     res.status(403).json({ error: "Sin acceso" }); return;
   }
 
-  // Toggle: remove if exists, add if not
-  const [existing] = await db
-    .select()
-    .from(messageReactionsTable)
-    .where(and(
+  // Serialize mutations per message; the unique constraint remains a final guard
+  // against duplicate (message, user, emoji) rows.
+  const result = await db.transaction(async (tx) => {
+    const [lockedMessage] = await tx.select({ id: messagesTable.id, deletedAt: messagesTable.deletedAt })
+      .from(messagesTable)
+      .where(eq(messagesTable.id, messageId))
+      .for("update");
+    if (!lockedMessage || lockedMessage.deletedAt) return { status: "missing" as const };
+
+    const whereMine = and(
       eq(messageReactionsTable.messageId, messageId),
       eq(messageReactionsTable.userId, userId),
       eq(messageReactionsTable.emoji, emoji),
-    ));
+    );
+    const [existing] = await tx.select({ id: messageReactionsTable.id })
+      .from(messageReactionsTable)
+      .where(whereMine);
 
-  if (existing) {
-    await db.delete(messageReactionsTable).where(eq(messageReactionsTable.id, existing.id));
-  } else {
-    await db.insert(messageReactionsTable).values({ messageId, userId, emoji });
+    if (existing) {
+      await tx.delete(messageReactionsTable).where(eq(messageReactionsTable.id, existing.id));
+    } else {
+      const rows = await tx.select({ emoji: messageReactionsTable.emoji })
+        .from(messageReactionsTable)
+        .where(eq(messageReactionsTable.messageId, messageId));
+      if (!rows.some((row) => row.emoji === emoji)
+          && new Set(rows.map((row) => row.emoji)).size >= MAX_DISTINCT_REACTIONS_PER_MESSAGE) {
+        return { status: "limit" as const };
+      }
+      await tx.insert(messageReactionsTable)
+        .values({ messageId, userId, emoji })
+        .onConflictDoNothing({
+          target: [messageReactionsTable.messageId, messageReactionsTable.userId, messageReactionsTable.emoji],
+        });
+    }
+
+    const rows = await tx.select({
+      emoji: messageReactionsTable.emoji,
+      userId: messageReactionsTable.userId,
+    }).from(messageReactionsTable).where(eq(messageReactionsTable.messageId, messageId));
+    return { status: "ok" as const, reactions: groupReactions(rows) };
+  });
+  if (result.status === "missing") { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  if (result.status === "limit") {
+    res.status(400).json({ error: "El mensaje ya tiene el máximo de 20 emojis distintos" }); return;
   }
-
-  // Return full grouped reactions for this message
-  const rawReactions = await db
-    .select({ emoji: messageReactionsTable.emoji, userId: messageReactionsTable.userId })
-    .from(messageReactionsTable)
-    .where(eq(messageReactionsTable.messageId, messageId));
-
-  const reactions = groupReactions(rawReactions);
+  const reactions = result.reactions;
 
   // Broadcast via WebSocket
   const { broadcast } = await import("../lib/websocket");
   broadcast(`channel:${msg.channelId}`, {
     type: "message_reaction_update",
-    data: { messageId, reactions },
+    data: { channelId: msg.channelId, messageId, reactions },
   });
 
   res.json(reactions);
@@ -206,33 +223,46 @@ router.post("/messages/:messageId/reactions", requireAuth, async (req, res): Pro
 router.delete("/messages/:messageId/reactions/:emoji", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const messageId = parseInt(Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId, 10);
-  const emoji = decodeURIComponent(Array.isArray(req.params.emoji) ? req.params.emoji[0] : req.params.emoji);
+  const emoji = Array.isArray(req.params.emoji) ? req.params.emoji[0] : req.params.emoji;
+  if (!Number.isInteger(messageId) || messageId < 1) {
+    res.status(400).json({ error: "ID de mensaje inválido" }); return;
+  }
+  if (!isSingleEmoji(emoji)) {
+    res.status(400).json({ error: "Emoji inválido" }); return;
+  }
 
   const [msg] = await db.select().from(messagesTable).where(eq(messagesTable.id, messageId));
-  if (!msg) { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  if (!msg || msg.deletedAt) { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
 
   const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, msg.channelId));
   if (!channel || !(await canAccessChannel(channel, userId, req.session.userRole))) {
     res.status(403).json({ error: "Sin acceso" }); return;
   }
 
-  await db.delete(messageReactionsTable).where(and(
-    eq(messageReactionsTable.messageId, messageId),
-    eq(messageReactionsTable.userId, userId),
-    eq(messageReactionsTable.emoji, emoji),
-  ));
-
-  const rawReactions = await db
-    .select({ emoji: messageReactionsTable.emoji, userId: messageReactionsTable.userId })
-    .from(messageReactionsTable)
-    .where(eq(messageReactionsTable.messageId, messageId));
-
-  const reactions = groupReactions(rawReactions);
+  const result = await db.transaction(async (tx) => {
+    const [lockedMessage] = await tx.select({ id: messagesTable.id, deletedAt: messagesTable.deletedAt })
+      .from(messagesTable)
+      .where(eq(messagesTable.id, messageId))
+      .for("update");
+    if (!lockedMessage || lockedMessage.deletedAt) return { status: "missing" as const };
+    await tx.delete(messageReactionsTable).where(and(
+      eq(messageReactionsTable.messageId, messageId),
+      eq(messageReactionsTable.userId, userId),
+      eq(messageReactionsTable.emoji, emoji),
+    ));
+    const rows = await tx.select({
+      emoji: messageReactionsTable.emoji,
+      userId: messageReactionsTable.userId,
+    }).from(messageReactionsTable).where(eq(messageReactionsTable.messageId, messageId));
+    return { status: "ok" as const, reactions: groupReactions(rows) };
+  });
+  if (result.status === "missing") { res.status(404).json({ error: "Mensaje no encontrado" }); return; }
+  const reactions = result.reactions;
 
   const { broadcast } = await import("../lib/websocket");
   broadcast(`channel:${msg.channelId}`, {
     type: "message_reaction_update",
-    data: { messageId, reactions },
+    data: { channelId: msg.channelId, messageId, reactions },
   });
 
   res.json(reactions);

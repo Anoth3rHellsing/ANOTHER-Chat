@@ -1,0 +1,30 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "sk3r97Q9XkboHRUiKCMJ9"
+uri = "file://screenshots/dm-sin-conversacion-corregido.png"
+type = "image"
+title = "DM sin conversación — vista corregida"
+description = "Captura de 1280×800 con datos de prueba interceptados solo en el navegador; sin estado vacío del servidor."
+logical_id = "66ad2316-2728-41d5-ae26-2ace7ccb4d0b"
+content_hash = "sha256:b18999b7e6114fb0abb6452bd6e6182d49aee7a4b01b1253b5133063724cc7e8"
+size = 68553
+mtime_ms = 1790212334117
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/66ad2316-2728-41d5-ae26-2ace7ccb4d0b/2be1e22f-492a-47ad-8713-2c5e288954ed"
+storage_version_token = "1790212398271182"
+content_type = "image/png"
+
+[[outputs]]
+id = "b5qRTSfd84j0TySIIBrsn"
+uri = "file://screenshots/dm-conversacion-corregida.png"
+type = "image"
+title = "Conversación DM — área completa"
+description = "Captura de 1280×800 con datos de prueba interceptados solo en el navegador; conversación e input sin sección residual."
+logical_id = "c42d717b-a200-4531-9a96-19f2d7dcba32"
+content_hash = "sha256:3ce3b7565549320a868453cf2ee606f5a356611086f5a33b48330e13404c6862"
+size = 74403
+mtime_ms = 1790212334373
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/c42d717b-a200-4531-9a96-19f2d7dcba32/1543afe6-cd4e-4154-9ba3-fbacc0598dc9"
+storage_version_token = "1790212398898381"
+content_type = "image/png"

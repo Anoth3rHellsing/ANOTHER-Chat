@@ -6,12 +6,13 @@ import {
   useRealtimeMessages,
   useRealtimeTransport,
 } from '@/providers/realtime-transport';
+import { updateChannelReactions, type MessageReaction } from '@/lib/reactions';
 
 type WSEvent =
   | { type: 'message:new', data: any }
   | { type: 'message:edit', data: any }
   | { type: 'message:delete', data: { id: number, channelId: number } }
-  | { type: 'message_reaction_update', data: { messageId: number, reactions: any[] } }
+  | { type: 'message_reaction_update', data: { messageId: number, channelId?: number, reactions: MessageReaction[] } }
   | { type: 'typing:start', data: { userId: number, channelId: number } }
   | { type: 'typing:stop', data: { userId: number, channelId: number } }
   | { type: 'user:status', data: { userId: number, status: any } }
@@ -118,17 +119,12 @@ export function useChatWebSocket(
         break;
 
       case 'message_reaction_update':
-        if (activeChannelId) {
-          queryClient.setQueriesData(
-            { predicate: q => isChannelMessagesKey(q.queryKey, activeChannelId) },
-            (old: any) => {
-              if (!old) return old;
-              return old.map((message: any) =>
-                message.id === payload.data.messageId
-                  ? { ...message, reactions: payload.data.reactions }
-                  : message,
-              );
-            },
+        if (payload.data.channelId ?? activeChannelId) {
+          updateChannelReactions(
+            queryClient,
+            (payload.data.channelId ?? activeChannelId)!,
+            payload.data.messageId,
+            payload.data.reactions,
           );
         }
         break;
