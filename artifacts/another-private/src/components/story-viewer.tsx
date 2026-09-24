@@ -35,10 +35,20 @@ export function StoryViewer({ group, currentUserId, onClose }: StoryViewerProps)
   const [viewers, setViewers] = useState<any[]>([]);
   const [showViewers, setShowViewers] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const markedStoryRef = useRef<number | null>(null);
   const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
   const isOwn = group.userId === currentUserId;
 
   const current = group.stories[storyIndex];
+
+  useEffect(() => {
+    if (!current || current.viewed || markedStoryRef.current === current.id) return;
+    markedStoryRef.current = current.id;
+    csrfFetch(`${baseUrl}/api/stories/${current.id}/view`, { method: 'POST', credentials: 'include' })
+      .catch(() => {
+        if (markedStoryRef.current === current.id) markedStoryRef.current = null;
+      });
+  }, [current?.id, current?.viewed, baseUrl]);
 
   const goNext = useCallback(() => {
     if (storyIndex < group.stories.length - 1) {

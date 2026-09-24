@@ -399,6 +399,11 @@ try {
   const withOffset = date => `${new Date(date.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, -1)}+05:30`;
   const inputStart = withOffset(startsAt);
   const inputEnd = withOffset(endsAt);
+  const messageToMember = waitFor(memberWs, message =>
+    message.type === "message:new" &&
+    message.data?.channelId === channelId &&
+    message.data?.content?.includes("Nueva actividad: UTC Event Round Trip"),
+  "announcement broadcast to the other channel member");
   const event = expectStatus(await creator.request(`/api/channels/${channelId}/events`, {
     method: "POST", json: {
       title: "UTC Event Round Trip",
@@ -419,7 +424,9 @@ try {
   const announcement = `Nueva actividad: UTC Event Round Trip\n[event:${eventId}]`;
   assert.ok(channelMessages.some(message => message.content === announcement),
     "event create must persist its normal, decryptable channel announcement message");
-  console.log("PASS event creation persists the normal readable channel announcement");
+  const broadcastAnnouncement = await messageToMember;
+  assert.equal(broadcastAnnouncement.data.content, announcement);
+  console.log("PASS event creation persists the announcement and broadcasts it into another member's message stream");
 
   expectStatus(await outsider.request(`/api/channels/${channelId}/events`),
     403, "outsider cannot list events in a private server channel");

@@ -38,6 +38,27 @@ export function useEventRealtime() {
   );
 }
 
+export function ChannelEventsEntry({ channelName, open, onClick }: {
+  channelName: string;
+  open: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${open ? 'bg-primary/20 text-primary' : 'text-primary hover:bg-primary/10'}`}
+      aria-label={`Eventos del canal ${channelName}`}
+      aria-expanded={open}
+      aria-controls="channel-events-panel"
+      title="Eventos del canal: próximos, pasados y crear evento"
+    >
+      <Calendar className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span>Eventos</span>
+    </button>
+  );
+}
+
 // Inline Message Card
 export function EventMessageCard({ eventId, channelId, onOpenEvents }: { eventId: number, channelId: number, onOpenEvents: () => void }) {
   const { data: event, isLoading, error } = useGetChannelEvent(channelId, eventId, {
@@ -132,7 +153,7 @@ export function ChannelEventsPanel({
   }, [events]);
 
   return (
-    <div className="w-80 max-w-[85vw] absolute inset-y-0 right-0 z-20 md:static bg-card/95 md:bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0 shadow-2xl md:shadow-none">
+    <div id="channel-events-panel" className="w-80 max-w-[85vw] absolute inset-y-0 right-0 z-20 md:static bg-card/95 md:bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0 shadow-2xl md:shadow-none">
       <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between flex-shrink-0 bg-card/30 backdrop-blur-sm">
         <div className="flex items-center gap-2 text-foreground font-medium">
           <Calendar className="w-4 h-4 text-primary" />
@@ -140,12 +161,13 @@ export function ChannelEventsPanel({
         </div>
         <div className="flex items-center gap-1">
           {view === 'list' && (
-            <button 
+            <button type="button"
               onClick={() => setView('create')}
-              className="p-1.5 text-muted-foreground hover:text-white hover:bg-white/5 rounded-md transition-colors"
-              title="Crear Evento"
+              className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+              title="Crear evento"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              <span>Crear evento</span>
             </button>
           )}
           <button 
@@ -191,9 +213,11 @@ export function ChannelEventsPanel({
               )}
             </div>
 
-            {pastEvents.length > 0 && (
-              <div>
-                <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-3">Pasados / Cancelados</h3>
+            <div>
+              <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-3">Pasados / Cancelados</h3>
+              {pastEvents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No hay eventos pasados</p>
+              ) : (
                 <div className="space-y-3 opacity-60 hover:opacity-100 transition-opacity">
                   {pastEvents.map(event => (
                     <EventItem 
@@ -205,8 +229,8 @@ export function ChannelEventsPanel({
                     />
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 

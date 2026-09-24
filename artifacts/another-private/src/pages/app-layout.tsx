@@ -38,7 +38,7 @@ import { CreateServerModal } from '@/components/create-server-modal';
 import { StoryBar } from '@/components/story-bar';
 import { ClipsView } from '@/components/clips-view';
 import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
-import { ChannelEventsPanel, EventMessageCard, useEventRealtime } from '@/components/channel-events';
+import { ChannelEventsEntry, ChannelEventsPanel, EventMessageCard, useEventRealtime } from '@/components/channel-events';
 import { ChannelFilesPanel } from '@/components/channel-files-panel';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -293,6 +293,9 @@ export default function AppLayout() {
   const [joinCode, setJoinCode] = useState('');
   const [showMembers, setShowMembers] = useState(true);
   const [showEvents, setShowEvents] = useState(false);
+  useEffect(() => {
+    setShowEvents(false);
+  }, [activeChannelId]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedAnchorRect, setSelectedAnchorRect] = useState<DOMRect | null>(null);
 
@@ -995,6 +998,19 @@ export default function AppLayout() {
           >
             <ShoppingBag className="w-5 h-5 group-hover:scale-110 transition-transform" />
           </a>
+          <a
+            href="https://manuelbustamante-py.github.io/ScreenShare/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Películas — se abre en una pestaña nueva"
+            title="Películas — se abre en una pestaña nueva"
+            className="group flex flex-col items-center gap-1 text-muted-foreground hover:text-primary"
+          >
+            <span className="w-12 h-12 rounded-[24px] group-hover:rounded-[16px] transition-all bg-secondary border border-white/10 group-hover:bg-primary/20 flex items-center justify-center">
+              <Clapperboard className="w-5 h-5 group-hover:scale-110 transition-transform" aria-hidden="true" />
+            </span>
+            <span className="text-[9px]">Películas</span>
+          </a>
         </div>
       </div>
 
@@ -1498,12 +1514,12 @@ export default function AppLayout() {
 
             {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
-              <div className="flex items-center gap-2 text-foreground font-medium">
+              <div className="flex min-w-0 flex-1 items-center gap-2 text-foreground font-medium">
                 <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)}>
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <Hash className="w-5 h-5 text-muted-foreground" />
-                {activeChannel.name}
+                <span className="truncate">{activeChannel.name}</span>
                 {(activeChannel as any).restrictedRoles?.length > 0 && (
                   <span className="text-xs text-primary/60 font-mono">🔒 restringido</span>
                 )}
@@ -1516,17 +1532,15 @@ export default function AppLayout() {
                 >
                   <Search className="w-4 h-4" />
                 </button>
-                <button
+                {(activeChannel as any).channelType === 'text' && <ChannelEventsEntry
+                  channelName={activeChannel.name}
+                  open={showEvents}
                   onClick={() => {
                     const next = !showEvents;
                     setShowEvents(next);
                     if (next) setShowMembers(false);
                   }}
-                  className={`p-1.5 rounded-md transition-colors ${showEvents ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
-                  title="Eventos del canal"
-                >
-                  <Calendar className="w-5 h-5" />
-                </button>
+                />}
                 <button 
                   onClick={() => {
                     const next = !showMembers;
@@ -1933,8 +1947,9 @@ export default function AppLayout() {
       )}
 
       {/* 5. EVENTS LIST COLUMN — only in server mode */}
-      {activeView === 'servers' && showEvents && activeChannel && (
+      {activeView === 'servers' && showEvents && activeChannel && (activeChannel as any).channelType === 'text' && (
         <ChannelEventsPanel
+          key={activeChannel.id}
           channelId={activeChannel.id}
           onClose={() => setShowEvents(false)}
           currentUser={user}

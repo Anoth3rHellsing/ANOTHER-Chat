@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -8,6 +8,8 @@ import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
+const MAX_ACTIVE_STORIES = 10;
+const STORY_LOCK_NAMESPACE = 72841;
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -35,6 +37,48 @@ async function rawQuery(text: string, values?: any[]) {
   }
 }
 
+async function insertStoryIfUnderLimit(
+  userId: number,
+  mediaUrl: string,
+  mediaType: string,
+): Promise<{ story: any | null; limitReached: boolean }> {
+  const { pool } = await import("@workspace/db");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Serialize simultaneous uploads by the same account so parallel requests
+    // cannot race past the active-story limit.
+    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [STORY_LOCK_NAMESPACE, userId]);
+    const count = await client.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM stories WHERE user_id = $1 AND expires_at > NOW()",
+      [userId],
+    );
+    if (Number(count.rows[0].count) >= MAX_ACTIVE_STORIES) {
+      await client.query("ROLLBACK");
+      return { story: null, limitReached: true };
+    }
+    const inserted = await client.query(
+      `INSERT INTO stories (user_id, media_url, media_type) VALUES ($1, $2, $3) RETURNING *`,
+      [userId, mediaUrl, mediaType],
+    );
+    await client.query("COMMIT");
+    return { story: inserted.rows[0], limitReached: false };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function removeUploadedStory(req: Request, filePath: string): Promise<void> {
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    req.log.error({ err: error }, "Unable to remove rejected story upload");
+  }
+}
+
 // GET /stories — get active stories grouped by user
 router.get("/stories", requireAuth, async (req, res): Promise<void> => {
     const userId = req.session.userId!;
@@ -45,7 +89,7 @@ router.get("/stories", requireAuth, async (req, res): Promise<void> => {
       FROM stories s
       JOIN users u ON u.id = s.user_id
       WHERE s.expires_at > NOW()
-      ORDER BY s.user_id, s.created_at ASC
+      ORDER BY s.user_id, s.created_at ASC, s.id ASC
     `, [userId]);
 
     // Group by user
@@ -94,11 +138,20 @@ router.post("/stories", requireAuth, upload.single("file"), async (req, res): Pr
     const mediaUrl = `${baseUrl}/api/uploads/${req.file.filename}`;
     const mediaType = req.file.mimetype.startsWith("video/") ? "video" : "image";
 
-    const result = await rawQuery(
-      `INSERT INTO stories (user_id, media_url, media_type) VALUES ($1, $2, $3) RETURNING *`,
-      [userId, mediaUrl, mediaType]
-    );
-    res.status(201).json(result.rows[0]);
+    try {
+      const result = await insertStoryIfUnderLimit(userId, mediaUrl, mediaType);
+      if (result.limitReached) {
+        await removeUploadedStory(req, req.file.path);
+        res.status(429).json({
+          error: `Ya tienes el máximo de ${MAX_ACTIVE_STORIES} historias activas. Espera a que caduque alguna antes de publicar otra.`,
+        });
+        return;
+      }
+      res.status(201).json(result.story);
+    } catch (error) {
+      await removeUploadedStory(req, req.file.path);
+      throw error;
+    }
 });
 
 // POST /stories/:storyId/view — mark a story as viewed

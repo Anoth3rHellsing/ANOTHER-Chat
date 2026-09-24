@@ -28,3 +28,31 @@ mtime_ms = 1790212334373
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/c42d717b-a200-4531-9a96-19f2d7dcba32/1543afe6-cd4e-4154-9ba3-fbacc0598dc9"
 storage_version_token = "1790212398898381"
 content_type = "image/png"
+
+[[outputs]]
+id = "3lD8cNc_eBmtmIhcJeAAq"
+uri = "file://screenshots/calendario-eventos-final.jpg"
+type = "image"
+title = "Calendario y asistencia — prueba aislada"
+description = "Captura de componentes reales con respuestas simuladas: acceso visible, evento próximo y pasado, RSVP y anuncio en el flujo."
+logical_id = "d81ef021-3bd7-4d19-a0c6-709cf4529ce5"
+content_hash = "sha256:96b9d23517f6eb91dafab076b8ad452d6957cf7e751a4392771460d28e5f0711"
+size = 50653
+mtime_ms = 1790261770523
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/d81ef021-3bd7-4d19-a0c6-709cf4529ce5/3b895c73-de7a-4cd0-9efb-131e8ed93884"
+storage_version_token = "1790261809636669"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "p91smMPzp2s885uCsM5HK"
+uri = "file://screenshots/historias-secuencia.jpg"
+type = "image"
+title = "Historias — prueba visual aislada"
+description = "Vista sintética usada para comprobar el anillo de historias no vistas y la reproducción secuencial."
+logical_id = "a1c0c06f-aa1a-4e2f-91d0-1a2b5d15e714"
+content_hash = "sha256:adbc68cc9f14bea72a76e16043a4515246c968969a26c6ee55e4495a18ec22ef"
+size = 8017
+mtime_ms = 1790261463119
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/a1c0c06f-aa1a-4e2f-91d0-1a2b5d15e714/1a6e0770-852a-4817-8bf3-1904a366c665"
+storage_version_token = "1790261810158167"
+content_type = "image/jpeg"

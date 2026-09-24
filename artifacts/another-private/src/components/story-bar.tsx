@@ -29,6 +29,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
   const [viewingGroup, setViewingGroup] = useState<StoryGroup | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
 
@@ -49,26 +50,33 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    setUploadError(null);
     setUploading(true);
     try {
       const form = new FormData();
       form.append('file', file);
-      await csrfFetch(`${baseUrl}/api/stories`, { method: 'POST', body: form, credentials: 'include' });
+      const response = await csrfFetch(`${baseUrl}/api/stories`, { method: 'POST', body: form, credentials: 'include' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        setUploadError(data?.error ?? 'No se pudo publicar la historia. Inténtalo de nuevo.');
+        return;
+      }
       await fetchStories();
-    } catch {}
-    setUploading(false);
+    } catch {
+      setUploadError('No se pudo publicar la historia. Comprueba la conexión e inténtalo de nuevo.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleView = (group: StoryGroup) => {
     setViewingGroup(group);
-    // Mark all stories in this group as viewed
-    group.stories.forEach(s => {
-      if (!s.viewed) {
-        csrfFetch(`${baseUrl}/api/stories/${s.id}/view`, { method: 'POST', credentials: 'include' }).catch(() => {});
-      }
-    });
   };
 
+  const addStory = () => {
+    setUploadError(null);
+    fileInputRef.current?.click();
+  };
   const onViewerClose = () => {
     setViewingGroup(null);
     fetchStories(); // refresh viewed state
@@ -83,11 +91,12 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {/* My story / Add story */}
           <button
-            onClick={() => myGroup ? handleView(myGroup) : fileInputRef.current?.click()}
+            onClick={() => myGroup ? handleView(myGroup) : addStory()}
             className="flex flex-col items-center gap-1 flex-shrink-0 group"
-            title={myGroup ? 'Ver mi historia' : 'Añadir historia'}
+            title={myGroup ? `Ver mis ${myGroup.stories.length} historias` : 'Añadir historia'}
+            aria-label={myGroup ? `Ver mis ${myGroup.stories.length} historias` : 'Añadir una historia'}
           >
-            <div className={`w-10 h-10 rounded-full relative ${myGroup ? 'p-[2px] bg-gradient-to-tr from-primary via-primary/80 to-primary/50' : 'border-2 border-dashed border-white/30 hover:border-primary/60'}`}>
+            <div className={`w-10 h-10 rounded-full relative ${myGroup?.hasUnviewed ? 'p-[2px] bg-gradient-to-tr from-primary via-primary/80 to-primary/50' : myGroup ? 'p-[2px] bg-muted' : 'border-2 border-dashed border-muted-foreground/40 hover:border-primary/60'}`}>
               <div className="w-full h-full rounded-full bg-card overflow-hidden flex items-center justify-center">
                 {currentUser?.avatarUrl
                   ? <img src={currentUser.avatarUrl} className="w-full h-full object-cover" alt="" />
@@ -100,9 +109,24 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
               )}
             </div>
             <span className="text-[9px] text-muted-foreground font-mono truncate w-10 text-center">
-              {uploading ? '...' : 'Tú'}
+              {uploading ? '...' : myGroup ? `Tú · ${myGroup.stories.length}/10` : 'Tú'}
             </span>
           </button>
+          {myGroup && (
+            <button
+              type="button"
+              onClick={addStory}
+              disabled={uploading}
+              className="flex flex-col items-center gap-1 flex-shrink-0 group disabled:opacity-60"
+              title={`Añadir historia (${myGroup.stories.length}/10 activas; límite 10)`}
+              aria-label={`Añadir otra historia. Tienes ${myGroup.stories.length} activas; máximo 10`}
+            >
+              <span className="w-10 h-10 rounded-full border-2 border-dashed border-muted-foreground/40 group-hover:border-primary/60 flex items-center justify-center">
+                <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+              </span>
+              <span className="text-[9px] text-muted-foreground font-mono truncate w-10 text-center">Añadir</span>
+            </button>
+          )}
 
           {/* Other users' stories */}
           {othersGroups.map(group => (
@@ -110,7 +134,8 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
               key={group.userId}
               onClick={() => handleView(group)}
               className="flex flex-col items-center gap-1 flex-shrink-0"
-              title={group.displayName}
+              title={`${group.displayName} · ${group.stories.length} ${group.stories.length === 1 ? 'historia' : 'historias'}${group.hasUnviewed ? ' · sin ver' : ''}`}
+              aria-label={`Ver ${group.stories.length} ${group.stories.length === 1 ? 'historia' : 'historias'} de ${group.displayName}${group.hasUnviewed ? ', hay historias sin ver' : ''}`}
             >
               <div className={`w-10 h-10 rounded-full p-[2px] ${group.hasUnviewed ? 'bg-gradient-to-tr from-primary via-primary/80 to-primary/50' : 'bg-white/20'}`}>
                 <div className="w-full h-full rounded-full bg-card overflow-hidden">
@@ -124,6 +149,7 @@ export function StoryBar({ currentUserId, currentUser }: StoryBarProps) {
           ))}
         </div>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUpload} />
+        {uploadError && <p className="mt-2 text-xs text-destructive" role="alert">{uploadError}</p>}
       </div>
 
       {viewingGroup && (
