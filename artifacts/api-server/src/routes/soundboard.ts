@@ -205,7 +205,10 @@ router.get("/soundboard/clips/:clipId/audio", requireAuth, async (req, res, next
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Content-Security-Policy", "default-src 'none'");
   res.setHeader("Content-Disposition", "attachment");
-  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  // Server-scoped audio is replayed often; keep it only in the member's browser
+  // for one minute. Every stale/conditional request still checks membership.
+  res.setHeader("Cache-Control", "private, max-age=60, must-revalidate");
+  res.vary("Cookie");
   res.setHeader("Content-Type", clip.mimeType);
   res.sendFile(filePath, { cacheControl: false }, (error) => {
     if (!error) return;

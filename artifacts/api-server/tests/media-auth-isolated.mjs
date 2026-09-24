@@ -94,7 +94,7 @@ function makeSyntheticWav() {
   return wav;
 }
 
-async function runHeadlessMediaSmoke({ base, cookies, imageAssets, videoPath }) {
+async function runHeadlessMediaSmoke({ base, cookies, imageAssets, noStoreAttachmentPath, lowSensitivityPaths, videoPath }) {
   const chromium = spawnSync("which", ["chromium"], { encoding: "utf8" }).stdout?.trim();
   if (!chromium) {
     console.log("LIMITATION Chromium is unavailable; headless browser media-element smoke test not verified");
@@ -140,7 +140,11 @@ async function runHeadlessMediaSmoke({ base, cookies, imageAssets, videoPath }) 
   let commandId = 0;
   const pending = new Map();
   const eventListeners = new Map();
+  const mediaPaths = new Set([...imageAssets.map(asset => asset.path), videoPath]);
+  const mediaRequestsById = new Map();
   const mediaResponses = new Map();
+  const passMetrics = [];
+  let activePass = null;
   socket.addEventListener("message", event => {
     const message = JSON.parse(event.data);
     if (message.id !== undefined) {
@@ -151,12 +155,49 @@ async function runHeadlessMediaSmoke({ base, cookies, imageAssets, videoPath }) 
       else callback.resolve(message.result ?? {});
       return;
     }
+    if (message.method === "Network.requestWillBeSent") {
+      const request = message.params.request;
+      const requestUrl = new URL(request.url);
+      if (mediaPaths.has(requestUrl.pathname)) {
+        const record = {
+          path: requestUrl.pathname, pass: activePass, status: null, headers: {},
+          servedFromCache: false, transferredBytes: 0, finished: false,
+        };
+        mediaRequestsById.set(message.params.requestId, record);
+        if (activePass !== null) passMetrics[activePass].requests.push(record);
+      }
+    }
+    if (message.method === "Network.requestServedFromCache") {
+      const record = mediaRequestsById.get(message.params.requestId);
+      if (record) record.servedFromCache = true;
+    }
     if (message.method === "Network.responseReceived") {
       const response = message.params.response;
       const mediaUrl = new URL(response.url);
-      if (imageAssets.some(asset => asset.path === mediaUrl.pathname) || mediaUrl.pathname === videoPath) {
+      if (mediaPaths.has(mediaUrl.pathname)) {
+        const record = mediaRequestsById.get(message.params.requestId);
+        if (record) {
+          record.status = response.status;
+          record.mimeType = response.mimeType;
+          record.headers = response.headers ?? {};
+        }
         mediaResponses.set(mediaUrl.pathname, { status: response.status, mimeType: response.mimeType });
       }
+    }
+    if (message.method === "Network.loadingFinished") {
+      const record = mediaRequestsById.get(message.params.requestId);
+      if (record) {
+        record.transferredBytes = message.params.encodedDataLength ?? 0;
+        record.finished = true;
+      }
+    }
+    if (message.method === "Network.loadingFailed") {
+      const record = mediaRequestsById.get(message.params.requestId);
+      if (record) record.finished = true;
+    }
+    if (message.method === "Network.requestWillBeSent" && message.params.redirectResponse) {
+      const record = mediaRequestsById.get(message.params.requestId);
+      if (record) record.finished = true;
     }
     for (const callback of eventListeners.get(message.method) ?? []) callback(message.params);
   });
@@ -198,15 +239,14 @@ async function runHeadlessMediaSmoke({ base, cookies, imageAssets, videoPath }) 
       assert.notEqual(cookie.success, false, `set isolated browser session cookie ${name}`);
     }
 
-    const apiPageLoaded = waitForEvent("Page.loadEventFired");
-    await command("Page.navigate", { url: `${base}/api/auth/me` });
-    await apiPageLoaded;
     const imageSpecs = JSON.stringify(imageAssets);
     const videoSpec = JSON.stringify(videoPath);
     const expression = `(() => {
       const images = ${imageSpecs};
       const videoPath = ${videoSpec};
-      document.body.innerHTML = "";
+      document.open();
+      document.write("<!doctype html><html><head><meta charset='utf-8'><title>Isolated synthetic media view</title></head><body></body></html>");
+      document.close();
       const imageLoads = images.map(asset => new Promise(resolve => {
         const image = new Image();
         const timer = setTimeout(() => resolve({ label: asset.label, loaded: false, timeout: true }), 10000);
@@ -230,26 +270,101 @@ async function runHeadlessMediaSmoke({ base, cookies, imageAssets, videoPath }) 
       });
       return Promise.all([Promise.all(imageLoads), videoLoad]).then(([images, video]) => ({ images, video }));
     })()`;
-    const evaluation = await command("Runtime.evaluate", {
-      expression, awaitPromise: true, returnByValue: true, timeout: 20_000,
-    });
-    const smoke = evaluation.result?.value;
-    assert.ok(smoke, `headless browser returned media-element results: ${JSON.stringify(evaluation.result?.exceptionDetails)}`);
-    for (const image of smoke.images) {
-      assert.equal(image.loaded, true, `headless Chromium loaded protected ${image.label}: ${JSON.stringify(image)}`);
-      assert.ok(image.width > 0, `${image.label} has nonzero natural width`);
+    const renderResults = [];
+    for (let index = 0; index < 2; index++) {
+      const pass = { requests: [] };
+      passMetrics.push(pass);
+      activePass = index;
+      const startedAt = Date.now();
+      // Each pass is a new top-level document navigation on the API origin.
+      // Cookies and media URL paths are deliberately unchanged between passes.
+      const apiPageLoaded = waitForEvent("Page.loadEventFired");
+      await command("Page.navigate", { url: `${base}/api/auth/me` });
+      await apiPageLoaded;
+      const evaluation = await command("Runtime.evaluate", {
+        expression, awaitPromise: true, returnByValue: true, timeout: 20_000,
+      });
+      const smoke = evaluation.result?.value;
+      assert.ok(smoke, `headless browser returned media-element results: ${JSON.stringify(evaluation.result?.exceptionDetails)}`);
+      for (const image of smoke.images) {
+        assert.equal(image.loaded, true, `headless Chromium loaded protected ${image.label} on render ${index + 1}: ${JSON.stringify(image)}`);
+        assert.ok(image.width > 0, `${image.label} has nonzero natural width on render ${index + 1}`);
+      }
+      assert.equal(smoke.video.loaded, true, `headless Chromium decoded protected video on render ${index + 1}: ${JSON.stringify(smoke.video)}`);
+      const idleUntil = Date.now() + 5_000;
+      let idleSince = null;
+      while (Date.now() < idleUntil) {
+        const activeRequests = pass.requests.filter(request => !request.finished);
+        if (activeRequests.length === 0) {
+          idleSince ??= Date.now();
+          if (Date.now() - idleSince >= 150) break;
+        } else {
+          idleSince = null;
+        }
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      activePass = null;
+      for (const asset of imageAssets) {
+        assert.equal(mediaResponses.get(asset.path)?.status, 200,
+          `browser requested ${asset.label} with an authorized 200 resource response`);
+      }
+      assert.ok([200, 206].includes(mediaResponses.get(videoPath)?.status),
+        `browser video resource response is authorized: ${JSON.stringify(mediaResponses.get(videoPath))}`);
+      renderResults.push({
+        elapsedMs: Date.now() - startedAt,
+        requests: pass.requests,
+      });
     }
-    assert.equal(smoke.video.loaded, true, `headless Chromium decoded protected video: ${JSON.stringify(smoke.video)}`);
-    for (const asset of imageAssets) {
-      assert.equal(mediaResponses.get(asset.path)?.status, 200,
-        `browser requested ${asset.label} with an authorized 200 resource response`);
+
+    const describePass = (pass, index) => {
+      const paths = [...new Set(pass.requests.map(request => request.path))];
+      const resources = paths.map(resourcePath => {
+        const requests = pass.requests.filter(request => request.path === resourcePath);
+        return {
+          path: resourcePath,
+          requestCount: requests.length,
+          transferredBytes: requests.reduce((sum, request) => sum + request.transferredBytes, 0),
+          cacheHits: requests.filter(request => request.servedFromCache).length,
+          statuses: requests.map(request => request.status),
+          cacheControl: requests.find(request => request.headers["Cache-Control"] ?? request.headers["cache-control"])?.headers["Cache-Control"] ??
+            requests.find(request => request.headers["cache-control"])?.headers["cache-control"] ?? null,
+        };
+      });
+      return { render: index + 1, elapsedMs: pass.elapsedMs, resources };
+    };
+    const metricPasses = renderResults.map((result, index) => describePass(result, index));
+    console.log(`Chromium media render metrics (CDP Network.responseReceived + requestServedFromCache + loadingFinished encodedDataLength; same cookie and paths; two document navigations): ${JSON.stringify(metricPasses)}`);
+
+    const attachmentPasses = renderResults.map(pass => pass.requests.filter(request => request.path === noStoreAttachmentPath));
+    assert.ok(attachmentPasses.every(requests => requests.length > 0),
+      "no-store attachment is requested on both separate document renders");
+    assert.ok(attachmentPasses.every(requests => requests.some(request => request.transferredBytes > 0)),
+      "no-store attachment transfers bytes again on each render");
+    assert.ok(attachmentPasses.flat().every(request => /no-store/i.test(
+      request.headers["Cache-Control"] ?? request.headers["cache-control"] ?? "",
+    )), "attachment retains its explicit no-store response policy");
+
+    for (const resourcePath of lowSensitivityPaths) {
+      const firstRequests = renderResults[0].requests.filter(request => request.path === resourcePath);
+      const secondRequests = renderResults[1].requests.filter(request => request.path === resourcePath);
+      assert.ok(firstRequests.length > 0, `first render requested cache-eligible resource ${resourcePath}`);
+      assert.ok(firstRequests.every(request =>
+        (request.headers["Cache-Control"] ?? request.headers["cache-control"]) === "private, max-age=180, must-revalidate"),
+      `profile/server image ${resourcePath} has the exact 180-second private cache policy`);
+      assert.ok(secondRequests.length > 0, `second render requested cache-eligible resource ${resourcePath}`);
+      assert.ok(secondRequests.some(request => request.servedFromCache),
+        `second render served ${resourcePath} from the browser cache`);
+      assert.equal(secondRequests.reduce((sum, request) => sum + request.transferredBytes, 0), 0,
+        `second render transferred no body bytes for cached resource ${resourcePath}`);
     }
-    assert.ok([200, 206].includes(mediaResponses.get(videoPath)?.status),
-      `browser video resource response is authorized: ${JSON.stringify(mediaResponses.get(videoPath))}`);
-    console.log(`PASS headless Chromium loaded ${imageAssets.length} protected images and decoded protected video; resource statuses ${[
-      ...imageAssets.map(asset => `${asset.label}=${mediaResponses.get(asset.path)?.status}`),
-      `video=${mediaResponses.get(videoPath)?.status}`,
-    ].join(", ")}`);
+    assert.ok(attachmentPasses[1].every(request => !request.servedFromCache && request.transferredBytes > 0),
+      "no-store attachment is fetched from the network rather than browser cache on render two");
+    const clipRequests = renderResults.flatMap(pass => pass.requests.filter(request => request.path === videoPath));
+    assert.ok(clipRequests.length > 0 && clipRequests.every(request =>
+      (request.headers["Cache-Control"] ?? request.headers["cache-control"]) === "private, max-age=60, must-revalidate"),
+    "clip playback has the exact 60-second private cache policy");
+    console.log("PASS second navigation served all four profile/server images from cache; no-store attachment transferred again");
+    console.log(`PASS headless Chromium completed two separate media-view navigations and loaded ${imageAssets.length} protected images plus video`);
     return true;
   } finally {
     socket.close();
@@ -316,6 +431,25 @@ function expectStatus(response, status, label) {
   assert.equal(response.status, status, `${label}: ${Buffer.isBuffer(response.result) ? response.result.toString("utf8") : JSON.stringify(response.result)}`);
   console.log(`PASS ${label} (${status})`);
   return response.result;
+}
+
+function assertMediaPolicy(response, cacheControl, label) {
+  assert.equal(response.headers.get("cache-control"), cacheControl, `${label} Cache-Control`);
+  assert.ok(response.headers.get("etag"), `${label} includes ETag`);
+  assert.ok(response.headers.get("last-modified"), `${label} includes Last-Modified`);
+}
+
+async function assertConditionalMedia304(client, mediaPath, etag, label) {
+  assert.ok(etag, `${label} has an ETag to validate`);
+  // Undici adds Cache-Control: no-cache for manually conditional requests;
+  // Express deliberately treats that as stale, so send max-age=0 instead.
+  const response = await client.request(mediaPath, {
+    headers: { "If-None-Match": etag, "Cache-Control": "max-age=0", Pragma: "" },
+  });
+  assert.equal(response.status, 304,
+    `${label} authorized conditional request returns 304 (sent ETag ${etag}; received ${response.status}, ETag ${response.headers.get("etag")})`);
+  assert.equal(response.result.length, 0, `${label} 304 has no response body`);
+  return response;
 }
 
 function expectDenied(response, label) {
@@ -538,9 +672,18 @@ try {
   const authorizedImage = await member.request(image.path);
   expectStatus(authorizedImage, 200, "current restricted-role member downloads its channel attachment");
   assert.ok(authorizedImage.result.equals(png));
+  assertMediaPolicy(authorizedImage, "private, no-store, max-age=0", "message attachment");
   assert.equal(authorizedImage.headers.get("x-content-type-options"), "nosniff");
   assert.equal(authorizedImage.headers.get("content-security-policy"), "default-src 'none'");
   assert.match(authorizedImage.headers.get("content-type") ?? "", /^image\/png\b/);
+  const imageWithOrigin = await member.request(image.path, {
+    headers: { Origin: base },
+  });
+  expectStatus(imageWithOrigin, 200, "allowed-origin protected image remains accessible");
+  assert.equal(imageWithOrigin.headers.get("access-control-allow-origin"), base);
+  assert.match(imageWithOrigin.headers.get("vary") ?? "", /(?:^|,\s*)Origin(?:,|$)/i);
+  assert.match(imageWithOrigin.headers.get("vary") ?? "", /(?:^|,\s*)Cookie(?:,|$)/i);
+  await assertConditionalMedia304(member, image.path, authorizedImage.headers.get("etag"), "authorized attachment");
   const authorizedPdf = await member.request(doc.path);
   expectStatus(authorizedPdf, 200, "current restricted-role member downloads its document");
   assert.equal(authorizedPdf.headers.get("content-disposition"), "attachment");
@@ -589,9 +732,11 @@ try {
   const libraryDownload = await member.request(filePath);
   expectStatus(libraryDownload, 200, "authorized member downloads private channel-library file");
   assert.ok(libraryDownload.result.equals(bytes));
+  assertMediaPolicy(libraryDownload, "private, no-store, max-age=0", "channel-library download");
   assert.equal(libraryDownload.headers.get("x-content-type-options"), "nosniff");
   assert.equal(libraryDownload.headers.get("content-security-policy"), "default-src 'none'; sandbox");
   assert.match(libraryDownload.headers.get("content-disposition") ?? "", /attachment/);
+  await assertConditionalMedia304(member, filePath, libraryDownload.headers.get("etag"), "authorized library download");
   expectDenied(await outsider.request(filePath), "outsider denied exact private-library download URL");
   expectDenied({ status: (await fetch(base + filePath)).status }, "anonymous request to private-library download denied");
   console.log("PASS channel-library direct download is authorized for current members only and retains hardened download headers");
@@ -604,7 +749,10 @@ try {
     method: "POST", body: clipForm,
   }), 201, "upload disposable server clip");
   const clipPath = new URL(clip.video_url, base).pathname;
-  expectStatus(await member.request(clipPath), 200, "current server member can play authorized clip");
+  const authorizedClip = await member.request(clipPath);
+  expectStatus(authorizedClip, 200, "current server member can play authorized clip");
+  assertMediaPolicy(authorizedClip, "private, max-age=60, must-revalidate", "server clip");
+  await assertConditionalMedia304(member, clipPath, authorizedClip.headers.get("etag"), "authorized clip");
   expectDenied({ status: (await fetch(base + clipPath)).status }, "anonymous request to clip URL denied");
   expectDenied(await outsider.request(clipPath), "authenticated outsider denied exact clip URL");
   console.log("PASS clip files require an authenticated current server member");
@@ -630,10 +778,19 @@ try {
   const authorizedSoundboard = await member.request(soundboardAudioPath);
   expectStatus(authorizedSoundboard, 200, "current server member downloads protected soundboard audio");
   assert.ok(authorizedSoundboard.result.equals(soundboardBytes));
+  assertMediaPolicy(authorizedSoundboard, "private, max-age=60, must-revalidate", "soundboard audio");
   assert.equal(authorizedSoundboard.headers.get("x-content-type-options"), "nosniff");
   assert.equal(authorizedSoundboard.headers.get("content-security-policy"), "default-src 'none'");
   assert.equal(authorizedSoundboard.headers.get("content-disposition"), "attachment");
   assert.equal(authorizedSoundboard.headers.get("content-type"), "audio/wav");
+  const soundWithOrigin = await member.request(soundboardAudioPath, {
+    headers: { Origin: base },
+  });
+  expectStatus(soundWithOrigin, 200, "allowed-origin soundboard audio remains accessible");
+  assert.equal(soundWithOrigin.headers.get("access-control-allow-origin"), base);
+  assert.match(soundWithOrigin.headers.get("vary") ?? "", /(?:^|,\s*)Origin(?:,|$)/i);
+  assert.match(soundWithOrigin.headers.get("vary") ?? "", /(?:^|,\s*)Cookie(?:,|$)/i);
+  await assertConditionalMedia304(member, soundboardAudioPath, authorizedSoundboard.headers.get("etag"), "authorized soundboard audio");
   expectDenied(await outsider.request(soundboardAudioPath), "outsider denied protected soundboard audio route");
   expectDenied({ status: (await fetch(base + soundboardAudioPath)).status },
     "anonymous request to protected soundboard audio route denied");
@@ -670,9 +827,12 @@ try {
     return new URL(uploaded.url, base).pathname;
   }
   let avatarPath = await uploadProfileImage("/api/users/me/avatar", "avatar");
-  const userBannerPath = await uploadProfileImage("/api/users/me/banner", "banner");
+  let userBannerPath = await uploadProfileImage("/api/users/me/banner", "banner");
   for (const [assetPath, label] of [[avatarPath, "current user's avatar"], [userBannerPath, "current user's banner"]]) {
-    expectStatus(await member.request(assetPath), 200, `${label} remains visible to its owner`);
+    const profileResponse = await member.request(assetPath);
+    expectStatus(profileResponse, 200, `${label} remains visible to its owner`);
+    assertMediaPolicy(profileResponse, "private, max-age=180, must-revalidate", label);
+    await assertConditionalMedia304(member, assetPath, profileResponse.headers.get("etag"), label);
     expectStatus(await owner.request(assetPath), 200, `${label} remains visible to an authenticated profile viewer`);
     expectStatus(await outsider.request(assetPath), 200, `${label} remains discoverable to a different authenticated user`);
     expectDenied({ status: (await fetch(base + assetPath)).status }, `anonymous viewer denied ${label}`);
@@ -708,9 +868,12 @@ try {
     return new URL(uploaded.url, base).pathname;
   }
   let serverIconPath = await uploadServerImage(`/api/servers/${serverId}/icon`, "icon");
-  const serverBannerPath = await uploadServerImage(`/api/servers/${serverId}/banner`, "banner");
+  let serverBannerPath = await uploadServerImage(`/api/servers/${serverId}/banner`, "banner");
   for (const [assetPath, label] of [[serverIconPath, "server icon"], [serverBannerPath, "server banner"]]) {
-    expectStatus(await owner.request(assetPath), 200, `server owner can see its ${label}`);
+    const serverResponse = await owner.request(assetPath);
+    expectStatus(serverResponse, 200, `server owner can see its ${label}`);
+    assertMediaPolicy(serverResponse, "private, max-age=180, must-revalidate", label);
+    await assertConditionalMedia304(owner, assetPath, serverResponse.headers.get("etag"), label);
     expectStatus(await member.request(assetPath), 200, `current server member can see its ${label}`);
     expectDenied({ status: (await fetch(base + assetPath)).status }, `anonymous viewer denied ${label}`);
     expectDenied(await outsider.request(assetPath), `outsider denied exact ${label} URL`);
@@ -844,15 +1007,21 @@ try {
       member, restricted.id, "browser-smoke.png", browserPng, "image/png",
     );
     avatarPath = await uploadProfileImage("/api/users/me/avatar", "browser-avatar", browserPng);
+    userBannerPath = await uploadProfileImage("/api/users/me/banner", "browser-banner", browserPng);
     serverIconPath = await uploadServerImage(`/api/servers/${serverId}/icon`, "browser-icon", browserPng);
+    serverBannerPath = await uploadServerImage(`/api/servers/${serverId}/banner`, "browser-banner", browserPng);
     await runHeadlessMediaSmoke({
       base,
       cookies: member.cookies,
       imageAssets: [
         { label: "private channel attachment", path: browserAttachment.path },
         { label: "user avatar", path: avatarPath },
+        { label: "user banner", path: userBannerPath },
         { label: "server icon", path: serverIconPath },
+        { label: "server banner", path: serverBannerPath },
       ],
+      noStoreAttachmentPath: browserAttachment.path,
+      lowSensitivityPaths: [avatarPath, userBannerPath, serverIconPath, serverBannerPath],
       videoPath: clipPath,
     });
   } else {
@@ -873,9 +1042,24 @@ try {
     "-c", `DELETE FROM server_members WHERE server_id = ${Number(serverId)} AND user_id = ${escapedMemberId}`,
   ], { env });
   expectDenied(await member.request(image.path), "expelled member loses exact message-image URL");
+  expectDenied(await member.request(image.path, {
+    headers: { "If-None-Match": authorizedImage.headers.get("etag") },
+  }), "expelled member cannot use a matching attachment validator to receive 304");
   expectDenied(await member.request(filePath), "expelled member loses exact library-file URL");
+  expectDenied(await member.request(filePath, {
+    headers: { "If-None-Match": libraryDownload.headers.get("etag") },
+  }), "expelled member cannot use a matching library validator to receive 304");
   expectDenied(await member.request(clipPath), "expelled member loses exact clip URL");
+  expectDenied(await member.request(clipPath, {
+    headers: { "If-None-Match": authorizedClip.headers.get("etag") },
+  }), "expelled member cannot use a matching clip validator to receive 304");
+  expectDenied(await member.request(soundboardAudioPath, {
+    headers: { "If-None-Match": authorizedSoundboard.headers.get("etag") },
+  }), "expelled member cannot use a matching soundboard validator to receive 304");
   expectDenied(await member.request(serverIconPath), "expelled member loses exact server-icon URL");
+  expectDenied(await member.request(serverIconPath, {
+    headers: { "If-None-Match": (await owner.request(serverIconPath)).headers.get("etag") },
+  }), "expelled member cannot use a matching server-icon validator to receive 304");
   expectDenied(await member.request(serverBannerPath), "expelled member loses exact server-banner URL");
   expectDenied(await member.request(serverIconPath, { method: "HEAD" }),
     "expelled member cannot bypass server-icon revocation using HEAD");

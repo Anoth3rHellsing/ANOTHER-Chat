@@ -77,8 +77,8 @@ function isolatedEnvironment(databaseUrl) {
 function account() {
   const cookies = new Map();
   return {
-    async request(url, { method = "GET", json, body } = {}) {
-      const headers = {};
+    async request(url, { method = "GET", json, body, headers: extraHeaders = {} } = {}) {
+      const headers = { ...extraHeaders };
       if (cookies.size) headers.Cookie = [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
       if (cookies.has("csrf_token") && method !== "GET" && method !== "HEAD") {
         headers["x-csrf-token"] = cookies.get("csrf_token");
@@ -97,7 +97,7 @@ function account() {
       const text = await response.text();
       let result;
       try { result = JSON.parse(text); } catch { result = text; }
-      return { status: response.status, result };
+      return { status: response.status, result, headers: response.headers };
     },
   };
 }
@@ -250,8 +250,11 @@ try {
   assert.equal(firstListing.find(group => group.userId === firstStories[0].user_id).hasUnviewed, true);
   console.log("PASS three separate stories remain active, ordered, and independently expire after 24 hours");
 
-  const activeMedia = expectStatus(await viewer.request(firstMediaPath), 200,
+  const activeMediaResponse = await viewer.request(firstMediaPath);
+  const activeMedia = expectStatus(activeMediaResponse, 200,
     "authenticated viewer can fetch an active story file by its saved URL");
+  assert.equal(activeMediaResponse.headers.get("cache-control"), "private, no-store",
+    "active story media remains no-store");
   assert.match(activeMedia, /synthetic story media story-1\.png/,
     "active story media bytes are delivered");
   const unauthenticated = await fetch(`http://127.0.0.1:${apiPort}${firstMediaPath}`);

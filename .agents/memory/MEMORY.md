@@ -10,6 +10,7 @@
 - [Call exit controls](call-exit-controls.md) — keep hang-up and expand/minimize fixed outside wrapping secondary actions; clipped exits are a functional safety issue
 - [Private UI visual checks](private-ui-visual-checks.md) — read-only browser response fixtures can inspect authenticated styling without test accounts, but cannot validate real behavior
 - [Uploaded-media identity](uploaded-media-identity.md) — an upload URL referenced by multiple assets must fail closed; access to any one reference is not authority to read the bytes
+- [Protected media cache](protected-media-cache.md) — use short private freshness for reusable low-sensitivity media, but no-store for messages, stories and library files
 - [Postgres expression indexes](postgres-expression-indexes.md) — CASE expressions in generated index SQL need explicit grouping and a disposable migration test
 - [Artifact build context](artifact-build-context.md) — ad hoc shell builds lack managed artifact environment; root preview routing is not implied by the artifact directory
 - [Complete database baseline](stories-clips-raw-sql.md) — raw-SQL feature tables are now declared in Drizzle and covered by a verified zero migration

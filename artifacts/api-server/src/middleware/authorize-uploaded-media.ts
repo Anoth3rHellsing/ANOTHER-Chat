@@ -287,11 +287,21 @@ export const authorizeUploadedMedia: RequestHandler = async (req, res, next): Pr
       return;
     }
 
-    // Re-authorize on each request and do not retain bytes in browser or shared
-    // intermediary caches after a user's membership/role has changed.
-    res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Vary", "Cookie");
+    // Attachments must reflect revocation immediately. Profile/server graphics
+    // and clips are less sensitive and frequently reused: a short, browser-only
+    // cache avoids repeated downloads and authorization queries. Once stale,
+    // sendFile's file-stat ETag/Last-Modified validators allow an authorized
+    // 304; authorization above still happens before any conditional response.
+    const maxAgeSeconds = mediaRow.asset_type === "user_asset" || mediaRow.asset_type === "server_asset"
+      ? 180
+      : mediaRow.asset_type === "clip" ? 60 : 0;
+    if (maxAgeSeconds === 0) {
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+    } else {
+      res.setHeader("Cache-Control", `private, max-age=${maxAgeSeconds}, must-revalidate`);
+    }
+    res.vary("Cookie");
     const extension = path.extname(filename).slice(1).toLowerCase();
     if (!inlineExtensions.has(extension)) {
       res.setHeader("Content-Disposition", "attachment");
