@@ -112,6 +112,7 @@ try {
   assert.equal(started.current.platform, "youtube");
   assert.equal(started.current.contentId, "dQw4w9WgXcQ");
   assert.equal(started.controllerUserId, firstId);
+  assert.deepEqual(started.watchingUserIds, [firstId]);
   console.log("PASS voice host starts canonical YouTube session");
 
   const invalid = waitFor(aWs, m => m.type === "watch:error", "invalid-origin error");
@@ -138,7 +139,34 @@ try {
   const late = (await lateState).data.session;
   assert.equal(late.current.contentId, "dQw4w9WgXcQ");
   assert.equal(late.queue[0].id, track.id);
+  assert.deepEqual(late.watchingUserIds, [firstId]);
   console.log("PASS late voice participant receives current item and queue");
+  const declinedControl = waitFor(bWs, m => m.type === "watch:error", "non-viewer control rejection");
+  bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId), action: "pause" }));
+  assert.match((await declinedControl).data.message, /Únete al visionado/);
+  const joined = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.watchingUserIds?.includes(secondId), "explicit watch join");
+  bWs.send(JSON.stringify({ type: "watch:join", ...args("voice", channelId) }));
+  const joinedSession = (await joined).data.session;
+  assert.ok(joinedSession.positionMs >= late.positionMs);
+  assert.deepEqual(new Set(joinedSession.watchingUserIds), new Set([firstId, secondId]));
+  console.log("PASS late participant explicitly joins at the authoritative current playback position");
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const left = waitFor(aWs, m => m.type === "watch:state"
+      && !m.data?.session?.watchingUserIds?.includes(secondId), `watch leave ${cycle + 1}`);
+    bWs.send(JSON.stringify({ type: "watch:leave", ...args("voice", channelId) }));
+    const state = (await left).data.session;
+    assert.equal(state.controllerUserId, firstId);
+    const rejoined = waitFor(aWs, m => m.type === "watch:state"
+      && m.data?.session?.watchingUserIds?.includes(secondId), `watch rejoin ${cycle + 1}`);
+    bWs.send(JSON.stringify({ type: "watch:join", ...args("voice", channelId) }));
+    await rejoined;
+  }
+  const stillInCall = waitFor(bWs, m => m.type === "watch:state"
+    && m.data?.session?.watchingUserIds?.includes(secondId), "call survives viewing leave");
+  bWs.send(JSON.stringify({ type: "watch:sync", ...args("voice", channelId) }));
+  await stillInCall;
+  console.log("PASS repeated leave/rejoin is independent of voice membership; other participant sees watcher status");
   const twoQueued = waitFor(aWs, m => m.type === "watch:state" && m.data?.session?.queue.length === 2,
     "both platforms queued");
   bWs.send(JSON.stringify({ type: "watch:add", ...args("voice", channelId), url: youtube }));
@@ -189,6 +217,16 @@ try {
   aWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
     action: "transfer", userId: secondId }));
   await transfer;
+  const controllerHandoff = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.controllerUserId === firstId
+    && !m.data.session.watchingUserIds.includes(secondId), "controller leaves viewing and cedes control");
+  bWs.send(JSON.stringify({ type: "watch:leave", ...args("voice", channelId) }));
+  await controllerHandoff;
+  const controllerRejoin = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.watchingUserIds?.includes(secondId), "former controller rejoins viewing");
+  bWs.send(JSON.stringify({ type: "watch:join", ...args("voice", channelId) }));
+  await controllerRejoin;
+  console.log("PASS a departing viewer/controller hands control to a remaining viewer and can rejoin");
   const reordered = waitFor(aWs, m => m.type === "watch:state"
     && m.data?.session?.queue[0]?.id === queuedVideo.id, "queue reorder");
   bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId),
@@ -227,7 +265,7 @@ try {
   console.log("PASS removing the playing item leaves an empty, paused session");
 
   const ended = waitFor(aWs, m => m.type === "watch:state" && m.data?.session === null, "session end");
-  bWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId), action: "end" }));
+  aWs.send(JSON.stringify({ type: "watch:control", ...args("voice", channelId), action: "end" }));
   await ended;
   console.log("PASS host ends session and clears shared state");
 
@@ -235,6 +273,10 @@ try {
     "second temporary session");
   aWs.send(JSON.stringify({ type: "watch:start", ...args("voice", channelId), url: youtube }));
   await again;
+  const watcherBeforeHandoff = waitFor(aWs, m => m.type === "watch:state"
+    && m.data?.session?.watchingUserIds?.includes(secondId), "next host joins before handoff");
+  bWs.send(JSON.stringify({ type: "watch:join", ...args("voice", channelId) }));
+  await watcherBeforeHandoff;
   const handoff = waitFor(bWs, m => m.type === "watch:state"
     && m.data?.session?.controllerUserId === secondId, "voice host departure transfer");
   aWs.send(JSON.stringify({ type: "voice:unbind", channelId }));
@@ -257,7 +299,9 @@ try {
   const dmState = waitFor(bWs, m => m.type === "watch:state" && m.data?.session?.current,
     "direct-call watch state");
   aWs.send(JSON.stringify({ type: "watch:start", ...args("dm", secondId), url: soundcloud }));
-  assert.equal((await dmState).data.session.current.platform, "soundcloud");
+  const dmStarted = (await dmState).data.session;
+  assert.equal(dmStarted.current.platform, "soundcloud");
+  assert.deepEqual(dmStarted.watchingUserIds, [firstId]);
   const wrongTab = waitFor(extraTab, m => m.type === "watch:error", "non-call tab rejection");
   extraTab.send(JSON.stringify({ type: "watch:sync", ...args("dm", secondId) }));
   assert.match((await wrongTab).data.message, /conectado|vinculad|llamada/i);

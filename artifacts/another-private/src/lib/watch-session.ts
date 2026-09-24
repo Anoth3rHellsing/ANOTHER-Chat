@@ -26,6 +26,7 @@ export interface WatchItem {
 
 export interface WatchSessionState {
   controllerUserId: number;
+  watchingUserIds: number[];
   allowEveryone: boolean;
   current: WatchItem | null;
   queue: WatchItem[];
@@ -183,6 +184,8 @@ export function isWatchSession(value: unknown): value is WatchSessionState {
   const session = value as Partial<WatchSessionState>;
   return isSafeInteger(session.controllerUserId)
     && session.controllerUserId > 0
+    && Array.isArray(session.watchingUserIds)
+    && session.watchingUserIds.every(userId => isSafeInteger(userId) && userId > 0)
     && typeof session.allowEveryone === 'boolean'
     && (session.current === null || isWatchItem(session.current))
     && Array.isArray(session.queue)

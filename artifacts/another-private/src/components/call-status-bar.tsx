@@ -12,10 +12,12 @@ interface CallStatusBarProps {
   onOpenSoundboard: () => void;
   onOpenWatch: () => void;
   isWatching: boolean;
+  hasWatchInvitation: boolean;
 }
 
 export function CallStatusBar({
-  name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand, onOpenSoundboard, onOpenWatch, isWatching,
+  name, status, participants, isMuted, isMinimized, onToggleMute, onHangUp, onExpand,
+  onOpenSoundboard, onOpenWatch, isWatching, hasWatchInvitation,
 }: CallStatusBarProps) {
   return (
     <div className="bg-green-950/60 border-t border-green-500/20 px-3 py-2 flex items-center gap-2">
@@ -37,11 +39,16 @@ export function CallStatusBar({
         type="button"
         onClick={onOpenWatch}
         className={`p-1 rounded transition-colors ${isWatching ? 'text-primary bg-primary/15' : 'text-primary hover:bg-primary/15'}`}
-        title="Abrir visionado conjunto"
-        aria-label="Abrir visionado conjunto"
+        title={hasWatchInvitation ? 'Hay un visionado en curso; abre la invitación para ver los detalles y unirte' : 'Abrir visionado conjunto'}
+        aria-label={hasWatchInvitation ? 'Ver la invitación a visionado conjunto' : 'Abrir visionado conjunto'}
         aria-pressed={isWatching}
       >
-        <Clapperboard className="w-3.5 h-3.5" />
+        <span className="relative inline-flex items-center gap-1">
+          <Clapperboard className="w-3.5 h-3.5" />
+          {hasWatchInvitation && (
+            <span className="text-[9px] font-semibold text-primary">Invitación</span>
+          )}
+        </span>
       </button>
       <button
         type="button"

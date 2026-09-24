@@ -4,7 +4,8 @@
 - [Permissions system](permissions-system.md) — bitmask roles, schema tables, key files, why PERM consts must be in a separate .ts file
 - [Connection-bound voice membership](voice-ws-close.md) — voice presence follows bound connection IDs; never evict sibling tabs by user ID
 - [Voice bind readiness](voice-bind-readiness.md) — HTTP membership can precede WS binding; negotiate only with confirmed bound peers
-- [Shared-screen media identity](screen-media-identity.md) — mixing audio must preserve the camera/mic stream association or remote camera can look like a screen
+- [Shared-screen media identity](screen-media-identity.md) — separate microphone and screen tracks must retain stream identity; out-of-order arrivals must not turn a camera into a screen
+- [Watch opt-in membership](watch-opt-in-membership.md) — only the initiator joins automatically; control transfers to a remaining viewer, not an idle caller
 - [Isolated call testing](isolated-call-testing.md) — separate CDP tabs share cookies unless each test user has its own browser context
 - [Private UI visual checks](private-ui-visual-checks.md) — read-only browser response fixtures can inspect authenticated styling without test accounts, but cannot validate real behavior
 - [Artifact build context](artifact-build-context.md) — ad hoc shell builds lack managed artifact environment; root preview routing is not implied by the artifact directory

@@ -88,6 +88,7 @@ assert.equal(toSoundCloudWidgetVolume(2), 100);
 
 const session = {
   controllerUserId: 4,
+  watchingUserIds: [4],
   allowEveryone: false,
   current: {
     id: 'entry-1', platform: 'youtube', contentId: 'aqz-KE-bpKQ',

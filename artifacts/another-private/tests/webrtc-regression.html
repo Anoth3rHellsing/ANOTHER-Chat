@@ -127,78 +127,96 @@
           const screenVideoTrack = makeVideoTrack();
           const displayCaptureStream = new MediaStream([screenVideoTrack, displayTone.track]);
 
-          const mixer = context.createMediaStreamDestination();
-          context.createMediaStreamSource(micStream).connect(mixer);
-          context.createMediaStreamSource(displayTone.destination.stream).connect(mixer);
-          const mixedTrack = mixer.stream.getAudioTracks()[0];
-
           const senderPeer = new RTCPeerConnection({ iceServers: [] });
           const receiverPeer = new RTCPeerConnection({ iceServers: [] });
           peers = [senderPeer, receiverPeer];
+          let negotiationNeeded = 0;
+          senderPeer.onnegotiationneeded = () => negotiationNeeded++;
           const micSender = senderPeer.addTrack(micTone.track, micStream);
+          const screenAudioSender = senderPeer.addTrack(displayTone.track, displayCaptureStream);
           const screenSender = senderPeer.addTrack(screenVideoTrack, displayCaptureStream);
-          assert(micSender.track === micTone.track && screenSender.track === screenVideoTrack,
-            'microphone and screen video are distinct RTCRtpSender tracks');
-          assert(micSender.track.kind === 'audio' && screenSender.track.kind === 'video',
-            'screen capture video is sent separately from the microphone audio sender');
+          assert(micSender.track === micTone.track && screenAudioSender.track === displayTone.track &&
+            screenSender.track === screenVideoTrack,
+            'microphone, screen audio, and screen video use distinct RTCRtpSender tracks');
+          assert(micSender.track.kind === 'audio' && screenAudioSender.track.kind === 'audio' &&
+            screenSender.track.kind === 'video',
+            'screen audio is a second audio sender and never replaces the microphone sender');
 
-          let receivedAudioTrack;
+          const receivedAudioTracks = new Map();
+          const receivedAudioStreamIds = new Map();
           let receivedVideoTrack;
+          let receivedVideoStreamId;
           receiverPeer.ontrack = event => {
             if (event.track.kind === 'audio') {
-              receivedAudioTrack = event.track;
-              document.getElementById('remote-audio').srcObject = new MediaStream([event.track]);
+              receivedAudioTracks.set(event.transceiver.mid, event.track);
+              receivedAudioStreamIds.set(event.transceiver.mid, event.streams[0]?.id);
+              document.getElementById('remote-audio').srcObject =
+                new MediaStream([...receivedAudioTracks.values()]);
             } else if (event.track.kind === 'video') {
               receivedVideoTrack = event.track;
+              receivedVideoStreamId = event.streams[0]?.id;
               document.getElementById('remote-video').srcObject = new MediaStream([event.track]);
             }
           };
-          await micSender.replaceTrack(mixedTrack);
-          assert(micSender.track === mixedTrack,
-            'Web Audio MediaStreamDestination mixer replaces the microphone sender during screen audio sharing');
           await connectPeers(senderPeer, receiverPeer);
           await waitConnected(senderPeer, receiverPeer);
           const receiveDeadline = Date.now() + 5000;
-          while (Date.now() < receiveDeadline && (!receivedAudioTrack || !receivedVideoTrack)) await sleep(50);
-          assert(Boolean(receivedAudioTrack && receivedVideoTrack),
-            'receiver gets both the mixed audio track and separate screen video track');
+          while (Date.now() < receiveDeadline &&
+            (receivedAudioTracks.size < 2 || !receivedVideoTrack)) await sleep(50);
+          assert(receivedAudioTracks.size === 2 && Boolean(receivedVideoTrack),
+            'receiver gets two independently negotiated audio tracks and screen video');
+          const audioMidOrder = [...receivedAudioTracks.keys()].sort((a, b) => Number(a) - Number(b));
+          const remoteMicTrack = receivedAudioTracks.get(audioMidOrder[0]);
+          const remoteScreenAudioTrack = receivedAudioTracks.get(audioMidOrder[1]);
+          assert(remoteMicTrack !== remoteScreenAudioTrack &&
+            remoteMicTrack.kind === 'audio' && remoteScreenAudioTrack.kind === 'audio' &&
+            receiverPeer.getTransceivers().find(item => item.receiver.track === remoteScreenAudioTrack)?.mid === audioMidOrder[1],
+            `receiver maps microphone and screen audio to separate MIDs (${audioMidOrder.join(', ')})`);
+          assert(receivedAudioStreamIds.get(audioMidOrder[0]) !== receivedAudioStreamIds.get(audioMidOrder[1]) &&
+            receivedAudioStreamIds.get(audioMidOrder[1]) === receivedVideoStreamId,
+            'screen audio shares its WebRTC stream identity with screen video, distinct from the microphone stream');
           const audioElement = document.getElementById('remote-audio');
           const analyzerContext = new AudioContext();
           await analyzerContext.resume();
           const analyzer = analyzerContext.createAnalyser();
           analyzer.fftSize = 16384;
           analyzer.smoothingTimeConstant = 0;
-          analyzerContext.createMediaStreamSource(new MediaStream([receivedAudioTrack])).connect(analyzer);
+          analyzerContext.createMediaStreamSource(new MediaStream([remoteMicTrack])).connect(analyzer);
+          analyzerContext.createMediaStreamSource(new MediaStream([remoteScreenAudioTrack])).connect(analyzer);
           await audioElement.play();
           const mixedPeaks = await waitForAudioPeaks(analyzer,
             peaks => peaks.hz440 > -55 && peaks.hz880 > -55,
-            'simultaneous microphone/shared-sound tones');
+            'simultaneous independent microphone/shared-screen tones');
           assert(mixedPeaks.hz440 > -55 && mixedPeaks.hz880 > -55,
-            `receiver spectrum contains simultaneous 440 Hz mic and 880 Hz shared sound (${JSON.stringify(mixedPeaks)} dBFS)`);
+            `receiver hears simultaneous 440 Hz mic and 880 Hz screen audio (${JSON.stringify(mixedPeaks)} dBFS)`);
 
           micTone.track.enabled = false;
           const screenOnlyPeaks = await waitForAudioPeaks(analyzer,
             peaks => peaks.hz880 > -55 && peaks.hz440 < peaks.hz880 - 15,
-            'muted-microphone shared sound');
+            'muted microphone with independent screen audio');
           assert(screenOnlyPeaks.hz880 > -55 && screenOnlyPeaks.hz440 < screenOnlyPeaks.hz880 - 15,
-            `disabling mic leaves shared-screen audio audible (${JSON.stringify(screenOnlyPeaks)} dBFS)`);
+            `muting the mic leaves screen audio audible (${JSON.stringify(screenOnlyPeaks)} dBFS)`);
           micTone.track.enabled = true;
 
-          let endedHandlerRan = false;
-          displayTone.track.addEventListener('ended', () => {
-            endedHandlerRan = true;
-            void micSender.replaceTrack(micTone.track);
-          }, { once: true });
-          displayTone.track.dispatchEvent(new Event('ended'));
-          const restoreDeadline = Date.now() + 2000;
-          while (Date.now() < restoreDeadline && micSender.track !== micTone.track) await sleep(20);
-          assert(endedHandlerRan && micSender.track === micTone.track,
-            'simulated display-audio ended event restores the original microphone with replaceTrack');
+          await screenAudioSender.replaceTrack(null);
+          assert(screenAudioSender.track === null && micSender.track === micTone.track,
+            'stopping screen audio removes only its sender and leaves the microphone intact');
           const micOnlyPeaks = await waitForAudioPeaks(analyzer,
             peaks => peaks.hz440 > -55 && peaks.hz880 < peaks.hz440 - 15,
-            'restored microphone tone');
+            'microphone after screen audio removal');
           assert(micOnlyPeaks.hz440 > -55 && micOnlyPeaks.hz880 < micOnlyPeaks.hz440 - 15,
-            `restored microphone is audible after shared audio ends (${JSON.stringify(micOnlyPeaks)} dBFS)`);
+            `microphone remains audible after independent screen audio stops (${JSON.stringify(micOnlyPeaks)} dBFS)`);
+
+          const negotiationsBeforeReShare = negotiationNeeded;
+          const secondDisplay = makeToneTrack(context, 880);
+          await screenAudioSender.replaceTrack(secondDisplay.track);
+          await sleep(100);
+          assert(screenAudioSender.track === secondDisplay.track && micSender.track === micTone.track &&
+            negotiationNeeded === negotiationsBeforeReShare,
+            'repeated sharing reuses the screen sender without changing the mic or renegotiating');
+          secondDisplay.track.stop();
+          secondDisplay.oscillator.stop();
+          await screenAudioSender.replaceTrack(null);
 
           const panel = document.getElementById('visual-panel');
           const video = document.getElementById('remote-video');

@@ -196,6 +196,7 @@ function formatTime(milliseconds: number): string {
 function sessionSnapshot(props: WatchPlayerProps): WatchSessionState {
   return {
     controllerUserId: 1,
+    watchingUserIds: [1],
     allowEveryone: true,
     current: props.current,
     queue: [],

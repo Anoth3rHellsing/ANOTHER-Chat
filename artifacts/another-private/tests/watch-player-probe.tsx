@@ -90,12 +90,15 @@ function Fixture() {
     <WatchPanel
       session={{
         current, queue, playing, positionMs, updatedAtMs, serverNowMs: Date.now(),
-        revision: 1, controllerUserId: 1, allowEveryone: false,
+        revision: 1, controllerUserId: 1, watchingUserIds: [1], allowEveryone: false,
       }}
+      isWatching
       localVolume={volume}
       onLocalVolumeChange={setVolume}
       canControl
       onStart={() => {}}
+      onJoin={() => {}}
+      onLeave={() => {}}
       onAdd={url => {
         const parsed = normalizeWatchUrl(url);
         if (!parsed.ok) return;

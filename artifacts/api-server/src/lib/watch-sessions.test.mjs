@@ -107,6 +107,30 @@ test("keeps call sessions in memory and computes an authoritative clock-based po
   assert.equal(store.snapshot("voice", 55, 4_000), null);
 });
 
+test("watching is opt-in, late joiners get an ordered seat, and the controller hands off or ends cleanly", () => {
+  const store = new WatchSessionStore();
+  const item = createWatchItem(
+    normalizeWatchLink("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+    12,
+    "Alice",
+  );
+  store.start("voice", 55, 12, item, 1_000);
+  assert.deepEqual(store.snapshot("voice", 55, 5_000).watchingUserIds, [12]);
+  assert.equal(store.isWatching("voice", 55, 27), false);
+
+  store.join("voice", 55, 27);
+  assert.deepEqual(store.snapshot("voice", 55, 5_000).watchingUserIds, [12, 27]);
+  const handedOff = store.leave("voice", 55, 12);
+  assert.equal(handedOff.controllerUserId, 27);
+  assert.deepEqual(store.snapshot("voice", 55, 5_000).watchingUserIds, [27]);
+
+  store.join("voice", 55, 12);
+  assert.deepEqual(store.snapshot("voice", 55, 5_000).watchingUserIds, [27, 12]);
+  assert.equal(store.leave("voice", 55, 12).controllerUserId, 27);
+  assert.equal(store.leave("voice", 55, 27), null);
+  assert.equal(store.snapshot("voice", 55, 5_000), null);
+});
+
 test("normalizes both direct-call perspectives to the same ephemeral session", () => {
   const store = new WatchSessionStore();
   const item = createWatchItem(

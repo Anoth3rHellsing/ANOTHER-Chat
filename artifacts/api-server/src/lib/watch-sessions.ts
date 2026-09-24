@@ -27,6 +27,7 @@ export interface WatchSession {
 
 export interface WatchSessionSnapshot extends WatchSession {
   serverNowMs: number;
+  watchingUserIds: number[];
 }
 
 export const MAX_WATCH_QUEUE_SIZE = 50;
@@ -214,6 +215,7 @@ export function isActiveWatchCallParticipant(
 
 export class WatchSessionStore {
   private readonly sessions = new Map<string, WatchSession>();
+  private readonly watchers = new Map<string, Set<number>>();
 
   get(scope: WatchScope, targetId: number, userId?: number): WatchSession | null {
     const session = this.sessions.get(sessionKey(scope, targetId, userId));
@@ -243,8 +245,42 @@ export class WatchSessionStore {
       updatedAtMs: nowMs,
       revision: 1,
     };
-    this.sessions.set(sessionKey(scope, targetId, userId), session);
+    const key = sessionKey(scope, targetId, userId);
+    this.sessions.set(key, session);
+    this.watchers.set(key, new Set([controllerUserId]));
     return copySession(session);
+  }
+
+  join(scope: WatchScope, targetId: number, watcherUserId: number, userId?: number): WatchSession | null {
+    const key = sessionKey(scope, targetId, userId);
+    const session = this.sessions.get(key);
+    if (!session) return null;
+    const watchers = this.watchers.get(key) ?? new Set<number>();
+    watchers.add(watcherUserId);
+    this.watchers.set(key, watchers);
+    return copySession(session);
+  }
+
+  leave(scope: WatchScope, targetId: number, watcherUserId: number, userId?: number): WatchSession | null {
+    const key = sessionKey(scope, targetId, userId);
+    const session = this.sessions.get(key);
+    if (!session) return null;
+    const watchers = this.watchers.get(key);
+    if (!watchers?.delete(watcherUserId)) return copySession(session);
+    if (watchers.size === 0) {
+      this.end(scope, targetId, userId);
+      return null;
+    }
+    if (session.controllerUserId === watcherUserId) {
+      // Transfer to the longest-watching remaining participant, deterministically.
+      session.controllerUserId = watchers.values().next().value!;
+      session.revision += 1;
+    }
+    return copySession(session);
+  }
+
+  isWatching(scope: WatchScope, targetId: number, watcherUserId: number, userId?: number): boolean {
+    return this.watchers.get(sessionKey(scope, targetId, userId))?.has(watcherUserId) ?? false;
   }
 
   save(scope: WatchScope, targetId: number, next: WatchSession, userId?: number): WatchSession {
@@ -260,7 +296,9 @@ export class WatchSessionStore {
   }
 
   end(scope: WatchScope, targetId: number, userId?: number): boolean {
-    return this.sessions.delete(sessionKey(scope, targetId, userId));
+    const key = sessionKey(scope, targetId, userId);
+    this.watchers.delete(key);
+    return this.sessions.delete(key);
   }
 
   snapshot(
@@ -277,6 +315,7 @@ export class WatchSessionStore {
       positionMs: currentPositionMs,
       updatedAtMs: nowMs,
       serverNowMs: nowMs,
+      watchingUserIds: [...(this.watchers.get(sessionKey(scope, targetId, userId)) ?? [])],
     };
   }
 }

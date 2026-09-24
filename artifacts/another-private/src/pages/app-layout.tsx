@@ -438,7 +438,7 @@ export default function AppLayout() {
     targetId: webrtc.isInVoiceChannel ? webrtc.activeVoiceChannelId : webrtc.dmCallUserId,
     enabled: isCallActive,
   });
-  const isWatchVisible = isCallActive && (isWatchOpen || !!watch.session);
+  const isWatchVisible = isCallActive && isWatchOpen;
   useEffect(() => {
     if (!isCallActive) setIsWatchOpen(false);
   }, [isCallActive]);
@@ -809,12 +809,21 @@ export default function AppLayout() {
   const activeServer = servers?.find(s => s.id === activeServerId);
   const activeChannel = channels?.find(c => c.id === activeChannelId);
   const callPeer = (dmConversations ?? []).find((convo: any) => convo.otherUser?.id === webrtc.dmCallUserId)?.otherUser;
-  const watchParticipants = webrtc.isInVoiceChannel
-    ? webrtc.voiceMembers.map(member => ({ userId: member.userId, displayName: member.displayName }))
-    : webrtc.dmCallUserId ? [{
-        userId: webrtc.dmCallUserId,
-        displayName: callPeer?.displayName ?? `Usuario ${webrtc.dmCallUserId}`,
-      }] : [];
+  const watchParticipantCandidates = webrtc.isInVoiceChannel
+    ? [
+        ...(user ? [{ userId: user.id, displayName: user.displayName }] : []),
+        ...webrtc.voiceMembers.map(member => ({ userId: member.userId, displayName: member.displayName })),
+      ]
+    : webrtc.dmCallUserId ? [
+        ...(user ? [{ userId: user.id, displayName: user.displayName }] : []),
+        {
+          userId: webrtc.dmCallUserId,
+          displayName: callPeer?.displayName ?? `Usuario ${webrtc.dmCallUserId}`,
+        },
+      ] : [];
+  const watchParticipants = [...new Map(
+    watchParticipantCandidates.map(participant => [participant.userId, participant]),
+  ).values()];
   const callStatusBar = isCallActive ? (
     <CallStatusBar
       name={webrtc.isInVoiceChannel
@@ -830,8 +839,9 @@ export default function AppLayout() {
       onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
       onExpand={() => setIsCallMinimized(false)}
       onOpenSoundboard={() => setIsSoundboardOpen(open => !open)}
-      onOpenWatch={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => watch.session ? true : !open); }}
+      onOpenWatch={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => !open); }}
       isWatching={isWatchVisible}
+      hasWatchInvitation={!!watch.session && !watch.isWatching}
     />
   ) : null;
 
@@ -2040,6 +2050,25 @@ export default function AppLayout() {
       {/* ── In-call overlay (voice/video) ────────────────────────────────── */}
       {!isCallMinimized && (webrtc.callState === 'connected' || webrtc.isInVoiceChannel) && (
         <div className="fixed inset-0 z-40 bg-black/95 flex flex-col">
+          {watch.session && !watch.isWatching && !isWatchOpen && (
+            <div
+              className="fixed left-1/2 top-4 z-[60] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-primary/30 bg-card px-4 py-3 text-sm shadow-xl"
+              role="status"
+              data-testid="watch-invitation"
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-foreground">Invitación a visionado conjunto</p>
+                <p className="truncate text-xs text-muted-foreground">Puedes unirte cuando quieras; la llamada continúa.</p>
+              </div>
+              <button
+                type="button"
+                className="flex-shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+                onClick={() => setIsWatchOpen(true)}
+              >
+                Ver invitación
+              </button>
+            </div>
+          )}
           {/* Shared content takes priority; each remote screen has its own video stream. */}
           <div className="flex-1 min-h-0 p-4 flex flex-col gap-3">
             {sharedScreens.length > 0 && (
@@ -2144,13 +2173,20 @@ export default function AppLayout() {
             </button>
             <button
               type="button"
-              onClick={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => watch.session ? true : !open); }}
-              aria-label="Abrir visionado conjunto"
+              onClick={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => !open); }}
+              aria-label={watch.session && !watch.isWatching
+                ? 'Invitación a visionado conjunto; abrir para unirte'
+                : 'Abrir visionado conjunto'}
               aria-pressed={isWatchVisible}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isWatchVisible ? 'bg-primary text-primary-foreground glow-effect' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
+              className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isWatchVisible ? 'bg-primary text-primary-foreground glow-effect' : 'bg-secondary text-foreground hover:bg-primary/10'}`}
               title="Ver y escuchar juntos"
             >
               <Clapperboard className="w-5 h-5" />
+              {watch.session && !watch.isWatching && (
+                <span className="absolute -top-4 right-1 rounded-full bg-primary px-1.5 py-0.5 text-[8px] font-bold text-primary-foreground">
+                  Invitación
+                </span>
+              )}
             </button>
             <button
               onClick={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
@@ -2179,11 +2215,14 @@ export default function AppLayout() {
         >
           <WatchPanel
             session={watch.session}
+            isWatching={watch.isWatching}
             localVolume={localWatchVolume}
             onLocalVolumeChange={setLocalWatchVolume}
             canControl={watch.canControl}
             onStart={url => { watch.start(url); }}
             onAdd={url => { watch.add(url); }}
+            onJoin={() => { watch.join(); }}
+            onLeave={() => { watch.leave(); }}
             onAction={(action, values) => { watch.control(action, values); }}
             error={watch.error}
             active={webrtc.isInVoiceChannel ? 'voice' : 'dm'}

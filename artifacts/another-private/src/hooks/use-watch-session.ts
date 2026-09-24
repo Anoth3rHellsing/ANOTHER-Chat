@@ -26,10 +26,13 @@ export interface WatchSyncTarget {
 export interface WatchSessionController {
   session: WatchSessionState | null;
   error: string | null;
+  isWatching: boolean;
   canControl: boolean;
   isController: boolean;
   start: (url: string) => { ok: true } | { ok: false; message: string };
   add: (url: string) => { ok: true } | { ok: false; message: string };
+  join: () => boolean;
+  leave: () => boolean;
   control: (action: WatchAction, values?: {
     positionMs?: number;
     itemId?: string;
@@ -62,8 +65,9 @@ export function useWatchSession({
   );
 
   targetRef.current = activeTarget;
-  const isController = !!session && userId === session.controllerUserId;
-  const canControl = !!session && (isController || session.allowEveryone);
+  const isWatching = !!session && !!userId && session.watchingUserIds.includes(userId);
+  const isController = isWatching && !!session && userId === session.controllerUserId;
+  const canControl = isWatching && !!session && (isController || session.allowEveryone);
 
   const sendSync = useCallback((target: WatchSyncTarget | null) => {
     if (!target) return;
@@ -120,6 +124,20 @@ export function useWatchSession({
     return { ok: true as const };
   }, [send]);
 
+  const join = useCallback(() => {
+    const target = targetRef.current;
+    if (!target || !session) return false;
+    send({ type: 'watch:join', ...target });
+    return true;
+  }, [send, session]);
+
+  const leave = useCallback(() => {
+    const target = targetRef.current;
+    if (!target || !session || !isWatching) return false;
+    send({ type: 'watch:leave', ...target });
+    return true;
+  }, [send, session, isWatching]);
+
   const add = useCallback((url: string) => {
     const target = targetRef.current;
     if (!target) return { ok: false as const, message: 'No hay una llamada activa.' };
@@ -145,16 +163,20 @@ export function useWatchSession({
     const target = targetRef.current;
     if (!target || !isWatchAction(action)) return false;
     const latest = session;
+    if (!latest) {
+      setError('No hay una sesión compartida activa.');
+      return false;
+    }
     const controllerOnly = action === 'end' || action === 'metadata'
       || action === 'transfer' || action === 'everyone'
       || (action === 'ended' && !latest?.allowEveryone);
+    if (!latest.watchingUserIds.includes(userId ?? -1)) {
+      setError('Únete al visionado para cambiar la reproducción.');
+      return false;
+    }
     if (latest && userId !== latest.controllerUserId
       && (controllerOnly || !latest.allowEveryone)) {
       setError('Solo quien tiene el control puede cambiar la reproducción.');
-      return false;
-    }
-    if (!latest) {
-      setError('No hay una sesión compartida activa.');
       return false;
     }
     send({ type: 'watch:control', ...target, action, ...values });
@@ -174,10 +196,13 @@ export function useWatchSession({
   return {
     session: localSession,
     error,
+    isWatching,
     canControl,
     isController,
     start,
     add,
+    join,
+    leave,
     control,
     sync,
     reportLoadError,

@@ -90,8 +90,8 @@ async function run() {
   }
   const measuredDelayMs = bestLag * 1000 / inputRate;
 
-  // The screen tone bypasses RNNoise entirely, even when both sources mix in a
-  // context at 44.1 kHz. Muting the capture track must leave its tone unchanged.
+  // The screen source has no connection to the RNNoise graph. Its output is a
+  // separate track path, so mic processing/mute cannot alter the display tone.
   const screen = sourceContext.createMediaStreamDestination();
   const tone = sourceContext.createOscillator();
   tone.frequency.value = 880;
@@ -99,31 +99,21 @@ async function run() {
   toneGain.gain.value = 0.15;
   tone.connect(toneGain).connect(screen);
   tone.start();
-  const mix = meterContext.createMediaStreamDestination();
   const screenSource = meterContext.createMediaStreamSource(screen.stream);
-  screenSource.connect(mix);
-  const micSource = meterContext.createMediaStreamSource(new MediaStream([processor.track]));
-  micSource.connect(mix);
-  const mixedAnalyser = meterContext.createAnalyser();
-  mixedAnalyser.fftSize = 8192;
-  meterContext.createMediaStreamSource(mix.stream).connect(mixedAnalyser);
   const screenAnalyser = meterContext.createAnalyser();
   screenAnalyser.fftSize = 8192;
-  meterContext.createMediaStreamSource(screen.stream).connect(screenAnalyser);
+  screenSource.connect(screenAnalyser);
 
-  const tonePower = (analyser: AnalyserNode) => {
-    const data = new Float32Array(analyser.frequencyBinCount);
-    analyser.getFloatFrequencyData(data);
-    const bin = Math.round(880 * analyser.fftSize / analyser.context.sampleRate);
-    return Math.max(...data.slice(bin - 1, bin + 2));
-  };
+  const toneRmsDb = async () => 20 * Math.log10(Math.max(await rms(screenAnalyser), 0.000001));
   await sleep(700);
-  const originalToneDb = tonePower(screenAnalyser);
-  const mixedBeforeMuteDb = tonePower(mixedAnalyser);
+  const originalToneDb = await toneRmsDb();
   rawTrack.enabled = false;
   await sleep(500);
-  const mixedAfterMuteDb = tonePower(mixedAnalyser);
-  const originalAfterMuteDb = tonePower(screenAnalyser);
+  const originalAfterMuteDb = await toneRmsDb();
+  const screenToneChangeDb = Math.abs(originalAfterMuteDb - originalToneDb);
+  if (screenToneChangeDb >= 1) {
+    errors.push('El audio de pantalla sintético cambió al silenciar el micrófono');
+  }
   const mutedMicRms = await rms(filteredAnalyser);
   rawTrack.enabled = true;
   await sleep(350);
@@ -233,13 +223,11 @@ async function run() {
   }
 
   processor.stop();
-  micSource.disconnect();
   screenSource.disconnect();
   noiseSource.stop();
   tone.stop();
   rawTrack.stop();
   screen.stream.getTracks().forEach(track => track.stop());
-  mix.stream.getTracks().forEach(track => track.stop());
   await Promise.all([sourceContext.close(), meterContext.close()]);
   const firstUser = 700001;
   const secondUser = 700002;
@@ -256,8 +244,8 @@ async function run() {
     rawNoise, suppressedNoise, reductionDb, measuredDelayMs, bestScore,
     filteredRemoteRms, bypassRemoteRms, stableSignaling, renegotiations, peerConnectionState,
     senderStats, receiverStats, receivedState, nativeChanges,
-    originalToneDb,
-    mixedBeforeMuteDb, mixedAfterMuteDb, originalAfterMuteDb,
+      originalToneDb, originalAfterMuteDb, screenToneChangeDb,
+      screenToneStableDuringMicMute: screenToneChangeDb < 1,
     mutedMicRms, restoredMicRms, fallbackReason, wasmFallbackReason, perUserPreferences, errors,
   };
 }

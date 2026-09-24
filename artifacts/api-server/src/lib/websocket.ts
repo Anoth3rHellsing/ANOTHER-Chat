@@ -88,7 +88,7 @@ export function leaveVoiceChannel(channelId: number, userId: number): boolean {
     voiceChannelMembersMap.delete(channelId);
     watchSessions.end("voice", channelId);
   } else {
-    handOffWatchControllerOnVoiceLeave(channelId, userId);
+    removeVoiceWatchParticipant(channelId, userId);
   }
   return true;
 }
@@ -137,7 +137,7 @@ function unbindVoiceConnection(
     voiceChannelMembersMap.delete(channelId);
     watchSessions.end("voice", channelId);
   } else {
-    handOffWatchControllerOnVoiceLeave(channelId, userId);
+    removeVoiceWatchParticipant(channelId, userId);
   }
   return true;
 }
@@ -277,20 +277,10 @@ function broadcastWatchState(
   if (recipient) sendWatchStateToConnection(recipient, "dm", route.callerUserId);
 }
 
-function handOffWatchControllerOnVoiceLeave(channelId: number, departedUserId: number): void {
+function removeVoiceWatchParticipant(channelId: number, departedUserId: number): void {
   const session = watchSessions.get("voice", channelId);
-  if (!session || session.controllerUserId !== departedUserId) return;
-  const members = voiceChannelMembersMap.get(channelId);
-  const nextController = [...(members?.entries() ?? [])].find(([userId, connections]) =>
-    userId !== departedUserId
-    && [...connections].some(connectionId => findOpenConnection(connectionId, userId) !== null),
-  );
-  if (!nextController) {
-    watchSessions.end("voice", channelId);
-    return;
-  }
-  session.controllerUserId = nextController[0];
-  watchSessions.save("voice", channelId, session);
+  if (!session) return;
+  watchSessions.leave("voice", channelId, departedUserId);
   broadcastWatchState("voice", channelId);
 }
 
@@ -382,6 +372,23 @@ async function processWatchMessage(client: AuthedWebSocket, msg: Record<string, 
       return;
     }
 
+    if (msg.type === "watch:join") {
+      if (!watchSessions.join(scope, id, client.userId, client.userId)) {
+        throw new Error("No hay una sesión compartida activa a la que unirse.");
+      }
+      broadcastWatchState(scope, id, client.userId);
+      return;
+    }
+
+    if (msg.type === "watch:leave") {
+      if (!watchSessions.has(scope, id, client.userId)) {
+        throw new Error("No hay una sesión compartida activa de la que salir.");
+      }
+      watchSessions.leave(scope, id, client.userId, client.userId);
+      broadcastWatchState(scope, id, client.userId);
+      return;
+    }
+
     if (msg.type === "watch:start") {
       const link = normalizeWatchLink(msg.url);
       const actorName = await getWatchActorName(client.userId);
@@ -429,6 +436,9 @@ async function processWatchMessage(client: AuthedWebSocket, msg: Record<string, 
       throw new Error("La acción de la sesión compartida no está admitida.");
     }
     const action = msg.action as WatchControlAction;
+    if (!watchSessions.isWatching(scope, id, client.userId, client.userId)) {
+      throw new Error("Únete al visionado para controlar la reproducción.");
+    }
     if (!canControlWatchAction(existing, client.userId, action)) {
       throw new Error("No tienes el control de esta sesión compartida.");
     }
@@ -494,8 +504,9 @@ async function processWatchMessage(client: AuthedWebSocket, msg: Record<string, 
       }
       case "transfer":
         if (!Number.isSafeInteger(msg.userId) || Number(msg.userId) <= 0
+          || !watchSessions.isWatching(scope, id, Number(msg.userId), client.userId)
           || !isWatchParticipant(scope, id, Number(msg.userId), client.userId)) {
-          throw new Error("Solo puedes ceder el control a alguien conectado a esta llamada.");
+          throw new Error("Solo puedes ceder el control a alguien que esté viendo y siga en la llamada.");
         }
         existing.controllerUserId = Number(msg.userId);
         break;
@@ -678,6 +689,8 @@ export function initWebSocket(server: HttpServer): void {
           case "watch:start":
           case "watch:add":
           case "watch:sync":
+          case "watch:join":
+          case "watch:leave":
           case "watch:control":
             await processWatchMessage(client, msg as Record<string, unknown>);
             break;

@@ -134,16 +134,55 @@ try {
     }
     assert.equal(report.nativeChanges.echoCancellation.enabled, true,
       'Chromium fake microphone did not re-enable echo cancellation');
-    assert.ok(Math.abs(report.originalAfterMuteDb - report.mixedAfterMuteDb) < 1.5,
-      'Shared-screen tone passed through RNNoise or was attenuated');
-    assert.ok(report.mutedMicRms < report.rawNoise * 0.05, 'Muting the mic left voice in the mix');
+    assert.equal(report.screenToneStableDuringMicMute, true,
+      `Independent screen tone changed during mic mute by ${report.screenToneChangeDb} dB`);
+    assert.ok(report.screenToneChangeDb < 1,
+      `Independent screen tone RMS changed by ${report.screenToneChangeDb} dB during mic mute`);
+    assert.ok(report.mutedMicRms < report.rawNoise * 0.05, 'Muting the mic left voice in the microphone path');
     assert.match(report.fallbackReason, /AudioWorklet/);
     assert.match(report.wasmFallbackReason, /WebAssembly/);
     assert.equal(report.perUserPreferences, true, 'Audio preferences leaked between accounts');
-    console.log('PASS RNNoise synthetic noise, 44.1↔48 kHz, direct display bypass, microphone mute, and fallback');
+    console.log('PASS RNNoise synthetic noise, 44.1↔48 kHz, independent screen audio, microphone mute, and fallback');
     console.log('Chromium process-tree CPU (includes browser/test overhead, percent of one core):', cpu);
     console.log('Fake-device native options unavailable when re-enabled:', unsupportedNative);
     console.log(JSON.stringify(report, null, 2));
+  } else if (process.env.WATCH_OPT_IN_PROBE === '1') {
+    const waitFor = async predicate => {
+      for (let attempt = 0; attempt < 60; attempt++) {
+        if (await evaluate(predicate)) return;
+        await sleep(100);
+      }
+      throw new Error(`Watch opt-in probe timed out: ${await evaluate('document.body.innerText')}: ${stderr.slice(-1000)}`);
+    };
+    await waitFor('document.querySelector("[data-testid=status-watch-participant-2]")?.textContent.includes("No está viendo")');
+    assert.equal(await evaluate('document.querySelector("[data-testid=watch-player]") === null'), true,
+      'A call participant received a player before joining');
+    assert.equal(await evaluate('document.querySelector("[data-testid=status-watch-participant-1]")?.textContent.includes("Viendo")'), true);
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await evaluate('document.querySelector("[data-testid=button-join-watch]").click()');
+      await waitFor('document.querySelector("[data-testid=watch-player]") !== null');
+      await waitFor(`window.watchOptIn.log.filter(entry => entry.event === "create").length === ${cycle + 1}`);
+      assert.equal(await evaluate('document.querySelector("[data-testid=status-watch-participant-2]")?.textContent.includes("Viendo")'), true);
+      await evaluate('document.querySelector("[data-testid=button-leave-watch]").click()');
+      await waitFor('document.querySelector("[data-testid=watch-player]") === null');
+      await waitFor(`window.watchOptIn.log.filter(entry => entry.event === "destroy").length === ${cycle + 1}`);
+      assert.equal(await evaluate('document.querySelector("[data-testid=status-watch-participant-2]")?.textContent.includes("No está viendo")'), true);
+    }
+    const report = await evaluate(`({
+      log: window.watchOptIn.log, errors: window.watchOptIn.errors,
+      playerVisible: !!document.querySelector('[data-testid="watch-player"]'),
+      overlay: !!document.querySelector('vite-error-overlay, replit-error-overlay, [data-testid="error-overlay"]'),
+    })`);
+    assert.deepEqual(report.errors, [], `Uncaught browser errors: ${report.errors.join('; ')}`);
+    assert.equal(report.overlay, false, 'Development error overlay appeared during repeated leave/rejoin');
+    assert.equal(report.playerVisible, false, 'Leaving the party did not unmount the player');
+    assert.equal(report.log.filter(entry => entry.event === 'create').length, 3);
+    assert.equal(report.log.filter(entry => entry.event === 'destroy').length, 3);
+    assert.ok(report.log.filter(entry => entry.event === 'destroy').every(entry => entry.attached),
+      'SDK iframe was detached before ordered destroy()');
+    assert.ok(report.log.filter(entry => entry.event === 'create').every(entry => entry.start >= 4),
+      'Late rejoin did not begin from the current shared position');
+    console.log('PASS invitation is opt-in; watcher status updates; 3 leave/rejoin cycles destroy cleanly without overlays/errors; late join uses shared position');
   } else {
   const state = () => evaluate('window.watchState');
   const waitFor = async id => {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, SkipForward, X, Volume2, VolumeX, Shield, Users, 
   AlertCircle, MonitorPlay, Info, ChevronUp, ChevronDown, Plus, 
-  Power, Link as LinkIcon
+  Power, Link as LinkIcon, LogOut,
 } from 'lucide-react';
 
 export interface WatchItem {
@@ -18,6 +18,7 @@ export interface WatchItem {
 
 export interface WatchSession {
   controllerUserId: number;
+  watchingUserIds: number[];
   allowEveryone: boolean;
   current: WatchItem | null;
   queue: WatchItem[];
@@ -30,11 +31,14 @@ export interface WatchSession {
 
 export interface WatchPanelProps {
   session: WatchSession | null;
+  isWatching: boolean;
   localVolume: number;
   onLocalVolumeChange: (volume: number) => void;
   canControl: boolean;
   onStart: (url: string) => void;
   onAdd: (url: string) => void;
+  onJoin: () => void;
+  onLeave: () => void;
   onAction: (action: "play" | "pause" | "seek" | "skip" | "reorder" | "remove" | "transfer" | "everyone" | "end" | "ended" | "metadata", payload?: any) => void;
   player: React.ReactNode;
   error: string | null;
@@ -46,11 +50,14 @@ export interface WatchPanelProps {
 
 export function WatchPanel({
   session,
+  isWatching,
   localVolume,
   onLocalVolumeChange,
   canControl,
   onStart,
   onAdd,
+  onJoin,
+  onLeave,
   onAction,
   player,
   error,
@@ -191,6 +198,29 @@ export function WatchPanel({
           Ver Juntos
         </h3>
         <div className="flex items-center gap-1">
+          {!isWatching && (
+            <button
+              type="button"
+              onClick={onJoin}
+              className="rounded-md bg-primary/20 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/30 transition-colors"
+              aria-label="Unirme al visionado"
+              data-testid="button-join-watch"
+            >
+              Unirme
+            </button>
+          )}
+          {isWatching && (
+            <button
+              type="button"
+              onClick={onLeave}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-white/10 hover:text-foreground transition-colors"
+              aria-label="Salir del visionado sin abandonar la llamada"
+              data-testid="button-leave-watch"
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+              Salir
+            </button>
+          )}
           {canControl && (
             <>
               {currentUserId === session.controllerUserId && participants && participants.length > 1 && (
@@ -207,7 +237,8 @@ export function WatchPanel({
                   defaultValue=""
                 >
                   <option value="" disabled hidden>Transferir...</option>
-                  {participants.filter(p => p.userId !== currentUserId).map(p => (
+                  {participants.filter(p => p.userId !== currentUserId
+                    && session.watchingUserIds.includes(p.userId)).map(p => (
                     <option key={p.userId} value={p.userId} className="bg-secondary text-foreground">
                       {p.displayName}
                     </option>
@@ -240,6 +271,27 @@ export function WatchPanel({
       </div>
       
       <div className="min-h-0 flex-1 overflow-y-auto relative" data-testid="watch-panel-scroll">
+        <div className="mx-3 mt-3 rounded-lg border border-border bg-secondary/20 px-3 py-2">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            En la llamada · {participants?.length ?? 0}
+          </p>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {participants?.map(participant => {
+              const watching = session.watchingUserIds.includes(participant.userId);
+              return (
+                <span
+                  key={participant.userId}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+                  data-testid={`status-watch-participant-${participant.userId}`}
+                  aria-label={`${participant.displayName}: ${watching ? 'viendo' : 'no está viendo'}`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${watching ? 'bg-primary' : 'bg-muted-foreground/50'}`} aria-hidden="true" />
+                  {participant.displayName}: {watching ? 'Viendo' : 'No está viendo'}
+                </span>
+              );
+            })}
+          </div>
+        </div>
         {(showWarning || error) && (
           <div className="p-3 pb-0 space-y-2">
             {showWarning && (
@@ -271,8 +323,24 @@ export function WatchPanel({
         <div className={`flex flex-col gap-3 p-3 bg-background/95 backdrop-blur-md border-b border-border/50 shadow-sm ${(showWarning || error) ? 'mt-2' : ''}`}>
           {/* Player min-size area, no fixed aspect/cropping */}
           <div className="w-full min-h-[200px] min-w-[200px] bg-black/60 rounded-lg flex flex-col border border-border shadow-lg">
-            {player}
-            {(!session.current && !player) && (
+            {isWatching ? player : (
+              <div className="flex flex-1 min-h-[200px] flex-col items-center justify-center gap-2 p-4 text-center">
+                <MonitorPlay className="h-8 w-8 text-primary/60" aria-hidden="true" />
+                <p className="text-sm font-medium text-foreground">Sesión de visionado activa</p>
+                <p className="max-w-[280px] text-xs text-muted-foreground">
+                  Estás en la llamada, pero fuera del visionado. Únete cuando quieras.
+                </p>
+                <button
+                  type="button"
+                  onClick={onJoin}
+                  className="mt-1 rounded-md bg-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/30 transition-colors"
+                  aria-label="Unirme al visionado ahora"
+                >
+                  Unirme ahora
+                </button>
+              </div>
+            )}
+            {isWatching && (!session.current && !player) && (
               <div className="flex-1 min-h-[200px] flex flex-col items-center justify-center text-muted-foreground gap-2 p-4 text-center pointer-events-none">
                 <MonitorPlay className="w-8 h-8 opacity-30" />
                 <span className="text-xs font-medium opacity-50">Sin reproducción</span>

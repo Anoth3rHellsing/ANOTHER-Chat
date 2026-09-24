@@ -1,10 +1,10 @@
 ---
 name: Shared-screen media identity
-description: Why outgoing mixed audio must retain its original stream identity in voice calls
+description: Why microphone and screen audio need separate stream identities and order-independent remote classification
 ---
 
-When sending a Web Audio mix instead of the microphone track, associate the replacement audio sender with the same logical stream used for the microphone and camera. Send screen video on a distinct stream. A video-only remote stream is not, by itself, proof that it represents a screen: a camera can arrive before audio, and a mixer associated with a different stream can make an ordinary camera appear video-only.
+Keep microphone audio associated with the camera's logical stream and screen audio associated with screen video on a distinct stream. Do not infer that a video-only stream is a screen until the microphone stream's identity is established; track arrival order is not guaranteed. The receiver must keep microphone and screen audio independently identifiable.
 
-**Why:** A first screen-sharing implementation associated the mixed audio with the mixer destination stream, making the original camera stream video-only for new peers. The receiver then promoted the camera into the shared-screen region. Browser track arrival order also varies during renegotiation.
+**Why:** An earlier mixer associated outgoing audio with a new destination stream and left the camera stream video-only for late peers, which promoted the camera into the screen region. After separating microphone and screen audio, a screen-audio-first arrival could still misclassify pending camera video if unknown streams were treated as screens.
 
-**How to apply:** Whenever changing audio senders or remote track classification, preserve the camera/microphone stream association and test both audio-first and camera-first track delivery. Treat new tracks added to an existing MediaStream as observable state changes even when the stream object itself is unchanged.
+**How to apply:** When changing senders or remote track classification, test mic-first, screen-audio-first, and camera-first delivery, plus peers joining during capture setup. Treat new tracks added to an existing MediaStream as observable state changes even when the stream object is unchanged.
