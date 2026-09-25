@@ -2,7 +2,6 @@
 // Never point this script at the project's development or published API.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -37,6 +36,25 @@ function expectStatus(response, status, description) {
   assert.equal(response.status, status, `${description}: ${JSON.stringify(response.result)}`);
   console.log(`PASS ${description} (${status})`);
   return response.result;
+}
+
+function makeWav(seconds) {
+  const samples = Math.floor(8_000 * seconds);
+  const audioBytes = samples * 2;
+  const wav = Buffer.alloc(44 + audioBytes);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + audioBytes, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8_000, 24);
+  wav.writeUInt32LE(16_000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(audioBytes, 40);
+  return wav;
 }
 
 function waitFor(ws, type, timeout = 3000) {
@@ -97,15 +115,13 @@ try {
     method: "POST", json: { code: serverInvite.code },
   }), 200, "peer joins isolated server");
 
-  const goodFile = path.join(dir, "short.mp3");
-  const longFile = path.join(dir, "long.mp3");
-  execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
-    "-b:a", "64k", "-y", goodFile]);
-  execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
-    "-b:a", "64k", "-y", longFile]);
+  const goodFile = path.join(dir, "short.wav");
+  const longFile = path.join(dir, "long.wav");
+  await writeFile(goodFile, makeWav(1));
+  await writeFile(longFile, makeWav(6));
   const oversized = path.join(dir, "oversized.wav");
   await writeFile(oversized, Buffer.alloc(256 * 1024 + 1, 0));
-  const invalid = path.join(dir, "invalid.mp3");
+  const invalid = path.join(dir, "invalid.wav");
   await writeFile(invalid, "not audio");
   async function upload(client, file, name) {
     const form = new FormData();
@@ -125,10 +141,10 @@ try {
     "public upload route blocks soundboard files");
   const badType = await upload(a, invalid, "Fake audio");
   expectStatus(badType, 400, "fake MP3 is rejected by content verification");
-  assert.match(badType.result.error, /signature|format|audio/i);
+  assert.match(badType.result.error, /cabecera|formato|audio/i);
   const tooLong = await upload(a, longFile, "Long tone");
   expectStatus(tooLong, 400, "audio longer than five seconds is rejected");
-  assert.match(tooLong.result.error, /5 seconds/i);
+  assert.match(tooLong.result.error, /5 segundos/i);
   const tooBig = await upload(a, oversized, "Big tone");
   expectStatus(tooBig, 413, "audio larger than 256 KiB is rejected");
   assert.match(tooBig.result.error, /256 KiB/i);

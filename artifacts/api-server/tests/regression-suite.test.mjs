@@ -79,10 +79,11 @@ async function runSuite(filename) {
 
 test("server regression suite (fresh migrated PostgreSQL per scenario)", {
   concurrency: 2,
-  timeout: 150_000,
+  // The full run includes multiple isolated migrations and bundled API starts.
+  timeout: 240_000,
 }, async t => {
   await Promise.all(selectedSuites.map(([name, filename]) =>
-    t.test(name, { timeout: 100_000 }, async t => {
+    t.test(name, { timeout: 130_000 }, async t => {
       const result = await runSuite(filename);
       t.diagnostic(`${result.checks} observable checks; ${result.elapsed}s; disposable database removed`);
     })

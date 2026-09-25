@@ -3,8 +3,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { randomUUID } from "crypto";
-import { execFile } from "child_process";
-import { promisify } from "util";
+import { parseFile } from "music-metadata";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
@@ -26,7 +25,6 @@ const MAX_CLIPS_PER_SERVER = 24;
 const MAX_DURATION_MS = 5_000;
 const TRIGGER_COOLDOWN_MS = 2_000;
 const triggerTimes = new Map<number, number>();
-const execFileAsync = promisify(execFile);
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -112,52 +110,49 @@ async function getSniffedAudio(filePath: string): Promise<{ mimeType: string; ex
     mimeType = "audio/webm";
     extension = ".webm";
   }
-  if (!mimeType || !extension) throw new Error("Audio format is not supported or its signature is invalid");
+  if (!mimeType || !extension) throw new Error("El formato de audio no es compatible o su cabecera no es válida.");
+  // music-metadata does not expose all video tracks in WebM. Reject the container
+  // rather than risk accepting a mixed audio/video upload.
+  if (mimeType === "audio/webm") throw new Error("El formato WebM no está permitido en el soundboard.");
 
-  let probe: { streams?: Array<{ codec_type?: string; duration?: string }>; format?: { duration?: string; format_name?: string } };
+  let metadata: Awaited<ReturnType<typeof parseFile>>;
   try {
-    const { stdout } = await execFileAsync("ffprobe", [
-      "-v", "error", "-show_entries", "format=duration,format_name:stream=codec_type,duration",
-      "-of", "json", filePath,
-    ], { timeout: 8_000, maxBuffer: 64 * 1024 });
-    probe = JSON.parse(stdout);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error("Audio verification is unavailable because ffprobe is not installed");
-    }
-    throw new Error("Audio file could not be verified by ffprobe");
+    metadata = await parseFile(filePath, { duration: true, skipCovers: true });
+  } catch {
+    throw new Error("No se pudo verificar el formato ni la duración del audio.");
   }
 
-  const streams = probe.streams ?? [];
-  if (!streams.some((stream) => stream.codec_type === "audio")) throw new Error("File contains no audio track");
-  if (streams.some((stream) => stream.codec_type === "video")) throw new Error("Video tracks are not allowed in soundboard audio");
-  const formatNames = (probe.format?.format_name ?? "").split(",");
-  const expectedFormat = new Map<string, string>([
-    ["audio/mpeg", "mp3"],
-    ["audio/wav", "wav"],
-    ["audio/ogg", "ogg"],
-    ["audio/webm", "webm"],
-  ]).get(mimeType);
-  if (!expectedFormat || !formatNames.includes(expectedFormat)) {
-    throw new Error("The audio container reported by ffprobe does not match its file signature");
+  const expectedContainer: Record<string, string> = {
+    "audio/mpeg": "MPEG",
+    "audio/wav": "WAVE",
+    "audio/ogg": "Ogg",
+  };
+  if (metadata.format.container !== expectedContainer[mimeType]) {
+    throw new Error("El contenedor real del audio no coincide con su cabecera.");
   }
-
-  const rawDuration = probe.format?.duration ?? streams.find((stream) => stream.codec_type === "audio")?.duration;
-  const duration = Number(rawDuration);
-  if (!Number.isFinite(duration) || duration <= 0) throw new Error("Audio duration could not be verified");
+  if (!metadata.format.codec || !metadata.format.numberOfChannels) {
+    throw new Error("El archivo no contiene una pista de audio válida.");
+  }
+  if (mimeType === "audio/mpeg" && !/Layer 3|MP3/i.test(metadata.format.codec)) {
+    throw new Error("El archivo no contiene una pista MP3 válida.");
+  }
+  const duration = metadata.format.duration;
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error("No se pudo determinar la duración del audio.");
+  }
   const durationMs = Math.ceil(duration * 1000);
-  if (durationMs > MAX_DURATION_MS) throw new Error("Audio clips must be 5 seconds or shorter");
+  if (durationMs > MAX_DURATION_MS) throw new Error("El clip de audio no puede durar más de 5 segundos.");
   return { mimeType, extension, durationMs };
 }
 
 // Require a soundboard-managing permission before accepting an upload to disk.
 async function requireUploadPermission(req: Request, res: Response, next: NextFunction): Promise<void> {
   const serverId = parsePositiveId(req.params.serverId);
-  if (!serverId) { res.status(400).json({ error: "Invalid server ID" }); return; }
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
   const [server] = await db.select({ id: serversTable.id }).from(serversTable).where(eq(serversTable.id, serverId));
-  if (!server) { res.status(404).json({ error: "Server not found" }); return; }
+  if (!server) { res.status(404).json({ error: "Servidor no encontrado." }); return; }
   if (!(await canManageServer(req.session.userId!, req.session.userRole, serverId))) {
-    res.status(403).json({ error: "MANAGE_CHANNELS permission is required to upload soundboard clips" });
+    res.status(403).json({ error: "Necesitas permiso para administrar canales para subir clips al soundboard." });
     return;
   }
   next();
@@ -169,7 +164,7 @@ function receiveClipUpload(req: Request, res: Response, next: NextFunction) {
     const isTooLarge = typeof error === "object" && error !== null && "code" in error &&
       (error as { code?: string }).code === "LIMIT_FILE_SIZE";
     res.status(isTooLarge ? 413 : 400).json({
-      error: isTooLarge ? "Soundboard audio must be 256 KiB or smaller" : "Invalid multipart soundboard upload",
+      error: isTooLarge ? "El audio del soundboard no puede superar 256 KiB." : "La subida del clip no es válida.",
     });
   });
 }
@@ -181,22 +176,22 @@ function unlinkQuietly(filePath: string | undefined) {
 // GET /soundboard/clips/:clipId/audio
 router.get("/soundboard/clips/:clipId/audio", requireAuth, async (req, res, next): Promise<void> => {
   const clipId = parsePositiveId(req.params.clipId);
-  if (!clipId) { res.status(404).json({ error: "Soundboard clip not found" }); return; }
+  if (!clipId) { res.status(404).json({ error: "Clip del soundboard no encontrado." }); return; }
   const [clip] = await db.select().from(soundboardClipsTable)
     .where(eq(soundboardClipsTable.id, clipId));
-  if (!clip) { res.status(404).json({ error: "Soundboard clip not found" }); return; }
+  if (!clip) { res.status(404).json({ error: "Clip del soundboard no encontrado." }); return; }
 
   if (req.session.userRole !== "admin" && !(await getMembership(clip.serverId, req.session.userId!))) {
-    res.status(403).json({ error: "You are not a member of this server" }); return;
+    res.status(403).json({ error: "No perteneces a este servidor." }); return;
   }
   const filePath = getClipDiskPath(clip);
-  if (!filePath) { res.status(404).json({ error: "Soundboard audio file not found" }); return; }
+  if (!filePath) { res.status(404).json({ error: "Archivo de audio del soundboard no encontrado." }); return; }
   try {
     const stat = await fs.promises.lstat(filePath);
-    if (!stat.isFile()) { res.status(404).json({ error: "Soundboard audio file not found" }); return; }
+    if (!stat.isFile()) { res.status(404).json({ error: "Archivo de audio del soundboard no encontrado." }); return; }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      res.status(404).json({ error: "Soundboard audio file not found" }); return;
+      res.status(404).json({ error: "Archivo de audio del soundboard no encontrado." }); return;
     }
     next(error);
     return;
@@ -220,11 +215,11 @@ router.get("/soundboard/clips/:clipId/audio", requireAuth, async (req, res, next
 // GET /servers/:serverId/soundboard
 router.get("/servers/:serverId/soundboard", requireAuth, async (req, res): Promise<void> => {
   const serverId = parsePositiveId(req.params.serverId);
-  if (!serverId) { res.status(400).json({ error: "Invalid server ID" }); return; }
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
   const [server] = await db.select({ id: serversTable.id }).from(serversTable).where(eq(serversTable.id, serverId));
-  if (!server) { res.status(404).json({ error: "Server not found" }); return; }
+  if (!server) { res.status(404).json({ error: "Servidor no encontrado." }); return; }
   if (!(await getMembership(serverId, req.session.userId!)) && req.session.userRole !== "admin") {
-    res.status(403).json({ error: "You are not a member of this server" }); return;
+    res.status(403).json({ error: "No perteneces a este servidor." }); return;
   }
   const clips = await db.select().from(soundboardClipsTable)
     .where(eq(soundboardClipsTable.serverId, serverId))
@@ -241,11 +236,11 @@ router.post(
   async (req, res): Promise<void> => {
     const serverId = parsePositiveId(req.params.serverId)!;
     const file = req.file;
-    if (!file) { res.status(400).json({ error: "Audio file is required" }); return; }
+    if (!file) { res.status(400).json({ error: "Se requiere un archivo de audio." }); return; }
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     if (!name || name.length > 80) {
       unlinkQuietly(file.path);
-      res.status(400).json({ error: "Clip name must be between 1 and 80 characters" }); return;
+      res.status(400).json({ error: "El nombre del clip debe tener entre 1 y 80 caracteres." }); return;
     }
 
     let detected: Awaited<ReturnType<typeof getSniffedAudio>>;
@@ -256,9 +251,8 @@ router.post(
       await fs.promises.rename(file.path, finalPath);
     } catch (error) {
       unlinkQuietly(file.path);
-      const message = error instanceof Error ? error.message : "Audio validation failed";
-      const status = message.includes("ffprobe is not installed") ? 503 : 400;
-      res.status(status).json({ error: message }); return;
+      const message = error instanceof Error ? error.message : "No se pudo validar el audio.";
+      res.status(400).json({ error: message }); return;
     }
 
     const url = `/api/uploads/${path.basename(finalPath)}`;
@@ -282,7 +276,7 @@ router.post(
       });
       if (!clip) {
         unlinkQuietly(finalPath);
-        res.status(409).json({ error: `A server can have at most ${MAX_CLIPS_PER_SERVER} soundboard clips` });
+        res.status(409).json({ error: `Cada servidor puede tener como máximo ${MAX_CLIPS_PER_SERVER} clips en el soundboard.` });
         return;
       }
       res.status(201).json(serializeClip(clip));
@@ -297,15 +291,15 @@ router.post(
 router.delete("/servers/:serverId/soundboard/:clipId", requireAuth, async (req, res): Promise<void> => {
   const serverId = parsePositiveId(req.params.serverId);
   const clipId = parsePositiveId(req.params.clipId);
-  if (!serverId || !clipId) { res.status(400).json({ error: "Invalid soundboard ID" }); return; }
+  if (!serverId || !clipId) { res.status(400).json({ error: "ID de soundboard no válido." }); return; }
   const [clip] = await db.select().from(soundboardClipsTable).where(and(
     eq(soundboardClipsTable.id, clipId),
     eq(soundboardClipsTable.serverId, serverId),
   ));
-  if (!clip) { res.status(404).json({ error: "Soundboard clip not found" }); return; }
+  if (!clip) { res.status(404).json({ error: "Clip del soundboard no encontrado." }); return; }
   const isAdmin = await canManageServer(req.session.userId!, req.session.userRole, serverId);
   if (clip.uploadedBy !== req.session.userId && !isAdmin) {
-    res.status(403).json({ error: "Only the uploader or a server administrator can delete this clip" }); return;
+    res.status(403).json({ error: "Solo quien subió el clip o un administrador del servidor puede eliminarlo." }); return;
   }
   await db.delete(soundboardClipsTable).where(eq(soundboardClipsTable.id, clipId));
   const filename = path.basename(clip.url);
@@ -316,9 +310,9 @@ router.delete("/servers/:serverId/soundboard/:clipId", requireAuth, async (req, 
 // GET /soundboard/available?peerId=N
 router.get("/soundboard/available", requireAuth, async (req, res): Promise<void> => {
   const peerId = parsePositiveId(req.query.peerId);
-  if (!peerId || peerId === req.session.userId) { res.status(400).json({ error: "A valid peerId is required" }); return; }
+  if (!peerId || peerId === req.session.userId) { res.status(400).json({ error: "Se requiere un ID de contacto válido." }); return; }
   const [peer] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, peerId));
-  if (!peer) { res.status(404).json({ error: "Peer not found" }); return; }
+  if (!peer) { res.status(404).json({ error: "Contacto no encontrado." }); return; }
   const rows = await db.selectDistinct({ id: serversTable.id, name: serversTable.name })
     .from(serverMembersTable)
     .innerJoin(serversTable, eq(serversTable.id, serverMembersTable.serverId))
@@ -335,28 +329,28 @@ router.post("/soundboard/trigger", requireAuth, soundboardTriggerRateLimit, asyn
   const { clipId, callType, channelId, peerId } = req.body ?? {};
   if (!Number.isSafeInteger(clipId) || clipId < 1 ||
       (callType !== "voice" && callType !== "dm")) {
-    res.status(400).json({ error: "clipId and callType (voice or dm) are required" }); return;
+    res.status(400).json({ error: "Se requieren clipId y callType (voice o dm)." }); return;
   }
   const [clip] = await db.select().from(soundboardClipsTable)
     .where(eq(soundboardClipsTable.id, clipId));
-  if (!clip) { res.status(404).json({ error: "Soundboard clip not found" }); return; }
+  if (!clip) { res.status(404).json({ error: "Clip del soundboard no encontrado." }); return; }
 
   let targetId: number;
   if (callType === "voice") {
     if (!Number.isSafeInteger(channelId) || channelId < 1 || peerId !== undefined) {
-      res.status(400).json({ error: "A valid channelId is required for voice calls" }); return;
+      res.status(400).json({ error: "Se requiere un ID de canal válido para las llamadas de voz." }); return;
     }
     targetId = channelId;
     const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
     if (!channel || channel.serverId !== clip.serverId || channel.channelType !== "voice") {
-      res.status(403).json({ error: "Clip and voice channel must belong to the same server" }); return;
+      res.status(403).json({ error: "El clip y el canal de voz deben pertenecer al mismo servidor." }); return;
     }
     if (!(await canAccessChannel(channel, req.session.userId!, req.session.userRole))) {
-      res.status(403).json({ error: "You cannot access this voice channel" }); return;
+      res.status(403).json({ error: "No tienes acceso a este canal de voz." }); return;
     }
   } else {
     if (!Number.isSafeInteger(peerId) || peerId < 1 || channelId !== undefined || peerId === req.session.userId) {
-      res.status(400).json({ error: "A valid peerId is required for DM calls" }); return;
+      res.status(400).json({ error: "Se requiere un ID de contacto válido para las llamadas directas." }); return;
     }
     targetId = peerId;
     const [members] = await db.select({ serverId: serverMembersTable.serverId })
@@ -368,7 +362,7 @@ router.post("/soundboard/trigger", requireAuth, soundboardTriggerRateLimit, asyn
       .groupBy(serverMembersTable.serverId)
       .having(sql`count(distinct ${serverMembersTable.userId}) = 2`);
     if (!members) {
-      res.status(403).json({ error: "You and the peer must share the clip's server" }); return;
+      res.status(403).json({ error: "Tú y el contacto debéis compartir el servidor del clip." }); return;
     }
   }
 
@@ -378,11 +372,11 @@ router.post("/soundboard/trigger", requireAuth, soundboardTriggerRateLimit, asyn
   }
   const lastTriggered = triggerTimes.get(req.session.userId!);
   if (lastTriggered !== undefined && now - lastTriggered < TRIGGER_COOLDOWN_MS) {
-    res.status(429).json({ error: "Soundboard triggers are limited to one every 2 seconds" }); return;
+    res.status(429).json({ error: "Solo puedes reproducir un clip del soundboard cada 2 segundos." }); return;
   }
   const [user] = await db.select({ displayName: usersTable.displayName }).from(usersTable)
     .where(eq(usersTable.id, req.session.userId!));
-  if (!user) { res.status(401).json({ error: "Authenticated user no longer exists" }); return; }
+  if (!user) { res.status(401).json({ error: "El usuario autenticado ya no existe." }); return; }
 
   const event = {
     type: "soundboard:play" as const,
@@ -398,7 +392,7 @@ router.post("/soundboard/trigger", requireAuth, soundboardTriggerRateLimit, asyn
     },
   };
   if (!emitSoundboardToCall(req.session.userId!, callType, targetId, event)) {
-    res.status(409).json({ error: "No active call is available for this soundboard trigger" }); return;
+    res.status(409).json({ error: "No hay ninguna llamada activa para reproducir este clip." }); return;
   }
   triggerTimes.set(req.session.userId!, now);
   res.json(serializeClip(clip));
