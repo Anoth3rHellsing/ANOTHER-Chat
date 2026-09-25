@@ -29,3 +29,4 @@
 - [Multipart chunk boundary tests](multipart-chunk-boundary-tests.md) — exercise exact chunk-size boundaries over HTTP; seeded fixtures miss parser-level rejection
 - [Isolated provider test accounting](isolated-provider-test-accounting.md) — compare outbound calls per scenario and separate user/provider quota windows in expanded integration suites
 - [Event calendar channel scope](event-calendar-channel-scope.md) — show event creation in text channels where its announcement can appear in the chat stream
+- [Production upload loss](production-upload-loss.md) — 404s can reflect missing local bytes despite a unique DB reference; restore originals rather than weakening authorization

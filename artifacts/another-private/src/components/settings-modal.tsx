@@ -181,21 +181,21 @@ export function SettingsModal({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-            className="fixed inset-0 m-auto z-50 w-full max-w-2xl h-fit max-h-[85vh] bg-card border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex"
+            className="fixed inset-0 m-auto z-50 w-[calc(100vw-1rem)] md:w-full max-w-2xl h-fit max-h-[calc(100dvh-1rem)] md:max-h-[85vh] bg-card border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row"
           >
             {/* Sidebar */}
-            <div className="w-52 bg-background/60 border-r border-white/5 flex flex-col flex-shrink-0 py-4">
-              <div className="px-4 mb-4">
+            <div className="w-full md:w-52 bg-background/60 border-b md:border-b-0 md:border-r border-white/5 flex flex-col flex-shrink-0 py-2 md:py-4">
+              <div className="hidden md:block px-4 mb-4">
                 <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Ajustes</p>
               </div>
-              <nav className="flex-1 px-2 space-y-0.5">
+              <nav className="flex md:flex-col overflow-x-auto md:overflow-visible flex-1 px-2 gap-1 md:gap-0 md:space-y-0.5">
                 {SECTIONS.map(section => {
                   const Icon = section.icon;
                   return (
                     <button
                       key={section.id}
                       onClick={() => setActiveSection(section.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+                      className={`shrink-0 md:w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
                         activeSection === section.id
                           ? 'bg-primary/15 text-primary font-medium'
                           : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'
@@ -207,16 +207,16 @@ export function SettingsModal({
                   );
                 })}
               </nav>
-              <div className="px-4 mt-4 pt-4 border-t border-white/5">
+              <div className="hidden md:block px-4 mt-4 pt-4 border-t border-white/5">
                 <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">A.N.O.T.H.E.R.</p>
                 <p className="text-[10px] text-muted-foreground font-mono">Terminal Privado</p>
               </div>
             </div>
 
             {/* Main content */}
-            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 flex flex-col min-h-0 min-w-0">
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+              <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/5 flex-shrink-0">
                 <h2 className="font-bold text-foreground">
                   {SECTIONS.find(s => s.id === activeSection)?.label}
                 </h2>
@@ -229,7 +229,7 @@ export function SettingsModal({
               </div>
 
               {/* Section content */}
-              <div className="flex-1 overflow-y-auto px-6 py-5">
+              <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-5 min-w-0">
                 {activeSection === 'voice' && (
                   <VoiceAudioSection
                     settings={settings}

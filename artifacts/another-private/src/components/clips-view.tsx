@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Play, Heart, MessageSquare, Trash2, X, Upload, Users as UsersIcon } from 'lucide-react';
 import { csrfFetch } from '@workspace/api-client-react';
+import { AvatarImage } from '@/components/avatar-image';
 
 interface Clip {
   id: number;
@@ -247,7 +248,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
               )}
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden flex-shrink-0">
-                  {selectedClip.author.avatarUrl ? <img src={selectedClip.author.avatarUrl} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                  {selectedClip.author.avatarUrl ? <AvatarImage url={selectedClip.author.avatarUrl} /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">{selectedClip.author.displayName}</p>
@@ -277,7 +278,7 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
                   {comments.map(c => (
                     <div key={c.id} className="flex gap-2 text-sm">
                       <div className="w-6 h-6 rounded-full bg-secondary overflow-hidden flex-shrink-0 mt-0.5">
-                        {c.author.avatarUrl && <img src={c.author.avatarUrl} className="w-full h-full object-cover" alt="" />}
+                        {c.author.avatarUrl && <AvatarImage url={c.author.avatarUrl} />}
                       </div>
                       <div>
                         <span className="font-medium text-foreground text-xs">{c.author.displayName} </span>

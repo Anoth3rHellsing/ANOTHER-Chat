@@ -71,6 +71,7 @@ import { GifPicker } from '@/components/gif-picker';
 import { GifMessage } from '@/components/gif-message';
 import { parseGiphyMessage, serializeGiphyMessage } from '@/lib/giphy';
 import { sameOriginUploadUrl } from '@/lib/media-url';
+import { AvatarImage } from '@/components/avatar-image';
 import { ReactionIndicators } from '@/components/reaction-indicators';
 import { updateChannelReactions, updateDmReactions, type MessageReaction } from '@/lib/reactions';
 import { format } from 'date-fns';
@@ -316,6 +317,8 @@ export default function AppLayout() {
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [showMembers, setShowMembers] = useState(true);
+  const [mobileMembersOpen, setMobileMembersOpen] = useState(false);
+  const [mobileMessageActions, setMobileMessageActions] = useState<string | null>(null);
   const [showEvents, setShowEvents] = useState(false);
   useEffect(() => {
     setShowEvents(false);
@@ -357,6 +360,17 @@ export default function AppLayout() {
     return () => media.removeEventListener('change', update);
   }, []);
   const chatPaneVisible = desktopLayout || mobilePanelDepth >= 2;
+  useEffect(() => {
+    if (!mobileMembersOpen || desktopLayout) return;
+    window.history.pushState({ ...window.history.state, mobileMembers: true }, '');
+    const onBack = () => setMobileMembersOpen(false);
+    window.addEventListener('popstate', onBack);
+    return () => window.removeEventListener('popstate', onBack);
+  }, [mobileMembersOpen, desktopLayout]);
+  const closeMobileMembers = () => {
+    if (window.history.state?.mobileMembers) window.history.back();
+    else setMobileMembersOpen(false);
+  };
   // Search modal
   const [showSearch, setShowSearch] = useState(false);
   // Report modal
@@ -1175,7 +1189,7 @@ export default function AppLayout() {
                   >
                     <div className="relative flex-shrink-0">
                       <div className="w-9 h-9 rounded-full bg-secondary overflow-hidden">
-                        {other?.avatarUrl ? <img src={sameOriginUploadUrl(other.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2.5 text-muted-foreground" />}
+                        {other?.avatarUrl ? <AvatarImage url={other.avatarUrl} /> : <UsersIcon className="w-4 h-4 m-2.5 text-muted-foreground" />}
                       </div>
                       <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(other?.status ?? 'offline')}`} />
                     </div>
@@ -1224,7 +1238,7 @@ export default function AppLayout() {
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
               <button onClick={() => setIsProfileOpen(true)} className="relative group" title="Perfil">
                 <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
-                  {user.avatarUrl ? <img src={sameOriginUploadUrl(user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                  {user.avatarUrl ? <AvatarImage url={user.avatarUrl} /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                 </div>
                 <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
               </button>
@@ -1359,7 +1373,7 @@ export default function AppLayout() {
             <div className="h-16 bg-card border-t border-white/5 flex items-center px-3 gap-2">
               <button onClick={() => setIsProfileOpen(true)} className="relative group" title="Perfil">
                 <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden">
-                  {user.avatarUrl ? <img src={sameOriginUploadUrl(user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                  {user.avatarUrl ? <AvatarImage url={user.avatarUrl} /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                 </div>
                 <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card ${getStatusColor(user.status)}`} />
               </button>
@@ -1402,7 +1416,7 @@ export default function AppLayout() {
               <div className="relative flex-shrink-0">
                 <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
                   {(activeDmConvo as any).otherUser?.avatarUrl
-                    ? <img src={sameOriginUploadUrl((activeDmConvo as any).otherUser.avatarUrl)} className="w-full h-full object-cover" alt="" />
+                    ? <AvatarImage url={(activeDmConvo as any).otherUser.avatarUrl} />
                     : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                 </div>
                 <div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-2 border-card ${getStatusColor((activeDmConvo as any).otherUser?.status ?? 'offline')}`} />
@@ -1449,7 +1463,7 @@ export default function AppLayout() {
                     {isFirst ? (
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5"
                         onClick={e => openProfileCard(msg.senderId, e)}>
-                        {msg.sender?.avatarUrl ? <img src={sameOriginUploadUrl(msg.sender.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                        {msg.sender?.avatarUrl ? <AvatarImage url={msg.sender.avatarUrl} /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                     ) : (
                       <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-start pt-1">
@@ -1470,14 +1484,16 @@ export default function AppLayout() {
                           <span className="truncate">{msg.replyTo.contentPreview}</span>
                         </div>
                       )}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-normal min-w-0">
+                      <div className="relative flex items-start justify-between gap-2">
+                        <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-normal min-w-0 pr-12 md:pr-0">
                           {msg.deletedAt
                             ? <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             : <GifMessage content={msg.content} />}
                         </div>
                         {!msg.deletedAt && isOwn && (
-                          <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
+                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                             <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `dm:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `dm:${msg.id}` ? null : `dm:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
+                             <div className={`${mobileMessageActions === `dm:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
                             <button type="button" onClick={() => setDmEmojiPickerMsgId(dmEmojiPickerMsgId === msg.id ? null : msg.id)} className="p-1.5 text-muted-foreground hover:text-primary" title="Más emojis" aria-label="Elegir reacción">
                               <Smile className="w-3.5 h-3.5" />
@@ -1490,10 +1506,13 @@ export default function AppLayout() {
                             <button onClick={() => deleteDm.mutate({ dmId: msg.id })} className="p-1.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors" title="Eliminar">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                            </div>
                           </div>
                         )}
                         {!msg.deletedAt && !isOwn && (
-                          <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
+                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                             <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `dm:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `dm:${msg.id}` ? null : `dm:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
+                             <div className={`${mobileMessageActions === `dm:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
                             <button type="button" onClick={() => setDmEmojiPickerMsgId(dmEmojiPickerMsgId === msg.id ? null : msg.id)} className="p-1.5 text-muted-foreground hover:text-primary" title="Más emojis" aria-label="Elegir reacción">
                               <Smile className="w-3.5 h-3.5" />
@@ -1502,6 +1521,7 @@ export default function AppLayout() {
                             <button onClick={() => setDmReplyingTo(msg)} className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-primary transition-colors" title="Responder">
                               <CornerUpLeft className="w-3.5 h-3.5" />
                             </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1559,7 +1579,7 @@ export default function AppLayout() {
                   value={dmInput}
                   onChange={handleDmInputChange}
                   placeholder={`Mensaje a ${(activeDmConvo as any).otherUser?.displayName}...`}
-                  className="flex-1 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
+                  className="flex-1 min-w-0 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
                   onKeyDown={e => { if (e.key === 'Escape' && dmReplyingTo) setDmReplyingTo(null); }}
                 />
                 <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50">
@@ -1603,7 +1623,7 @@ export default function AppLayout() {
                   value={dmInput}
                   onChange={handleDmInputChange}
                   placeholder="Escribe un mensaje..."
-                  className="flex-1 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
+                    className="flex-1 min-w-0 bg-transparent px-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
                 />
                 <button type="submit" disabled={!dmInput.trim() || sendDm.isPending} className="p-3 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50">
                   <Send className="w-5 h-5" />
@@ -1669,12 +1689,19 @@ export default function AppLayout() {
                 />}
                 <button 
                   onClick={() => {
+                    if (!desktopLayout) {
+                      if (mobileMembersOpen) closeMobileMembers();
+                      else setMobileMembersOpen(true);
+                      return;
+                    }
                     const next = !showMembers;
                     setShowMembers(next);
                     if (next) setShowEvents(false);
                   }}
-                  className={`p-1.5 rounded-md transition-colors ${showMembers ? 'bg-white/10 text-white' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
+                  className={`p-1.5 rounded-md transition-colors ${(desktopLayout ? showMembers : mobileMembersOpen) ? 'bg-white/10 text-white' : 'text-muted-foreground hover:bg-white/5 hover:text-white'}`}
                   title="Miembros"
+                  aria-label="Miembros"
+                  aria-expanded={desktopLayout ? showMembers : mobileMembersOpen}
                 >
                   <UsersIcon className="w-5 h-5" />
                 </button>
@@ -1723,7 +1750,7 @@ export default function AppLayout() {
                   >
                     {isFirst ? (
                       <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all mt-0.5" onClick={e => openProfileCard(msg.userId, e)}>
-                        {msgAny.author?.avatarUrl ? <img src={sameOriginUploadUrl(msgAny.author.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
+                        {msgAny.author?.avatarUrl ? <AvatarImage url={msgAny.author.avatarUrl} /> : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
                       </div>
                     ) : (
                       <div className="w-10 flex-shrink-0 opacity-0 group-hover:opacity-100 text-[10px] text-muted-foreground font-mono text-center self-start pt-1">
@@ -1744,7 +1771,7 @@ export default function AppLayout() {
                         <ReplyQuote replyTo={msgAny.replyTo} onClick={() => scrollToMessage(msgAny.replyTo.id)} />
                       )}
                       
-                      <div className="flex items-start justify-between gap-2">
+                        <div className="relative flex items-start justify-between gap-2">
                         {editingMessageId === msg.id ? (
                           <form onSubmit={handleEditMessage} className="w-full relative">
                             <input 
@@ -1758,7 +1785,7 @@ export default function AppLayout() {
                             <div className="text-xs text-muted-foreground mt-1">Esc para cancelar, Enter para guardar</div>
                           </form>
                         ) : (
-                          <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed min-w-0">
+                           <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed min-w-0 pr-12 md:pr-0">
                             {msg.deletedAt ? (
                               <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             ) : (
@@ -1786,7 +1813,9 @@ export default function AppLayout() {
 
                         {/* Hover action bar */}
                         {!msg.deletedAt && editingMessageId !== msg.id && (
-                          <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center bg-card border border-border rounded-md flex-shrink-0 relative">
+                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `channel:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                             <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `channel:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `channel:${msg.id}` ? null : `channel:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
+                             <div className={`${mobileMessageActions === `channel:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             {/* React */}
                             <QuickReactionButtons onSelect={emoji => handleReact(msg.id, emoji)} />
                             <div className="relative" onClick={e => e.stopPropagation()}>
@@ -1839,6 +1868,7 @@ export default function AppLayout() {
                                 </button>
                               </>
                             )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1994,7 +2024,7 @@ export default function AppLayout() {
                   onChange={e => { handleMessageChange(e); setMentionCursorPos(e.target.selectionStart ?? 0); setSelectedMentionIdx(0); }}
                   onSelect={e => setMentionCursorPos((e.target as HTMLInputElement).selectionStart ?? 0)}
                   placeholder={`Escribir en #${activeChannel.name}...`}
-                  className="flex-1 bg-transparent py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
+                  className="flex-1 min-w-0 bg-transparent py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none font-sans"
                   onKeyDown={e => {
                     if (mentionSuggestions.length > 0) {
                       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedMentionIdx(i => Math.min(i + 1, mentionSuggestions.length - 1)); return; }
@@ -2027,8 +2057,13 @@ export default function AppLayout() {
       </div>
 
       {/* 4. MEMBER LIST COLUMN — only in server mode */}
-      {activeView === 'servers' && showMembers && activeChannel && (
-        <div className="w-60 bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0">
+      {activeView === 'servers' && activeChannel && (showMembers || mobileMembersOpen) && (
+        <>
+        {mobileMembersOpen && <button type="button" aria-label="Cerrar lista de miembros" onClick={closeMobileMembers} className="fixed inset-0 z-30 bg-black/60 md:hidden" />}
+        <div className={`${mobileMembersOpen ? 'flex' : 'hidden'} ${showMembers ? 'md:flex' : 'md:hidden'} fixed inset-y-0 right-0 z-40 w-60 bg-card/95 border-l border-white/5 flex-col shadow-2xl md:static md:z-auto md:bg-card/30 md:shadow-none md:flex-shrink-0`}>
+          <div className="flex justify-end border-b border-white/5 p-2 md:hidden">
+            <button type="button" aria-label="Cerrar miembros" onClick={closeMobileMembers} className="p-2 text-muted-foreground hover:text-white"><X className="w-5 h-5" /></button>
+          </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {groupedMembers.online.length > 0 && (
               <div>
@@ -2042,7 +2077,7 @@ export default function AppLayout() {
                     >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
-                          {member.user.avatarUrl ? <img src={sameOriginUploadUrl(member.user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                          {member.user.avatarUrl ? <AvatarImage url={member.user.avatarUrl} /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                         </div>
                         <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(member.user.status)}`} />
                       </div>
@@ -2069,7 +2104,7 @@ export default function AppLayout() {
                     >
                       <div className="relative flex-shrink-0">
                         <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
-                          {member.user.avatarUrl ? <img src={sameOriginUploadUrl(member.user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
+                          {member.user.avatarUrl ? <AvatarImage url={member.user.avatarUrl} /> : <UsersIcon className="w-4 h-4 m-2 text-muted-foreground" />}
                         </div>
                         <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-card ${getStatusColor(member.user.status)}`} />
                       </div>
@@ -2081,6 +2116,7 @@ export default function AppLayout() {
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* 5. EVENTS LIST COLUMN — only in server mode */}
@@ -2125,7 +2161,7 @@ export default function AppLayout() {
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-full bg-secondary overflow-hidden flex-shrink-0">
               {webrtc.incomingCall.callerAvatar
-                ? <img src={sameOriginUploadUrl(webrtc.incomingCall.callerAvatar)} className="w-full h-full object-cover" alt="" />
+                ? <AvatarImage url={webrtc.incomingCall.callerAvatar} />
                 : <UsersIcon className="w-5 h-5 m-2.5 text-muted-foreground" />}
             </div>
             <div className="flex-1 min-w-0">
@@ -2225,7 +2261,7 @@ export default function AppLayout() {
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <div className="w-16 h-16 rounded-full bg-secondary overflow-hidden">
-                      {user.avatarUrl ? <img src={sameOriginUploadUrl(user.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <UsersIcon className="w-8 h-8 m-4 text-muted-foreground" />}
+                      {user.avatarUrl ? <AvatarImage url={user.avatarUrl} /> : <UsersIcon className="w-8 h-8 m-4 text-muted-foreground" />}
                     </div>
                   </div>
                 )}

@@ -154,3 +154,129 @@ mtime_ms = 1790268486522
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/d9d0dfa5-8030-42a4-be98-485359acb08b/fd1d7916-29f6-4fd0-981a-9d24178b8db6"
 storage_version_token = "1790268611114144"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "Y-hwzyUi0sGlGJ6tCxgM9"
+uri = "file://screenshots/mobile-ui/canal-cerrado-390.png"
+type = "image"
+title = "Canal móvil · miembros cerrados"
+description = "Vista sintética a 390 px, sin datos del propietario."
+logical_id = "73ff58a7-e408-4891-9062-98aa7c067168"
+content_hash = "sha256:77a739044f19ea1bae6d4de643e66a8996796c65fe422837c3e834fe461d96c4"
+size = 47233
+mtime_ms = 1790300243739
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/73ff58a7-e408-4891-9062-98aa7c067168/cf80cacb-3aeb-4545-a25a-c57aff25310b"
+storage_version_token = "1790300528662850"
+content_type = "image/png"
+
+[[outputs]]
+id = "X0C5xD_mdyB-tXHBPi412"
+uri = "file://screenshots/mobile-ui/canal-miembros-390.png"
+type = "image"
+title = "Canal móvil · miembros abiertos"
+description = "Panel superpuesto con cierre exterior, X y retroceso comprobados."
+logical_id = "f0576ea5-6833-41d6-acb0-0e2507e91ad1"
+content_hash = "sha256:111625a7b4a082def737e9d85463a68eb341c6ce8f60c107dca0967a4fcf2eeb"
+size = 40414
+mtime_ms = 1790300244663
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/f0576ea5-6833-41d6-acb0-0e2507e91ad1/cbda5618-2063-4657-ad0b-480dd25d3b28"
+storage_version_token = "1790300529190402"
+content_type = "image/png"
+
+[[outputs]]
+id = "r1FBSJMS6BSc-Jmb5349i"
+uri = "file://screenshots/mobile-ui/canal-acciones-390.png"
+type = "image"
+title = "Acciones de mensaje móvil"
+description = "Menú táctil con reacciones y acciones."
+logical_id = "ce4b5e5a-03ac-41fd-bec6-aaab8824e0ed"
+content_hash = "sha256:04549606d71321279b2a775195269ff2c89205be46f645629537e638b100de1a"
+size = 48115
+mtime_ms = 1790300244203
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/ce4b5e5a-03ac-41fd-bec6-aaab8824e0ed/84465611-cea7-4e87-9987-5de654f0f572"
+storage_version_token = "1790300529811537"
+content_type = "image/png"
+
+[[outputs]]
+id = "P7LbH37YCcDitepsBmk7D"
+uri = "file://screenshots/mobile-ui/mensajes-directos-390.png"
+type = "image"
+title = "DM móvil"
+description = "Conversación y avatar de reserva cuando el archivo no existe."
+logical_id = "b193fba8-503d-43bf-80b7-95ea4608917e"
+content_hash = "sha256:1e66bdda11822a312981b599afbadf75f8e99c29d6f5b9b2e15621b6006410fc"
+size = 35710
+mtime_ms = 1790300250295
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/b193fba8-503d-43bf-80b7-95ea4608917e/28598c81-6afc-4906-aec2-842e3d8934c3"
+storage_version_token = "1790300530366147"
+content_type = "image/png"
+
+[[outputs]]
+id = "ms1CIATswq6KEhJ-LwZ5r"
+uri = "file://screenshots/mobile-ui/ajustes-voz-390.png"
+type = "image"
+title = "Ajustes móviles · voz"
+description = "Navegación horizontal y contenido desplazable."
+logical_id = "89b3ed9c-0734-444a-812a-2382b967a772"
+content_hash = "sha256:3a79bfc0452b810116ca65f1142bce963891d4edacdef1fdca2f94f39106933c"
+size = 64942
+mtime_ms = 1790300246967
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/89b3ed9c-0734-444a-812a-2382b967a772/c995edc0-9b1c-4c42-a343-e98f01dad8c7"
+storage_version_token = "1790300530945448"
+content_type = "image/png"
+
+[[outputs]]
+id = "ntsVjpxo-sKi969lYrRLW"
+uri = "file://screenshots/mobile-ui/ajustes-video-390.png"
+type = "image"
+title = "Ajustes móviles · vídeo"
+description = "Sección de calidad de vídeo a 390 px."
+logical_id = "793509eb-9bf6-4661-83b3-8d26fd895ca8"
+content_hash = "sha256:3ad5291a6285227f74dbc1a555426f4a04ddab2fbb333cb660084ad017038757"
+size = 64479
+mtime_ms = 1790300247763
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/793509eb-9bf6-4661-83b3-8d26fd895ca8/678cb98f-8b94-45e5-a6eb-d2a8475a8c80"
+storage_version_token = "1790300531517006"
+content_type = "image/png"
+
+[[outputs]]
+id = "yaPDxwUS9Sebl1KO7Ga2B"
+uri = "file://screenshots/mobile-ui/ajustes-notificaciones-390.png"
+type = "image"
+title = "Ajustes móviles · notificaciones"
+description = "Sección con controles accesibles en desplazamiento vertical."
+logical_id = "ada0b45d-62cc-4e47-95ed-db3883ba47dc"
+content_hash = "sha256:ef46326f58b108e2f670b18c8b13a44debacf49f34c24b7ca18d16b81c7e5987"
+size = 53810
+mtime_ms = 1790300248235
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/ada0b45d-62cc-4e47-95ed-db3883ba47dc/273d5d2f-7025-4072-be85-0e6bb5c2aaf9"
+storage_version_token = "1790300532046076"
+content_type = "image/png"
+
+[[outputs]]
+id = "WA9Q_BhtWEiloGNsE-oSB"
+uri = "file://screenshots/mobile-ui/administracion-390.png"
+type = "image"
+title = "Administración móvil"
+description = "Pestañas desplazables y tarjetas en columna."
+logical_id = "957c44ce-c55c-4171-b0f9-5b96fcbf791f"
+content_hash = "sha256:be45bf50b5fa3380d7870e0152e46c3d617fbe5b1ce98ebb80f6e1e6dad288c5"
+size = 94585
+mtime_ms = 1790300251291
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/957c44ce-c55c-4171-b0f9-5b96fcbf791f/b201fe0b-36ad-4c41-a5c4-62e71d520a9b"
+storage_version_token = "1790300532602617"
+content_type = "image/png"
+
+[[outputs]]
+id = "fKenM5no0PhGZw48GmDpw"
+uri = "file://screenshots/mobile-ui/canal-escritorio-1280.png"
+type = "image"
+title = "Comparación · canal de escritorio"
+description = "Vista de 1280 px con panel de miembros en columna."
+logical_id = "d1779867-4d64-42cc-a1ed-de4f31f58221"
+content_hash = "sha256:bdc76c9beef7d8d38f4a80ade8d47405f4b4b61da88b75107e651e7285dc6972"
+size = 162146
+mtime_ms = 1790300252367
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:ce21a311-d966-4f44-8ddd-2ba432555a74/d1779867-4d64-42cc-a1ed-de4f31f58221/4dad1194-9f55-42b2-95dc-ab7add014bde"
+storage_version_token = "1790300533154465"
+content_type = "image/png"

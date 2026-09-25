@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Shield, Key, Users, Activity, Trash2, Ban, ShieldAlert, ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { sameOriginUploadUrl } from '@/lib/media-url';
+import { AvatarImage } from '@/components/avatar-image';
 
 export default function AdminPanel() {
   const [, setLocation] = useLocation();
@@ -49,44 +49,44 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="h-16 border-b border-white/5 flex items-center px-6 gap-4 bg-card/30">
+      <header className="min-h-16 border-b border-white/5 flex items-center px-4 md:px-6 gap-4 bg-card/30">
         <button onClick={() => setLocation('/app')} className="p-2 hover:bg-white/5 rounded-lg transition-colors text-muted-foreground hover:text-white">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <ShieldAlert className="w-6 h-6 text-primary" />
-        <h1 className="text-xl font-bold font-mono tracking-tight">Terminal de Administración</h1>
+        <h1 className="text-xl font-bold font-mono tracking-tight min-w-0">Terminal de Administración</h1>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col md:flex-row min-w-0">
         {/* Sidebar */}
-        <div className="w-64 border-r border-white/5 bg-card/20 p-4 space-y-2">
+        <div className="w-full md:w-64 md:shrink-0 border-b md:border-b-0 md:border-r border-white/5 bg-card/20 p-2 md:p-4 flex md:block gap-2 overflow-x-auto md:space-y-2">
           <button 
             onClick={() => setActiveTab('stats')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${activeTab === 'stats' ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent'}`}
+            className={`shrink-0 md:w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${activeTab === 'stats' ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent'}`}
           >
             <Activity className="w-4 h-4" /> Estadísticas
           </button>
           <button 
             onClick={() => setActiveTab('invites')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${activeTab === 'invites' ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent'}`}
+            className={`shrink-0 md:w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${activeTab === 'invites' ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent'}`}
           >
             <Key className="w-4 h-4" /> Códigos de Acceso
           </button>
           <button 
             onClick={() => setActiveTab('users')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${activeTab === 'users' ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent'}`}
+            className={`shrink-0 md:w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all text-sm font-medium ${activeTab === 'users' ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent'}`}
           >
             <Users className="w-4 h-4" /> Directorio de Operarios
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 p-8 overflow-y-auto">
+        <div className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto">
           {activeTab === 'stats' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold font-mono">Telemetría del Sistema</h2>
               {statsLoading ? <Loader2 className="w-8 h-8 animate-spin text-primary" /> : (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <StatCard title="Operarios" value={stats?.userCount} icon={Users} />
                   <StatCard title="Conectados" value={stats?.activeUserCount} icon={Activity} />
                   <StatCard title="Servidores" value={stats?.serverCount} icon={Shield} />
@@ -98,7 +98,7 @@ export default function AdminPanel() {
 
           {activeTab === 'invites' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-2xl font-bold font-mono">Control de Acceso</h2>
                 <button 
                   onClick={handleGenerateInvite}
@@ -110,8 +110,8 @@ export default function AdminPanel() {
                 </button>
               </div>
               
-              <div className="bg-card border border-white/5 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-sm">
+              <div className="bg-card border border-white/5 rounded-xl overflow-x-auto">
+                <table className="w-full min-w-[600px] text-left text-sm">
                   <thead className="bg-black/20 text-muted-foreground font-mono uppercase text-xs">
                     <tr>
                       <th className="px-6 py-4">Código</th>
@@ -164,8 +164,8 @@ export default function AdminPanel() {
           {activeTab === 'users' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold font-mono">Directorio de Operarios</h2>
-              <div className="bg-card border border-white/5 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-sm">
+              <div className="bg-card border border-white/5 rounded-xl overflow-x-auto">
+                <table className="w-full min-w-[600px] text-left text-sm">
                   <thead className="bg-black/20 text-muted-foreground font-mono uppercase text-xs">
                     <tr>
                       <th className="px-6 py-4">Identificación</th>
@@ -185,7 +185,7 @@ export default function AdminPanel() {
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-secondary overflow-hidden">
-                                {u.avatarUrl ? <img src={sameOriginUploadUrl(u.avatarUrl)} className="w-full h-full object-cover" alt="" /> : <Users className="w-4 h-4 m-2 text-muted-foreground" />}
+                                {u.avatarUrl ? <AvatarImage url={u.avatarUrl} /> : <Users className="w-4 h-4 m-2 text-muted-foreground" />}
                               </div>
                               <div>
                                 <p className="font-medium text-foreground">{u.displayName}</p>

@@ -1,13 +1,13 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ImagePlus, MessageSquare, Send, Smile, Users as UsersIcon } from 'lucide-react';
+import { ChevronLeft, ImagePlus, MessageSquare, MoreVertical, Send, Smile, Users as UsersIcon } from 'lucide-react';
 import { csrfFetch } from '@workspace/api-client-react';
 import { EmojiPicker, insertEmojiAtCursor, QUICK_EMOJIS } from '@/components/emoji-picker';
 import { GifMessage } from '@/components/gif-message';
+import { AvatarImage } from '@/components/avatar-image';
 import { GifPicker } from '@/components/gif-picker';
 import { ReactionIndicators } from '@/components/reaction-indicators';
 import { serializeGiphyMessage } from '@/lib/giphy';
-import { sameOriginUploadUrl } from '@/lib/media-url';
 import type { MessageReaction } from '@/lib/reactions';
 import { useRealtimeMessages } from '@/providers/realtime-transport';
 
@@ -46,6 +46,7 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null);
+  const [mobileActionsMessageId, setMobileActionsMessageId] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [reactionError, setReactionError] = useState<string | null>(null);
   const [pendingReactions, setPendingReactions] = useState<Set<string>>(new Set());
@@ -234,7 +235,7 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
                 {isFirst ? (
                   <div className="mt-0.5 h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-secondary">
                     {msg.author?.avatarUrl
-                      ? <img src={sameOriginUploadUrl(msg.author.avatarUrl)} className="h-full w-full object-cover" alt="" />
+                      ? <AvatarImage url={msg.author.avatarUrl} />
                       : <UsersIcon className="m-2.5 h-5 w-5 text-muted-foreground" />}
                   </div>
                 ) : (
@@ -260,10 +261,11 @@ export function DmGroupConversation({ groupId, groupName, currentUserId, onBack 
                     </div>
                   )}
                   <div className="relative">
-                    <div className="text-sm leading-normal text-foreground/90">
+                    <div className="text-sm leading-normal text-foreground/90 pr-12 md:pr-0">
                       <GifMessage content={msg.content} />
                     </div>
-                    <div className="absolute -top-2 right-0 z-10 flex items-center gap-1 rounded-md border border-border bg-card p-1 shadow-lg md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                    <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileActionsMessageId === msg.id} onClick={() => setMobileActionsMessageId(mobileActionsMessageId === msg.id ? null : msg.id)} className="absolute right-0 top-0 z-10 flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground md:hidden"><MoreVertical className="h-4 w-4" /></button>
+                    <div className={`${mobileActionsMessageId === msg.id ? 'flex' : 'hidden'} md:flex absolute top-11 md:-top-2 right-0 z-10 items-center gap-1 rounded-md border border-border bg-card p-1 shadow-lg [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100`}>
                       <div className="flex items-center gap-0.5" role="group" aria-label="Reacciones rápidas">
                         {QUICK_EMOJIS.slice(0, 4).map(emoji => (
                           <button
