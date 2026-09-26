@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verificación completa
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependencias (lockfile congelado)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Codegen OpenAPI al día
+        run: |
+          pnpm --filter @workspace/api-spec run codegen
+          if [ -n "$(git status --porcelain -- lib)" ]; then
+            echo "::error::El código generado no coincide con openapi.yaml. Ejecuta 'pnpm --filter @workspace/api-spec run codegen' y commitea el resultado."
+            git status --porcelain -- lib
+            git diff -- lib | head -200
+            exit 1
+          fi
+
+      - name: Migraciones Drizzle al día
+        env:
+          DATABASE_URL: postgres://ci:ci@127.0.0.1:1/ci_unused
+        run: |
+          pnpm --filter @workspace/db run generate
+          if [ -n "$(git status --porcelain -- lib/db)" ]; then
+            echo "::error::El esquema Drizzle tiene cambios sin migración generada (o faltan snapshots). Ejecuta 'pnpm --filter @workspace/db run generate' y commitea la migración, el snapshot y el journal."
+            git status --porcelain -- lib/db
+            exit 1
+          fi
+
+      - name: Build API
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Build frontend
+        env:
+          PORT: "5173"
+          BASE_PATH: /
+        run: pnpm --filter @workspace/another-private run build
+
+      - name: PostgreSQL 16 en PATH
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/initdb ]; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-16
+          fi
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+
+      - name: Suite de regresión
+        run: pnpm run test:regression
