@@ -21,6 +21,7 @@ import { isNotificationsMuted } from '@/lib/notification-rules';
 import { useWebRTC } from '@/hooks/use-webrtc';
 import { useSoundboardPlayback } from '@/hooks/use-soundboard-playback';
 import { useWatchSession } from '@/hooks/use-watch-session';
+import { useIdleDetection } from '@/hooks/use-idle-detection';
 import { WatchPlayer } from '@/components/watch-player';
 import { WatchPanel } from '@/components/watch-panel';
 import { loadSoundboardSettings, saveSoundboardSettings, type SoundboardSettings } from '@/lib/soundboard-settings';
@@ -458,6 +459,23 @@ export default function AppLayout() {
     settings: audioVideoSettings,
   });
   const isCallActive = webrtc.isInVoiceChannel || webrtc.callState === 'connected';
+
+  // Presence / idle detection + auto-DND during calls
+  const updateStatusOnServer = useCallback((status: string) => {
+    csrfFetch('/api/users/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }).catch(() => {});
+  }, []);
+
+  useIdleDetection({
+    currentStatus: (user?.status as any) ?? 'online',
+    onStatusChange: updateStatusOnServer,
+    inCall: isCallActive,
+    enabled: !!user,
+  });
+
   const soundboardPlayback = useSoundboardPlayback({
     userId: user?.id,
     settings: soundboardSettings,

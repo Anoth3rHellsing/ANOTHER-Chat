@@ -23,6 +23,7 @@ import { X, Plus, Trash2, Check, Shield, Hash, Lock, Copy, Link2, Image as Image
 import { useToast } from '@/hooks/use-toast';
 import { PERM, PERM_LABELS, hasPerm } from '@/lib/permissions';
 import { sameOriginUploadUrl } from '@/lib/media-url';
+import { CategoriesManager } from './categories-manager';
 
 interface ServerSettingsModalProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ const PRESET_COLORS = [
   '#3b82f6', '#06b6d4', '#a855f7', '#64748b',
 ];
 
-type Tab = 'roles' | 'channels' | 'members' | 'apariencia' | 'invitaciones' | 'mutes' | 'word_filters' | 'reports' | 'audit' | 'peligro';
+type Tab = 'roles' | 'channels' | 'categories' | 'members' | 'apariencia' | 'invitaciones' | 'mutes' | 'word_filters' | 'reports' | 'audit' | 'peligro';
 
 export function ServerSettingsModal({
   isOpen,
@@ -372,6 +373,7 @@ export function ServerSettingsModal({
   const TAB_LABELS: Record<Tab, string> = {
     roles: 'Roles',
     channels: 'Canales',
+    categories: 'Categorías',
     members: 'Miembros',
     apariencia: 'Apariencia',
     invitaciones: 'Invitaciones',
@@ -587,6 +589,16 @@ export function ServerSettingsModal({
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── CATEGORIES TAB ─────────────────────────── */}
+          {activeTab === 'categories' && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider mb-2">
+                Organiza los canales en categorías. Arrastra o usa los botones para reordenar.
+              </p>
+              <CategoriesManager serverId={serverId} />
             </div>
           )}
 

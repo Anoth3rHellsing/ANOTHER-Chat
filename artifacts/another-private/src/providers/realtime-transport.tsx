@@ -32,6 +32,8 @@ const RECONNECT_JITTER_MS = 500;
 const INITIAL_AUTH_RETRY_DELAY_MS = 50;
 const MAX_AUTH_RETRY_DELAY_MS = 1_000;
 const AUTH_SETTLE_DELAY_MS = 250;
+const PING_INTERVAL_MS = 15_000;
+const PONG_TIMEOUT_MS = 45_000;
 
 function getWebSocketUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -53,6 +55,8 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
   const applicationReadyRef = useRef(false);
   const mountedRef = useRef(false);
   const intentionalCloseRef = useRef(false);
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sendSerialized = useCallback((serialized: string) => {
     const socket = socketRef.current;
@@ -172,6 +176,34 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
       const socket = new WebSocket(getWebSocketUrl());
       socketRef.current = socket;
 
+      const startPing = (ws: WebSocket) => {
+        if (pingTimerRef.current) clearInterval(pingTimerRef.current);
+        if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+        pingTimerRef.current = setInterval(() => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          try {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          } catch {
+            // send failed; onclose will handle reconnect
+          }
+          if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+          pongTimeoutRef.current = setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.close(4000, 'pong-timeout');
+          }, PONG_TIMEOUT_MS);
+        }, PING_INTERVAL_MS);
+      };
+
+      const stopPing = () => {
+        if (pingTimerRef.current) {
+          clearInterval(pingTimerRef.current);
+          pingTimerRef.current = null;
+        }
+        if (pongTimeoutRef.current) {
+          clearTimeout(pongTimeoutRef.current);
+          pongTimeoutRef.current = null;
+        }
+      };
+
       socket.onopen = () => {
         if (socketRef.current !== socket || !mountedRef.current) {
           socket.close(1000, 'stale');
@@ -185,6 +217,7 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
         for (const channel of subscriptionCountsRef.current.keys()) {
           socket.send(JSON.stringify({ type: 'subscribe', channel }));
         }
+        startPing(socket);
         scheduleApplicationReady(socket);
       };
 
@@ -192,6 +225,14 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
         try {
           const message = JSON.parse(event.data) as RealtimeMessage;
           if (!message || typeof message.type !== 'string') return;
+
+          if (message.type === 'pong') {
+            if (pongTimeoutRef.current) {
+              clearTimeout(pongTimeoutRef.current);
+              pongTimeoutRef.current = null;
+            }
+            return;
+          }
 
           if (message.type === 'error' && message.message === 'No autenticado') {
             applicationReadyRef.current = false;
@@ -242,6 +283,7 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
       };
 
       socket.onclose = () => {
+        stopPing();
         if (socketRef.current === socket) socketRef.current = null;
         applicationReadyRef.current = false;
         for (const listener of connectionListenersRef.current) listener(false);
@@ -267,6 +309,7 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
     return () => {
       mountedRef.current = false;
       intentionalCloseRef.current = true;
+      stopPing();
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;

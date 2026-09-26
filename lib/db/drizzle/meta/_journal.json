@@ -64,6 +64,20 @@
       "when": 1790269861620,
       "tag": "0008_gray_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790450000000,
+      "tag": "0009_channel_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790450001000,
+      "tag": "0010_user_last_seen",
+      "breakpoints": true
     }
   ]
 }

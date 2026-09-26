@@ -27,7 +27,7 @@ import {
 const MAX_PENDING_AUTH_MESSAGES = 100;
 const MAX_PENDING_AUTH_BYTES = 1_000_000;
 const AUTH_RESOLUTION_TIMEOUT_MS = 5_000;
-const VOICE_BIND_RESERVATION_MS = 10_000;
+const VOICE_BIND_RESERVATION_MS = 30_000;
 const DM_CALL_INVITE_TTL_MS = 60_000;
 const DM_CALL_ACTIVE_TTL_MS = 12 * 60 * 60 * 1_000;
 
@@ -40,6 +40,42 @@ interface AuthedWebSocket extends WebSocket {
 }
 
 let wss: WebSocketServer | null = null;
+
+// ── Presence: track active WS connections per user ─────────────────────────
+const userConnectionCounts = new Map<number, number>();
+const lastSeenThrottleMap = new Map<number, number>();
+const LAST_SEEN_THROTTLE_MS = 60_000; // update at most once per minute
+
+async function updateUserPresence(userId: number, status: "online" | "offline"): Promise<void> {
+  try {
+    if (status === "offline") {
+      await db.update(usersTable)
+        .set({ status: "offline", lastSeenAt: new Date() })
+        .where(eq(usersTable.id, userId));
+    } else {
+      await db.update(usersTable)
+        .set({ status: "online" })
+        .where(eq(usersTable.id, userId));
+    }
+    broadcastAll({ type: "presence:update", data: { userId, status } });
+  } catch (err) {
+    logger.error({ err, userId, status }, "Failed to update user presence");
+  }
+}
+
+async function throttleLastSeenUpdate(userId: number): Promise<void> {
+  const now = Date.now();
+  const last = lastSeenThrottleMap.get(userId) ?? 0;
+  if (now - last < LAST_SEEN_THROTTLE_MS) return;
+  lastSeenThrottleMap.set(userId, now);
+  try {
+    await db.update(usersTable)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(usersTable.id, userId));
+  } catch (err) {
+    logger.error({ err, userId }, "Failed to update last_seen_at");
+  }
+}
 
 // ── In-memory voice channel state ──────────────────────────────────────────
 // channelId → userId → connectionIds
@@ -611,6 +647,22 @@ export function initWebSocket(server: HttpServer): void {
       try {
         const msg = JSON.parse(data.toString());
 
+        // Handle transport-level ping before auth checks
+        if (msg.type === "ping") {
+          // Also reset the WS-protocol liveness flag so the server heartbeat
+          // doesn't race with the application-level keepalive and terminate
+          // a connection that is actually alive.
+          client.isAlive = true;
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: "pong" }));
+          }
+          // Update last_seen_at on ping (throttled to once per minute)
+          if (client.userId) {
+            throttleLastSeenUpdate(client.userId);
+          }
+          return;
+        }
+
         switch (msg.type) {
           case "subscribe": {
             if (!msg.channel) break;
@@ -1001,6 +1053,13 @@ export function initWebSocket(server: HttpServer): void {
         "WebSocket client authenticated",
       );
 
+      // Presence: track connection count and set online on first connection
+      const prevCount = userConnectionCounts.get(client.userId) ?? 0;
+      userConnectionCounts.set(client.userId, prevCount + 1);
+      if (prevCount === 0) {
+        updateUserPresence(client.userId, "online");
+      }
+
       const queuedMessages = pendingMessages.splice(0);
       pendingMessageBytes = 0;
       for (const data of queuedMessages) enqueueMessage(data);
@@ -1026,6 +1085,16 @@ export function initWebSocket(server: HttpServer): void {
       pendingMessages.length = 0;
       pendingMessageBytes = 0;
       if (client.userId) {
+        // Presence: decrement connection count and set offline when last connection drops
+        const currentCount = userConnectionCounts.get(client.userId) ?? 1;
+        if (currentCount <= 1) {
+          userConnectionCounts.delete(client.userId);
+          lastSeenThrottleMap.delete(client.userId);
+          updateUserPresence(client.userId, "offline");
+        } else {
+          userConnectionCounts.set(client.userId, currentCount - 1);
+        }
+
         const channels = getVoiceChannelsForConnection(
           client.userId,
           client.connectionId,

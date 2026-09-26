@@ -21,7 +21,7 @@ import { soundboardTriggerRateLimit } from "../middleware/rate-limit";
 const router: IRouter = Router();
 const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 const MAX_FILE_BYTES = 256 * 1024;
-const MAX_CLIPS_PER_SERVER = 24;
+const MAX_CLIPS_PER_SERVER = 100;
 const MAX_DURATION_MS = 5_000;
 const TRIGGER_COOLDOWN_MS = 2_000;
 const triggerTimes = new Map<number, number>();
@@ -145,14 +145,16 @@ async function getSniffedAudio(filePath: string): Promise<{ mimeType: string; ex
   return { mimeType, extension, durationMs };
 }
 
-// Require a soundboard-managing permission before accepting an upload to disk.
+// Require server membership before accepting an upload to disk.
 async function requireUploadPermission(req: Request, res: Response, next: NextFunction): Promise<void> {
   const serverId = parsePositiveId(req.params.serverId);
   if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
   const [server] = await db.select({ id: serversTable.id }).from(serversTable).where(eq(serversTable.id, serverId));
   if (!server) { res.status(404).json({ error: "Servidor no encontrado." }); return; }
-  if (!(await canManageServer(req.session.userId!, req.session.userRole, serverId))) {
-    res.status(403).json({ error: "Necesitas permiso para administrar canales para subir clips al soundboard." });
+  if (req.session.userRole === "admin") { next(); return; }
+  const membership = await getMembership(serverId, req.session.userId!);
+  if (!membership) {
+    res.status(403).json({ error: "Debes ser miembro del servidor para subir clips al soundboard." });
     return;
   }
   next();
