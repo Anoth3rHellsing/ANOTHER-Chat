@@ -660,6 +660,93 @@ try {
   assert.ok(expectStatus(await member.request(`/api/channels/${voiceChannelId}/voice`),
     200, "membership visible after process restart").some(item => item.userId === memberId));
   console.log("PASS voice membership is explicitly restored after an isolated API process restart");
+
+  // Channel categories. The permission helper takes (serverId, userId). An
+  // earlier regression passed (userId, serverId), which still "works" whenever
+  // the acting user's ID equals the server's ID, and the owner here is a global
+  // admin whose permissions are never computed. So these checks use a dedicated
+  // server and a non-admin member whose ID provably differs from it.
+  const catServer = expectStatus(await owner.request("/api/servers", {
+    method: "POST", json: { name: `Categories server ${suffix}` },
+  }), 201, "create dedicated server for category permission checks");
+  const catServerId = parseId(catServer, "id", "category server ID");
+  assert.notEqual(memberId, catServerId,
+    "category permission checks require the acting member's ID to differ from the server ID");
+  const catInvite = expectStatus(await owner.request(`/api/servers/${catServerId}/invites`, {
+    method: "POST", json: {},
+  }), 201, "create invite for category server");
+  expectStatus(await member.request("/api/servers/join-by-invite", {
+    method: "POST", json: { code: catInvite.code },
+  }), 200, "member joins category server");
+
+  const category = expectStatus(await owner.request(`/api/servers/${catServerId}/categories`, {
+    method: "POST", json: { name: "Categoría del dueño" },
+  }), 201, "server owner creates a channel category");
+  const categoryId = parseId(category, "id", "category ID");
+  expectStatus(await member.request(`/api/servers/${catServerId}/categories`, {
+    method: "POST", json: { name: "sin permiso" },
+  }), 403, "member without MANAGE_CHANNELS cannot create a category");
+
+  const managerRole = expectStatus(await owner.request(`/api/servers/${catServerId}/roles`, {
+    method: "POST", json: { name: `managers-${suffix}`, permissions: 1 },
+  }), 201, "create MANAGE_CHANNELS role");
+  const managerRoleId = parseId(managerRole, "id", "manager role ID");
+  expectStatus(await owner.request(`/api/servers/${catServerId}/members/${memberId}/roles/${managerRoleId}`, {
+    method: "POST", json: {},
+  }), 200, "grant MANAGE_CHANNELS to member");
+  const memberCategory = expectStatus(await member.request(`/api/servers/${catServerId}/categories`, {
+    method: "POST", json: { name: "Categoría del miembro" },
+  }), 201, "non-admin member with MANAGE_CHANNELS creates a category");
+  const memberCategoryId = parseId(memberCategory, "id", "member category ID");
+  expectStatus(await member.request(`/api/categories/${memberCategoryId}`, {
+    method: "PATCH", json: { name: "Renombrada" },
+  }), 200, "member with MANAGE_CHANNELS renames a category");
+  expectStatus(await member.request(`/api/servers/${catServerId}/categories/reorder`, {
+    method: "PUT", json: [{ categoryId, position: 1 }, { categoryId: memberCategoryId, position: 0 }],
+  }), 204, "member with MANAGE_CHANNELS reorders categories");
+  const listed = expectStatus(await member.request(`/api/servers/${catServerId}/categories`), 200,
+    "server member lists categories");
+  assert.deepEqual(listed.map(item => item.id), [memberCategoryId, categoryId], "reorder persisted");
+  expectStatus(await member.request(`/api/categories/${memberCategoryId}`, { method: "DELETE" }),
+    204, "member with MANAGE_CHANNELS deletes a category");
+  const catChannel = expectStatus(await owner.request(`/api/servers/${catServerId}/channels`, {
+    method: "POST", json: { name: "con-categoria", channelType: "text", categoryId },
+  }), 201, "create a channel inside its own server's category");
+  assert.equal(catChannel.categoryId, categoryId);
+  const catChannelId = parseId(catChannel, "id", "categorised channel ID");
+
+  // A category from another server must never be attached to this server's channels.
+  const foreignServer = expectStatus(await owner.request("/api/servers", {
+    method: "POST", json: { name: `Foreign categories server ${suffix}` },
+  }), 201, "create second server for cross-server category checks");
+  const foreignServerId = parseId(foreignServer, "id", "foreign server ID");
+  const foreignCategory = expectStatus(await owner.request(`/api/servers/${foreignServerId}/categories`, {
+    method: "POST", json: { name: "Ajena" },
+  }), 201, "create category on the second server");
+  const foreignCategoryId = parseId(foreignCategory, "id", "foreign category ID");
+  expectStatus(await member.request(`/api/servers/${foreignServerId}/categories`, {
+    method: "POST", json: { name: "intrusa" },
+  }), 403, "non-member cannot create categories on another server");
+  expectStatus(await outsider.request(`/api/servers/${foreignServerId}/categories`), 403,
+    "non-member cannot list another server's categories");
+
+  expectStatus(await owner.request(`/api/servers/${catServerId}/channels`, {
+    method: "POST", json: { name: "cruzado", channelType: "text", categoryId: foreignCategoryId },
+  }), 400, "creating a channel under another server's category is rejected");
+  expectStatus(await owner.request(`/api/channels/${catChannelId}`, {
+    method: "PATCH", json: { categoryId: foreignCategoryId },
+  }), 400, "moving a channel into another server's category is rejected");
+  expectStatus(await owner.request(`/api/servers/${catServerId}/channels/reorder`, {
+    method: "PUT", json: [{ channelId: catChannelId, position: 0, categoryId: foreignCategoryId }],
+  }), 400, "reordering a channel into another server's category is rejected");
+  expectStatus(await owner.request(`/api/channels/${catChannelId}`, {
+    method: "PATCH", json: { categoryId: null },
+  }), 200, "channel can be removed from its category");
+  const moved = expectStatus(await owner.request(`/api/channels/${catChannelId}`, {
+    method: "PATCH", json: { categoryId },
+  }), 200, "moving a channel into its own server's category succeeds");
+  assert.equal(moved.categoryId, categoryId);
+  console.log("PASS categories honour MANAGE_CHANNELS with non-coinciding IDs and reject cross-server assignment");
 } finally {
   await cleanup();
 }

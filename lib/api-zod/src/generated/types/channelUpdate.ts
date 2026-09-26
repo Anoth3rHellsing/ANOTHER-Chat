@@ -17,4 +17,8 @@ export interface ChannelUpdate {
   channelType?: ChannelUpdateChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelUpdateVisualConfig;
+  /** Category within the same server. Null = uncategorized. */
+  categoryId?: number | null;
+  /** @minimum 0 */
+  position?: number;
 }

@@ -6,7 +6,7 @@ import {
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl as awsGetSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { Readable } from "stream";
+import { Readable } from "stream";
 import type { StorageAdapter } from "./index.js";
 
 export class R2StorageAdapter implements StorageAdapter {

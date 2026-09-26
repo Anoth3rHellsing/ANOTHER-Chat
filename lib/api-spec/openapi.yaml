@@ -1981,7 +1981,7 @@ components:
 
     Channel:
       type: object
-      required: [id, serverId, name, channelType, restrictedRoles, visualConfig, createdAt]
+      required: [id, serverId, name, channelType, restrictedRoles, visualConfig, categoryId, position, createdAt]
       properties:
         id:
           type: integer
@@ -2000,6 +2000,11 @@ components:
         visualConfig:
           type: object
           description: "Visual decoration: { kind: 'gradient'|'image', value: string }"
+        categoryId:
+          type: integer
+          nullable: true
+        position:
+          type: integer
         createdAt:
           type: string
           format: date-time
@@ -2436,6 +2441,13 @@ components:
             type: integer
         visualConfig:
           type: object
+        categoryId:
+          type: integer
+          nullable: true
+          description: Category within the same server. Null = uncategorized.
+        position:
+          type: integer
+          minimum: 0
 
     ChannelUpdate:
       type: object
@@ -2453,6 +2465,13 @@ components:
             type: integer
         visualConfig:
           type: object
+        categoryId:
+          type: integer
+          nullable: true
+          description: Category within the same server. Null = uncategorized.
+        position:
+          type: integer
+          minimum: 0
 
     EventInput:
       type: object

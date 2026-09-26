@@ -539,6 +539,8 @@ export const ListChannelsResponseItem = zod.object({
   "channelType": zod.enum(['text', 'voice', 'media', 'calendar']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
+  "categoryId": zod.number().nullable(),
+  "position": zod.number(),
   "createdAt": zod.coerce.date()
 })
 export const ListChannelsResponse = zod.array(ListChannelsResponseItem)
@@ -553,13 +555,17 @@ export const CreateChannelParams = zod.object({
 
 export const createChannelBodyNameMax = 100;
 
+export const createChannelBodyPositionMin = 0;
+
 
 
 export const CreateChannelBody = zod.object({
   "name": zod.string().min(1).max(createChannelBodyNameMax),
   "channelType": zod.enum(['text', 'voice', 'media', 'calendar']).optional(),
   "restrictedRoles": zod.array(zod.number()).optional(),
-  "visualConfig": zod.record(zod.unknown()).optional()
+  "visualConfig": zod.record(zod.unknown()).optional(),
+  "categoryId": zod.number().nullish().describe('Category within the same server. Null = uncategorized.'),
+  "position": zod.number().min(createChannelBodyPositionMin).optional()
 })
 
 export const CreateChannelResponse = zod.object({
@@ -569,6 +575,8 @@ export const CreateChannelResponse = zod.object({
   "channelType": zod.enum(['text', 'voice', 'media', 'calendar']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
+  "categoryId": zod.number().nullable(),
+  "position": zod.number(),
   "createdAt": zod.coerce.date()
 })
 
@@ -582,13 +590,17 @@ export const UpdateChannelParams = zod.object({
 
 export const updateChannelBodyNameMax = 100;
 
+export const updateChannelBodyPositionMin = 0;
+
 
 
 export const UpdateChannelBody = zod.object({
   "name": zod.string().min(1).max(updateChannelBodyNameMax).optional(),
   "channelType": zod.enum(['text', 'voice', 'media', 'calendar']).optional(),
   "restrictedRoles": zod.array(zod.number()).optional(),
-  "visualConfig": zod.record(zod.unknown()).optional()
+  "visualConfig": zod.record(zod.unknown()).optional(),
+  "categoryId": zod.number().nullish().describe('Category within the same server. Null = uncategorized.'),
+  "position": zod.number().min(updateChannelBodyPositionMin).optional()
 })
 
 export const UpdateChannelResponse = zod.object({
@@ -598,6 +610,8 @@ export const UpdateChannelResponse = zod.object({
   "channelType": zod.enum(['text', 'voice', 'media', 'calendar']),
   "restrictedRoles": zod.array(zod.number()).describe('Role IDs that can access this channel. Empty = unrestricted.'),
   "visualConfig": zod.record(zod.unknown()).describe('Visual decoration: { kind: \'gradient\'|\'image\', value: string }'),
+  "categoryId": zod.number().nullable(),
+  "position": zod.number(),
   "createdAt": zod.coerce.date()
 })
 
