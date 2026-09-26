@@ -1249,7 +1249,7 @@ export function useWebRTC(options: {
       };
       voiceAckRef.current = acknowledge;
       if (!sendIfReady({ type: 'voice:bind', channelId })) acknowledge(false);
-    }, 30_000);
+    }, 15_000);
     return () => {
       release();
       clearInterval(heartbeat);

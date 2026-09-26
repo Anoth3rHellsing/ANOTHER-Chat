@@ -43,6 +43,8 @@ function serializeChannel(c: typeof channelsTable.$inferSelect) {
     channelType: c.channelType ?? "text",
     restrictedRoles: parseRestrictedRoles(c.restrictedRoles),
     visualConfig: parseVisualConfig(c.visualConfig),
+    categoryId: c.categoryId ?? null,
+    position: c.position ?? 0,
     createdAt: c.createdAt,
   };
 }
@@ -104,7 +106,8 @@ router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise
   const channels = await db
     .select()
     .from(channelsTable)
-    .where(eq(channelsTable.serverId, serverId));
+    .where(eq(channelsTable.serverId, serverId))
+    .orderBy(channelsTable.categoryId, channelsTable.position, channelsTable.createdAt);
 
   const accessible: typeof channels = [];
   for (const c of channels) {
@@ -120,7 +123,7 @@ router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise
 router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const serverId = parseInt(Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId, 10);
-  const { name, restrictedRoles, channelType, visualConfig } = req.body;
+  const { name, restrictedRoles, channelType, visualConfig, categoryId, position } = req.body;
 
   if (!name) {
     res.status(400).json({ error: "El nombre del canal es requerido" }); return;
@@ -144,10 +147,12 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
   );
   const validType = ["text", "voice", "media", "calendar"].includes(channelType) ? channelType : "text";
   const visualConfigJson = visualConfig ? JSON.stringify(visualConfig) : "{}";
+  const validCategoryId = typeof categoryId === "number" && Number.isSafeInteger(categoryId) && categoryId > 0 ? categoryId : null;
+  const validPosition = typeof position === "number" && Number.isSafeInteger(position) && position >= 0 ? position : 0;
 
   const [channel] = await db
     .insert(channelsTable)
-    .values({ serverId, name, restrictedRoles: restrictedRolesJson, channelType: validType, visualConfig: visualConfigJson })
+    .values({ serverId, name, restrictedRoles: restrictedRolesJson, channelType: validType, visualConfig: visualConfigJson, categoryId: validCategoryId, position: validPosition })
     .returning();
 
   res.status(201).json(serializeChannel(channel));
@@ -183,6 +188,14 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
   }
   if (req.body.visualConfig !== undefined) {
     updates.visualConfig = JSON.stringify(req.body.visualConfig ?? {});
+  }
+  if (req.body.categoryId !== undefined) {
+    updates.categoryId = typeof req.body.categoryId === "number" && Number.isSafeInteger(req.body.categoryId) && req.body.categoryId > 0
+      ? req.body.categoryId
+      : null;
+  }
+  if (req.body.position !== undefined && typeof req.body.position === "number" && Number.isSafeInteger(req.body.position) && req.body.position >= 0) {
+    updates.position = req.body.position;
   }
 
   const [updated] = await db
@@ -631,5 +644,44 @@ router.delete(
     res.sendStatus(204);
   }
 );
+
+// PUT /servers/:serverId/channels/reorder
+router.put("/servers/:serverId/channels/reorder", requireAuth, async (req, res): Promise<void> => {
+  const serverId = parsePositiveId(req.params.serverId);
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
+
+  const userId = req.session.userId!;
+  const perms = await getMemberPermissions(serverId, userId);
+  const isAllowed =
+    req.session.userRole === "admin" ||
+    perms === 0xffffffff ||
+    hasPerm(perms, PERM.MANAGE_CHANNELS);
+  if (!isAllowed) {
+    res.status(403).json({ error: "No tienes permiso para reordenar canales." }); return;
+  }
+
+  const body = z.array(z.object({
+    channelId: z.number().int().positive(),
+    position: z.number().int().min(0),
+    categoryId: z.number().int().positive().nullable().optional(),
+  })).safeParse(req.body);
+  if (!body.success) { res.status(400).json({ error: "Formato de reordenamiento inválido." }); return; }
+
+  await db.transaction(async (tx) => {
+    for (const item of body.data) {
+      await tx.update(channelsTable)
+        .set({
+          position: item.position,
+          ...(item.categoryId !== undefined ? { categoryId: item.categoryId } : {}),
+        })
+        .where(and(
+          eq(channelsTable.id, item.channelId),
+          eq(channelsTable.serverId, serverId),
+        ));
+    }
+  });
+
+  res.sendStatus(204);
+});
 
 export default router;

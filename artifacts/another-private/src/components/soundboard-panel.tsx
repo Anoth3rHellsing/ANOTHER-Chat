@@ -341,7 +341,7 @@ export function SoundboardPanel({
                 ) : (
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[9px] text-muted-foreground font-mono leading-tight">
-                      Límite: 24 clips, máx 5s, 256 KiB.<br/>
+                      Límite: 100 clips, máx 5s, 256 KiB.<br/>
                       MP3, WAV, OGG, WebM.
                     </div>
                     <input
@@ -354,7 +354,7 @@ export function SoundboardPanel({
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={(clips?.length ?? 0) >= 24}
+                      disabled={(clips?.length ?? 0) >= 100}
                       className="bg-secondary hover:bg-muted border border-border rounded-lg px-3 py-1.5 text-xs text-foreground transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       <Upload className="w-3.5 h-3.5" />

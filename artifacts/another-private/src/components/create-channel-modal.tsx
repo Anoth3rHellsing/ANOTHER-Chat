@@ -1,12 +1,25 @@
-import { useState } from 'react';
-import { X, Hash, Volume2, Image as ImageIcon, CalendarDays } from 'lucide-react';
-import { useCreateChannel } from '@workspace/api-client-react';
+import { useState, useEffect } from 'react';
+import { X, Hash, Volume2, Image as ImageIcon, CalendarDays, FolderOpen } from 'lucide-react';
+import { useCreateChannel, csrfFetch } from '@workspace/api-client-react';
+import { useQuery } from '@tanstack/react-query';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
   onClose: () => void;
   serverId: number;
   onCreated: (channel: any) => void;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  position: number;
+}
+
+async function fetchCategories(serverId: number): Promise<Category[]> {
+  const res = await csrfFetch(`/api/servers/${serverId}/categories`);
+  if (!res.ok) return [];
+  return res.json();
 }
 
 const CHANNEL_TYPES = [
@@ -40,8 +53,23 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
   const [channelType, setChannelType] = useState<'text' | 'voice' | 'media' | 'calendar'>('text');
   const [name, setName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [selectedRoles, setSelectedRoles] = useState<number[]>([]);
 
   const createChannel = useCreateChannel();
+
+  const { data: categories } = useQuery({
+    queryKey: ['categories', serverId],
+    queryFn: () => fetchCategories(serverId),
+    enabled: isOpen,
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      setCategoryId(null);
+      setSelectedRoles([]);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -57,6 +85,8 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
         data: {
           name: normalizedName,
           channelType,
+          categoryId: categoryId ?? undefined,
+          restrictedRoles: isPrivate ? selectedRoles : undefined,
         },
       },
       {
@@ -65,6 +95,8 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
           setName('');
           setChannelType('text');
           setIsPrivate(false);
+          setCategoryId(null);
+          setSelectedRoles([]);
           onClose();
         },
       }
@@ -155,6 +187,26 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
             {name && normalizedName !== name && (
               <p className="text-xs text-muted-foreground">Se creará como: #{normalizedName}</p>
             )}
+          </div>
+
+          {/* Category selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Categoría
+            </label>
+            <div className="relative flex items-center bg-background border border-white/10 rounded-lg overflow-hidden focus-within:border-primary/50">
+              <FolderOpen className="w-4 h-4 text-muted-foreground ml-3 flex-shrink-0" />
+              <select
+                value={categoryId ?? ''}
+                onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : null)}
+                className="flex-1 bg-transparent px-2 py-3 text-sm text-foreground focus:outline-none appearance-none"
+              >
+                <option value="">Sin categoría</option>
+                {categories?.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Private toggle */}
