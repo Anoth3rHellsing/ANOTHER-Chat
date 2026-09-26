@@ -2,8 +2,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, channelCategoriesTable, serversTable, serverMembersTable } from "@workspace/db";
-import { requireAuth } from "../lib/auth.js";
-import { getMemberPermissions, getMembership, hasPerm, PERM } from "../lib/permissions.js";
+import { requireAuth } from "../lib/auth";
+import { getMemberPermissions, getMembership, hasPerm, PERM } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -20,7 +20,7 @@ async function requireManageChannels(req: Request, res: Response, serverId: numb
     res.status(403).json({ error: "No perteneces a este servidor." });
     return false;
   }
-  const perms = await getMemberPermissions(req.session.userId!, serverId);
+  const perms = await getMemberPermissions(serverId, req.session.userId!);
   if (!hasPerm(perms, PERM.MANAGE_CHANNELS) && perms !== 0xffffffff) {
     res.status(403).json({ error: "Necesitas permiso para administrar canales." });
     return false;
