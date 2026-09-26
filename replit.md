@@ -1,5 +1,7 @@
 # A.N.O.T.H.E.R. Private
 
+> **Reglas obligatorias para agentes y PRs:** lee [`AGENTS.md`](./AGENTS.md) antes de tocar código. Si algo aquí contradice `AGENTS.md`, manda `AGENTS.md`.
+
 A private, invite-only Discord-style encrypted chat web application. Dark theme, Spanish UI, real-time messaging with WebSockets, AES-256 message encryption, and an admin management panel.
 
 ## Run & Operate
