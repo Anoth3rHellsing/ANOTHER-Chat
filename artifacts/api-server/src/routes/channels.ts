@@ -11,7 +11,9 @@ import {
   usersTable,
   channelFilesTable,
   channelFileUploadsTable,
+  channelCategoriesTable,
 } from "@workspace/db";
+import { z } from "zod/v4";
 import { requireAuth } from "../lib/auth";
 import { encryptMessage } from "../lib/crypto";
 import { decryptChannelMessage } from "../lib/message-crypto";
@@ -28,6 +30,26 @@ import { groupReactions } from "../lib/reactions";
 import { removePrivateFile } from "../lib/channel-file-storage";
 
 const router: IRouter = Router();
+
+function parsePositiveId(value: unknown): number | null {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/** Devuelve los ids que NO pertenecen a las categorías del servidor indicado. */
+async function foreignCategoryIds(categoryIds: number[], serverId: number): Promise<number[]> {
+  const unique = [...new Set(categoryIds)];
+  if (unique.length === 0) return [];
+  const rows = await db.select({ id: channelCategoriesTable.id })
+    .from(channelCategoriesTable)
+    .where(and(
+      eq(channelCategoriesTable.serverId, serverId),
+      inArray(channelCategoriesTable.id, unique),
+    ));
+  const owned = new Set(rows.map((r) => r.id));
+  return unique.filter((id) => !owned.has(id));
+}
 
 class AttachmentClaimError extends Error {}
 
@@ -149,6 +171,9 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
   const visualConfigJson = visualConfig ? JSON.stringify(visualConfig) : "{}";
   const validCategoryId = typeof categoryId === "number" && Number.isSafeInteger(categoryId) && categoryId > 0 ? categoryId : null;
   const validPosition = typeof position === "number" && Number.isSafeInteger(position) && position >= 0 ? position : 0;
+  if (validCategoryId !== null && (await foreignCategoryIds([validCategoryId], serverId)).length > 0) {
+    res.status(400).json({ error: "La categoría no pertenece a este servidor." }); return;
+  }
 
   const [channel] = await db
     .insert(channelsTable)
@@ -193,6 +218,9 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
     updates.categoryId = typeof req.body.categoryId === "number" && Number.isSafeInteger(req.body.categoryId) && req.body.categoryId > 0
       ? req.body.categoryId
       : null;
+    if (updates.categoryId !== null && (await foreignCategoryIds([updates.categoryId], channel.serverId)).length > 0) {
+      res.status(400).json({ error: "La categoría no pertenece a este servidor." }); return;
+    }
   }
   if (req.body.position !== undefined && typeof req.body.position === "number" && Number.isSafeInteger(req.body.position) && req.body.position >= 0) {
     updates.position = req.body.position;
@@ -666,6 +694,13 @@ router.put("/servers/:serverId/channels/reorder", requireAuth, async (req, res):
     categoryId: z.number().int().positive().nullable().optional(),
   })).safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "Formato de reordenamiento inválido." }); return; }
+
+  const requestedCategories = body.data
+    .map((item) => item.categoryId)
+    .filter((id): id is number => typeof id === "number");
+  if ((await foreignCategoryIds(requestedCategories, serverId)).length > 0) {
+    res.status(400).json({ error: "Alguna categoría no pertenece a este servidor." }); return;
+  }
 
   await db.transaction(async (tx) => {
     for (const item of body.data) {

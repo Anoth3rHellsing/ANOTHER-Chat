@@ -183,6 +183,8 @@ export interface Channel {
   restrictedRoles: number[];
   /** Visual decoration: { kind: 'gradient'|'image', value: string } */
   visualConfig: ChannelVisualConfig;
+  categoryId: number | null;
+  position: number;
   createdAt: string;
 }
 
@@ -554,6 +556,10 @@ export interface ChannelInput {
   channelType?: ChannelInputChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelInputVisualConfig;
+  /** Category within the same server. Null = uncategorized. */
+  categoryId?: number | null;
+  /** @minimum 0 */
+  position?: number;
 }
 
 export type ChannelUpdateChannelType = typeof ChannelUpdateChannelType[keyof typeof ChannelUpdateChannelType];
@@ -577,6 +583,10 @@ export interface ChannelUpdate {
   channelType?: ChannelUpdateChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelUpdateVisualConfig;
+  /** Category within the same server. Null = uncategorized. */
+  categoryId?: number | null;
+  /** @minimum 0 */
+  position?: number;
 }
 
 export interface EventInput {

@@ -17,5 +17,7 @@ export interface Channel {
   restrictedRoles: number[];
   /** Visual decoration: { kind: 'gradient'|'image', value: string } */
   visualConfig: ChannelVisualConfig;
+  categoryId: number | null;
+  position: number;
   createdAt: Date;
 }

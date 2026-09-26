@@ -764,8 +764,13 @@ try {
     form.append("file", new Blob([bytes], { type: "audio/wav" }), filename);
     return client.request(`/api/servers/${serverId}/soundboard`, { method: "POST", body: form });
   }
-  expectStatus(await uploadSound(member, soundboardBytes, "sin-permiso.wav"), 403,
-    "ordinary member cannot upload soundboard audio");
+  // Regla vigente (aprobada por el propietario): cualquier miembro del servidor
+  // puede subir audio al soundboard; quien no pertenece al servidor, no.
+  const memberSound = expectStatus(await uploadSound(member, soundboardBytes, "miembro.wav"), 201,
+    "ordinary server member can upload soundboard audio");
+  assert.equal(memberSound.serverId, serverId);
+  expectDenied(await uploadSound(outsider, soundboardBytes, "intruso.wav"),
+    "non-member cannot upload soundboard audio");
   const uploadedSound = expectStatus(await uploadSound(owner, soundboardBytes, "tono.wav"), 201,
     "real short audio upload succeeds without external binaries");
   assert.equal(uploadedSound.mimeType, "audio/wav");

@@ -17,4 +17,8 @@ export interface ChannelInput {
   channelType?: ChannelInputChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelInputVisualConfig;
+  /** Category within the same server. Null = uncategorized. */
+  categoryId?: number | null;
+  /** @minimum 0 */
+  position?: number;
 }

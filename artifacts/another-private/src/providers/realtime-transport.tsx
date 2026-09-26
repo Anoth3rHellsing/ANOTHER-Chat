@@ -170,6 +170,19 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
       }, AUTH_SETTLE_DELAY_MS);
     };
 
+    // Definido al nivel del efecto (no dentro de connect) para que la limpieza
+    // del efecto pueda llamarlo al desmontar sin lanzar ReferenceError.
+    const stopPing = () => {
+      if (pingTimerRef.current) {
+        clearInterval(pingTimerRef.current);
+        pingTimerRef.current = null;
+      }
+      if (pongTimeoutRef.current) {
+        clearTimeout(pongTimeoutRef.current);
+        pongTimeoutRef.current = null;
+      }
+    };
+
     const connect = () => {
       if (!mountedRef.current || intentionalCloseRef.current) return;
 
@@ -186,22 +199,16 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
           } catch {
             // send failed; onclose will handle reconnect
           }
-          if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-          pongTimeoutRef.current = setTimeout(() => {
-            if (ws.readyState === WebSocket.OPEN) ws.close(4000, 'pong-timeout');
-          }, PONG_TIMEOUT_MS);
+          // Armar el plazo solo si no hay uno pendiente. Si cada ping lo reiniciara,
+          // con PONG_TIMEOUT_MS > PING_INTERVAL_MS nunca llegaría a dispararse.
+          // El pong lo cancela; si deja de llegar, vence y fuerza la reconexión.
+          if (!pongTimeoutRef.current) {
+            pongTimeoutRef.current = setTimeout(() => {
+              pongTimeoutRef.current = null;
+              if (ws.readyState === WebSocket.OPEN) ws.close(4000, 'pong-timeout');
+            }, PONG_TIMEOUT_MS);
+          }
         }, PING_INTERVAL_MS);
-      };
-
-      const stopPing = () => {
-        if (pingTimerRef.current) {
-          clearInterval(pingTimerRef.current);
-          pingTimerRef.current = null;
-        }
-        if (pongTimeoutRef.current) {
-          clearTimeout(pongTimeoutRef.current);
-          pongTimeoutRef.current = null;
-        }
       };
 
       socket.onopen = () => {
