@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getGetVoiceMembersQueryKey } from '@workspace/api-client-react';
+import { getGetVoiceMembersQueryKey, getListChannelsQueryKey } from '@workspace/api-client-react';
 import {
   useRealtimeChannels,
   useRealtimeMessages,
@@ -18,6 +18,7 @@ type WSEvent =
   | { type: 'user:status', data: { userId: number, status: any } }
   | { type: 'voice:member_join', data: { channelId: number, member: any } }
   | { type: 'voice:member_leave', data: { channelId: number, userId: number } }
+  | { type: 'channels:changed', data: { serverId: number } }
   | { type: 'mention:new', data: { messageId: number, channelId: number, serverId: number, authorName: string, preview: string } };
 
 const CHAT_MESSAGE_TYPES = [
@@ -31,6 +32,7 @@ const CHAT_MESSAGE_TYPES = [
   'voice:member_leave',
   'user:status',
   'mention:new',
+  'channels:changed',
 ] as const;
 
 function isChannelMessagesKey(queryKey: readonly unknown[], channelId: number): boolean {
@@ -169,6 +171,14 @@ export function useChatWebSocket(
             && (query.queryKey[0] as string).startsWith('/api/servers')
             && (query.queryKey[0] as string).endsWith('/members'),
         });
+        break;
+
+      case 'channels:changed':
+        // El aviso no lleva nombres: se vuelve a pedir la lista, que el servidor filtra por permisos.
+        if (typeof payload.data?.serverId === 'number') {
+          queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(payload.data.serverId) });
+          queryClient.invalidateQueries({ queryKey: ['categories', payload.data.serverId] });
+        }
         break;
 
       case 'mention:new':

@@ -5,6 +5,11 @@ import { db, channelCategoriesTable, serversTable, serverMembersTable } from "@w
 import { requireAuth } from "../lib/auth";
 import { getMemberPermissions, getMembership, hasPerm, PERM } from "../lib/permissions";
 
+async function notifyChannelsChanged(serverId: number): Promise<void> {
+  const websocket = await import("../lib/websocket");
+  websocket.notifyChannelsChanged(serverId);
+}
+
 const router: IRouter = Router();
 
 function parsePositiveId(value: unknown): number | null {
@@ -49,6 +54,7 @@ router.post("/servers/:serverId/categories", requireAuth, async (req: Request, r
   const [created] = await db.insert(channelCategoriesTable)
     .values({ serverId, name: body.data.name, position })
     .returning();
+  await notifyChannelsChanged(serverId);
   res.status(201).json(created);
 });
 
@@ -75,6 +81,7 @@ router.patch("/categories/:categoryId", requireAuth, async (req: Request, res: R
     .set(updates)
     .where(eq(channelCategoriesTable.id, categoryId))
     .returning();
+  await notifyChannelsChanged(category.serverId);
   res.json(updated);
 });
 
@@ -87,6 +94,8 @@ router.delete("/categories/:categoryId", requireAuth, async (req: Request, res: 
   if (!(await requireManageChannels(req, res, category.serverId))) return;
 
   await db.delete(channelCategoriesTable).where(eq(channelCategoriesTable.id, categoryId));
+  // Sus canales pasan a "sin categoría" (FK set null): la lista de canales también cambió.
+  await notifyChannelsChanged(category.serverId);
   res.sendStatus(204);
 });
 
@@ -128,6 +137,7 @@ router.put("/servers/:serverId/categories/reorder", requireAuth, async (req: Req
         ));
     }
   });
+  await notifyChannelsChanged(serverId);
   res.sendStatus(204);
 });
 

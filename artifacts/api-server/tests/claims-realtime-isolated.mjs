@@ -884,6 +884,156 @@ try {
   assert.equal(autoAway.status, "away");
   assert.equal(autoAway.invisible, false, "automatic updates never enter invisible mode");
   console.log("PASS Desconectado is an invisible mode that automatic presence cannot reveal or change");
+
+  // ── D1: channel management by a NON-admin holder of MANAGE_CHANNELS ──────
+  // `member` got the MANAGE_CHANNELS role on catServer above (not a site admin,
+  // not the owner). `peer` joins catServer with no role and observes; `outsider`
+  // never joins it and must receive nothing.
+  const peerId = ids[peerName];
+  const outsiderId = ids[outsiderName];
+  assert.notEqual(memberId, peerId, "actor and observer must differ");
+  const managerProfile = expectStatus(await member.request("/api/auth/me"), 200, "read manager profile");
+  assert.equal(managerProfile.role, "member", "the channel manager must not be a site administrator");
+  // Dedicated server whose id matches none of the users, so swapped arguments cannot pass by accident.
+  let d1ServerId;
+  for (let attempt = 0; attempt < 5 && !d1ServerId; attempt += 1) {
+    const candidate = expectStatus(await owner.request("/api/servers", {
+      method: "POST", json: { name: `D1 server ${suffix} ${attempt}` },
+    }), 201, "create dedicated D1 server");
+    const candidateId = parseId(candidate, "id", "D1 server ID");
+    if (![ownerId, memberId, peerId, outsiderId].includes(candidateId)) d1ServerId = candidateId;
+  }
+  assert.ok(d1ServerId, "a D1 server id that differs from every user id");
+  for (const userIdToCheck of [ownerId, memberId, peerId, outsiderId]) {
+    assert.notEqual(userIdToCheck, d1ServerId, "user ids must differ from the D1 server id");
+  }
+  expectStatus(await owner.request(`/api/servers/${d1ServerId}/channels`, {
+    method: "POST", json: { name: "general" },
+  }), 201, "owner creates the text channel that must survive");
+  const d1ManagerRole = expectStatus(await owner.request(`/api/servers/${d1ServerId}/roles`, {
+    method: "POST", json: { name: `d1-managers-${suffix}`, permissions: 1 },
+  }), 201, "create MANAGE_CHANNELS role on the D1 server");
+  for (const [client, label] of [[member, "manager"], [peer, "observer"]]) {
+    const invite = expectStatus(await owner.request(`/api/servers/${d1ServerId}/invites`, {
+      method: "POST", json: {},
+    }), 201, `create D1 invite for the ${label}`);
+    expectStatus(await client.request("/api/servers/join-by-invite", {
+      method: "POST", json: { code: invite.code },
+    }), 200, `${label} joins the D1 server`);
+  }
+  expectStatus(await owner.request(`/api/servers/${d1ServerId}/members/${memberId}/roles/${parseId(d1ManagerRole, "id", "D1 role ID")}`, {
+    method: "POST", json: {},
+  }), 200, "grant MANAGE_CHANNELS on the D1 server to the non-admin manager");
+  const observerWs = await openSocket(peer);
+  const outsiderWs = await openSocket(outsider);
+  const changedFor = ws => ws.messageHistory.filter(message =>
+    message.type === "channels:changed" && message.data?.serverId === d1ServerId).length;
+  async function expectChannelsChanged(label, action) {
+    const before = changedFor(observerWs);
+    const result = await action();
+    await waitFor(observerWs, () => changedFor(observerWs) > before, `channels:changed after ${label}`);
+    return result;
+  }
+
+  const d1Text = await expectChannelsChanged("create", async () => expectStatus(await member.request(`/api/servers/${d1ServerId}/channels`, {
+    method: "POST", json: { name: "  d1-texto  " },
+  }), 201, "manager (non-admin) creates a text channel"));
+  const d1TextId = parseId(d1Text, "id", "D1 text channel ID");
+  assert.equal(d1Text.name, "d1-texto", "channel names are trimmed");
+  const renamed = await expectChannelsChanged("rename", async () => expectStatus(await member.request(`/api/channels/${d1TextId}`, {
+    method: "PATCH", json: { name: "d1-renombrado" },
+  }), 200, "manager (non-admin) renames the channel"));
+  assert.equal(renamed.name, "d1-renombrado");
+  const d1Category = await expectChannelsChanged("category create", async () => expectStatus(await member.request(`/api/servers/${d1ServerId}/categories`, {
+    method: "POST", json: { name: "D1" },
+  }), 201, "manager creates a category and members are told"));
+  const d1CategoryId = parseId(d1Category, "id", "D1 category ID");
+  await expectChannelsChanged("reorder", async () => expectStatus(await member.request(`/api/servers/${d1ServerId}/channels/reorder`, {
+    method: "PUT", json: [{ channelId: d1TextId, position: 0, categoryId: d1CategoryId }],
+  }), 204, "manager (non-admin) moves the channel into a category"));
+  const d1Listed = expectStatus(await peer.request(`/api/servers/${d1ServerId}/channels`), 200, "observer lists channels");
+  assert.equal(d1Listed.find(item => item.id === d1TextId)?.categoryId, d1CategoryId, "the move is visible to members");
+  expectStatus(await peer.request(`/api/channels/${d1TextId}`, {
+    method: "PATCH", json: { name: "sin-permiso" },
+  }), 403, "a member without MANAGE_CHANNELS cannot rename");
+
+  // Sidebar order: uncategorised first, then categories by THEIR position, then channel position.
+  const d1SecondCategory = expectStatus(await member.request(`/api/servers/${d1ServerId}/categories`, {
+    method: "POST", json: { name: "D1 segunda" },
+  }), 201, "manager creates a second category");
+  const d1SecondCategoryId = parseId(d1SecondCategory, "id", "second D1 category ID");
+  assert.ok(d1SecondCategoryId > d1CategoryId, "the second category has the higher id");
+  const d1Other = expectStatus(await member.request(`/api/servers/${d1ServerId}/channels`, {
+    method: "POST", json: { name: "d1-otra", categoryId: d1SecondCategoryId },
+  }), 201, "manager creates a channel in the second category");
+  expectStatus(await member.request(`/api/servers/${d1ServerId}/categories/reorder`, {
+    method: "PUT", json: [{ categoryId: d1SecondCategoryId, position: 0 }, { categoryId: d1CategoryId, position: 1 }],
+  }), 204, "manager puts the second category first");
+  const ordered = expectStatus(await peer.request(`/api/servers/${d1ServerId}/channels`), 200, "observer lists ordered channels");
+  assert.deepEqual(ordered.map(item => item.name), ["general", "d1-otra", "d1-renombrado"],
+    "channels follow uncategorised first, then category position (not category id)");
+  expectStatus(await member.request(`/api/channels/${parseId(d1Other, "id", "other channel ID")}`, { method: "DELETE" }), 204,
+    "manager removes the ordering fixture");
+
+  // Deleting a channel removes its messages, reactions, attachment rows and files.
+  const d1Attachment = await uploadAttachment(member, d1TextId, "d1-adjunto.txt");
+  const attachmentFile = path.join(apiCwd, "uploads", path.basename(d1Attachment.url));
+  assert.ok(existsSync(attachmentFile), "the uploaded attachment exists on disk before deletion");
+  const d1Message = expectStatus(await member.request(`/api/channels/${d1TextId}/messages`, {
+    method: "POST", json: { content: "mensaje que se borrará", attachmentIds: [d1Attachment.id] },
+  }), 201, "post a message with an attachment in the channel to delete");
+  expectStatus(await peer.request(`/api/messages/${d1Message.id}/reactions`, {
+    method: "POST", json: { emoji: "👍" },
+  }), 200, "react to the message before deletion");
+  await expectChannelsChanged("delete", async () => expectStatus(await member.request(`/api/channels/${d1TextId}`, {
+    method: "DELETE",
+  }), 204, "manager (non-admin) deletes the text channel"));
+  const { Client: D1Client } = dbRequire("pg");
+  const d1Db = new D1Client({ connectionString: databaseUrl });
+  await d1Db.connect();
+  try {
+    const leftovers = await d1Db.query(`
+      SELECT
+        (SELECT count(*)::int FROM messages WHERE channel_id = $1) AS messages,
+        (SELECT count(*)::int FROM message_attachments WHERE channel_id = $1) AS attachments,
+        (SELECT count(*)::int FROM message_reactions WHERE message_id = $2) AS reactions,
+        (SELECT count(*)::int FROM channels WHERE id = $1) AS channels
+    `, [d1TextId, d1Message.id]);
+    assert.deepEqual(leftovers.rows[0], { messages: 0, attachments: 0, reactions: 0, channels: 0 },
+      "deleting a channel leaves no messages, attachments, reactions or channel row");
+  } finally {
+    await d1Db.end();
+  }
+  assert.equal(existsSync(attachmentFile), false, "the attachment file is removed from disk");
+
+  // Deleting a voice channel evicts whoever is inside, naming them.
+  const d1Voice = expectStatus(await member.request(`/api/servers/${d1ServerId}/channels`, {
+    method: "POST", json: { name: "d1-voz", channelType: "voice" },
+  }), 201, "manager creates a voice channel");
+  const d1VoiceId = parseId(d1Voice, "id", "D1 voice channel ID");
+  expectStatus(await peer.request(`/api/channels/${d1VoiceId}/voice/join`, {
+    method: "POST",
+  }), 200, "observer joins the voice channel");
+  const observerBound = waitFor(observerWs, message => message.type === "voice:bound" &&
+    message.data?.channelId === d1VoiceId, "observer voice binding");
+  observerWs.send(JSON.stringify({ type: "voice:bind", channelId: d1VoiceId }));
+  await observerBound;
+  const evicted = waitFor(observerWs, message => message.type === "voice:member_leave" &&
+    message.data?.channelId === d1VoiceId && message.data?.reason === "channel_deleted", "voice eviction notice");
+  expectStatus(await member.request(`/api/channels/${d1VoiceId}`, { method: "DELETE" }), 204,
+    "manager deletes the occupied voice channel");
+  assert.equal((await evicted).data.userId, peerId, "the eviction names the evicted user");
+  const afterVoiceDelete = expectStatus(await peer.request(`/api/servers/${d1ServerId}/channels`), 200,
+    "observer lists channels after the voice deletion");
+  assert.equal(afterVoiceDelete.some(item => item.id === d1VoiceId), false, "the deleted voice channel is gone");
+
+  // The outsider never hears about another server's channels.
+  const outsiderBarrier = waitFor(outsiderWs, message => message.type === "pong", "outsider barrier");
+  outsiderWs.send(JSON.stringify({ type: "ping" }));
+  await outsiderBarrier;
+  assert.equal(changedFor(outsiderWs), 0, "channels:changed never reaches users outside the server");
+  assert.ok(changedFor(observerWs) >= 5, "the observer was told about the changes");
+  console.log("PASS D1 channel management works for non-admin managers and cleans up, evicts and notifies only members");
 } finally {
   await cleanup();
 }

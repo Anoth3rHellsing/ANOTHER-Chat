@@ -1363,6 +1363,14 @@ export async function broadcastToServerMembers(serverId: number, payload: object
 }
 
 /**
+ * Aviso de que la lista de canales o de categorías de un servidor cambió.
+ * No lleva nombres: cada cliente vuelve a pedir la lista, que el servidor filtra por permisos.
+ */
+export function notifyChannelsChanged(serverId: number): void {
+  void broadcastToServerMembers(serverId, { type: "channels:changed", data: { serverId } });
+}
+
+/**
  * Evict all voice members from a channel that is being deleted.
  * Sends voice:member_leave with reason "channel_deleted" to each member's connections,
  * clears the channel from the in-memory voice map, and ends any watch session.
@@ -1395,11 +1403,12 @@ export function evictVoiceChannel(channelId: number): void {
 
   // Notify each evicted member on all their connections
   if (!wss) return;
-  const event = JSON.stringify({
-    type: "voice:member_leave",
-    data: { channelId, userId: null, reason: "channel_deleted" },
-  });
+  // Cada expulsado recibe su propio userId: el cliente sabe así que es él quien sale.
   for (const { userId, connectionIds } of evictions) {
+    const event = JSON.stringify({
+      type: "voice:member_leave",
+      data: { channelId, userId, reason: "channel_deleted" },
+    });
     for (const connectionId of connectionIds) {
       const client = findOpenConnection(connectionId, userId);
       if (client) {

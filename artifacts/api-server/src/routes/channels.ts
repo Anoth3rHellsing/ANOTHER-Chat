@@ -30,6 +30,7 @@ import { fetchFirstLinkPreview } from "../lib/link-preview";
 import { isMalformedGiphyMessage, parseGiphyMessage } from "../lib/giphy";
 import { groupReactions } from "../lib/reactions";
 import { removePrivateFile } from "../lib/channel-file-storage";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -142,13 +143,23 @@ async function buildMessageResponse(
 // GET /servers/:serverId/channels
 router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const serverId = parseInt(Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId, 10);
+  const serverId = parsePositiveId(req.params.serverId);
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
 
-  const channels = await db
-    .select()
+  // Orden de la barra: primero los canales sin categoría, luego cada categoría según su
+  // posición, y dentro de cada grupo según la posición del canal.
+  const rows = await db
+    .select({ channel: channelsTable })
     .from(channelsTable)
+    .leftJoin(channelCategoriesTable, eq(channelCategoriesTable.id, channelsTable.categoryId))
     .where(eq(channelsTable.serverId, serverId))
-    .orderBy(channelsTable.categoryId, channelsTable.position, channelsTable.createdAt);
+    .orderBy(
+      sql`${channelCategoriesTable.position} asc nulls first`,
+      channelCategoriesTable.id,
+      channelsTable.position,
+      channelsTable.createdAt,
+    );
+  const channels = rows.map(row => row.channel);
 
   const accessible: typeof channels = [];
   for (const c of channels) {
@@ -212,6 +223,8 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
     })
     .returning();
 
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(serverId);
   res.status(201).json(serializeChannel(channel));
 });
 
@@ -277,6 +290,8 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
     .where(eq(channelsTable.id, channelId))
     .returning();
 
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(channel.serverId);
   res.json(serializeChannel(updated));
 });
 
@@ -299,18 +314,6 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
     res.status(403).json({ error: "No tienes permiso para eliminar canales." }); return;
   }
 
-  // E3: proteger el último canal de texto del servidor
-  if (channel.channelType === "text") {
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(channelsTable)
-      .where(and(eq(channelsTable.serverId, channel.serverId), eq(channelsTable.channelType, "text")));
-    if (count <= 1) {
-      res.status(409).json({ error: "No se puede eliminar el último canal de texto del servidor." });
-      return;
-    }
-  }
-
   // Recopilar archivos a borrar ANTES de la transacción (para no dejar huérfanos si falla)
   const [privateFiles, uploadSessions, attachments] = await Promise.all([
     db.select({ storageKey: channelFilesTable.storageKey }).from(channelFilesTable).where(eq(channelFilesTable.channelId, channelId)),
@@ -318,24 +321,49 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
     db.select({ url: messageAttachmentsTable.url }).from(messageAttachmentsTable).where(eq(messageAttachmentsTable.channelId, channelId)),
   ]);
 
-  // Transacción: borrar filas dependientes y el canal
-  await db.transaction(async (tx) => {
-    await tx.delete(messageReactionsTable).where(
-      inArray(messageReactionsTable.messageId,
-        tx.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
-      )
-    );
-    await tx.delete(messageAttachmentsTable).where(eq(messageAttachmentsTable.channelId, channelId));
-    await tx.delete(messagesTable).where(eq(messagesTable.channelId, channelId));
-    await tx.delete(channelsTable).where(eq(channelsTable.id, channelId));
-  });
+  // Transacción: borrar filas dependientes y el canal. La comprobación E3 va dentro y
+  // bloquea los canales de texto del servidor, para que dos borrados simultáneos de los
+  // dos últimos canales de texto no puedan pasar los dos.
+  const LAST_TEXT_CHANNEL = Symbol("last-text-channel");
+  try {
+    await db.transaction(async (tx) => {
+      if (channel.channelType === "text") {
+        const textChannels = await tx
+          .select({ id: channelsTable.id })
+          .from(channelsTable)
+          .where(and(eq(channelsTable.serverId, channel.serverId), eq(channelsTable.channelType, "text")))
+          .for("update");
+        if (textChannels.length <= 1) throw LAST_TEXT_CHANNEL;
+      }
+      await tx.delete(messageReactionsTable).where(
+        inArray(messageReactionsTable.messageId,
+          tx.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
+        )
+      );
+      await tx.delete(messageAttachmentsTable).where(eq(messageAttachmentsTable.channelId, channelId));
+      await tx.delete(messagesTable).where(eq(messagesTable.channelId, channelId));
+      await tx.delete(channelsTable).where(eq(channelsTable.id, channelId));
+    });
+  } catch (error) {
+    if (error === LAST_TEXT_CHANNEL) {
+      res.status(409).json({ error: "No se puede eliminar el último canal de texto del servidor." });
+      return;
+    }
+    throw error;
+  }
 
   // Borrar archivos del disco SOLO si la transacción confirmó
   const uploadsDir = path.resolve(process.cwd(), "uploads");
   for (const att of attachments) {
     const filename = att.url.replace(/^\/api\/uploads\//, "");
     if (filename && !filename.includes("/") && !filename.includes("..")) {
-      try { await fs.promises.unlink(path.join(uploadsDir, filename)); } catch {}
+      try {
+        await fs.promises.unlink(path.join(uploadsDir, filename));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          logger.warn({ err: error, channelId }, "No se pudo borrar un adjunto del canal eliminado");
+        }
+      }
     }
   }
   for (const file of [...privateFiles, ...uploadSessions]) {
@@ -349,8 +377,8 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
   }
 
   // Avisar a los miembros del servidor
-  const { broadcastToServerMembers } = await import("../lib/websocket");
-  broadcastToServerMembers(channel.serverId, { type: "channels:changed", data: { serverId: channel.serverId } });
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(channel.serverId);
 
   res.sendStatus(204);
 });
@@ -425,8 +453,8 @@ router.put("/servers/:serverId/channels/reorder", requireAuth, async (req, res):
     }
   });
 
-  const { broadcastToServerMembers } = await import("../lib/websocket");
-  broadcastToServerMembers(serverId, { type: "channels:changed", data: { serverId } });
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(serverId);
   res.sendStatus(204);
 });
 
@@ -827,51 +855,5 @@ router.delete(
     res.sendStatus(204);
   }
 );
-
-// PUT /servers/:serverId/channels/reorder
-router.put("/servers/:serverId/channels/reorder", requireAuth, async (req, res): Promise<void> => {
-  const serverId = parsePositiveId(req.params.serverId);
-  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
-
-  const userId = req.session.userId!;
-  const perms = await getMemberPermissions(serverId, userId);
-  const isAllowed =
-    req.session.userRole === "admin" ||
-    perms === 0xffffffff ||
-    hasPerm(perms, PERM.MANAGE_CHANNELS);
-  if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para reordenar canales." }); return;
-  }
-
-  const body = z.array(z.object({
-    channelId: z.number().int().positive(),
-    position: z.number().int().min(0),
-    categoryId: z.number().int().positive().nullable().optional(),
-  })).safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "Formato de reordenamiento inválido." }); return; }
-
-  const requestedCategories = body.data
-    .map((item) => item.categoryId)
-    .filter((id): id is number => typeof id === "number");
-  if ((await foreignCategoryIds(requestedCategories, serverId)).length > 0) {
-    res.status(400).json({ error: "Alguna categoría no pertenece a este servidor." }); return;
-  }
-
-  await db.transaction(async (tx) => {
-    for (const item of body.data) {
-      await tx.update(channelsTable)
-        .set({
-          position: item.position,
-          ...(item.categoryId !== undefined ? { categoryId: item.categoryId } : {}),
-        })
-        .where(and(
-          eq(channelsTable.id, item.channelId),
-          eq(channelsTable.serverId, serverId),
-        ));
-    }
-  });
-
-  res.sendStatus(204);
-});
 
 export default router;
