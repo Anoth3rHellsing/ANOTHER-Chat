@@ -3,8 +3,37 @@ import { eq } from "drizzle-orm";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import { z } from "zod/v4";
 import { db, usersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
+
+// Cadena vacía o solo espacios = sin valor: se guarda null, como hacía la versión anterior.
+const optionalTrimmedText = (max: number, message: string) =>
+  z.string({ error: "Debe ser un texto." })
+    .max(max, message)
+    .nullable()
+    .optional()
+    .transform(value => (typeof value === "string" ? (value.trim() || null) : value));
+
+const patchUserSchema = z.object({
+  displayName: z.string({ error: "El nombre visible debe ser un texto." })
+    .min(1, "El nombre visible no puede estar vacío.")
+    .max(64, "El nombre visible admite como máximo 64 caracteres.")
+    .optional(),
+  bio: z.string({ error: "La biografía debe ser un texto." })
+    .max(500, "La biografía admite como máximo 500 caracteres.")
+    .optional(),
+  status: z.enum(["online", "away", "dnd", "offline"], {
+    error: "Estado no válido. Usa online, away, dnd u offline.",
+  }).optional(),
+  socialLinks: z.array(z.object({
+    platform: z.string({ error: "Cada enlace necesita una plataforma." }),
+    url: z.string({ error: "Cada enlace necesita una dirección." }),
+    label: z.string().optional(),
+  }), { error: "Los enlaces sociales deben ser una lista." }).optional(),
+  customStatus: optionalTrimmedText(128, "El estado personalizado admite como máximo 128 caracteres."),
+  statusEmoji: optionalTrimmedText(20, "El emoji de estado admite como máximo 20 caracteres."),
+}, { error: "El cuerpo de la petición debe ser un objeto." });
 
 const router: IRouter = Router();
 
@@ -53,6 +82,8 @@ function serializeUser(user: typeof usersTable.$inferSelect) {
     role: user.role,
     createdAt: user.createdAt,
     socialLinks: parseSocialLinks(user.socialLinks),
+    customStatus: user.customStatus ?? null,
+    statusEmoji: user.statusEmoji ?? null,
   };
 }
 
@@ -73,22 +104,26 @@ router.get("/users/:userId", requireAuth, async (req, res): Promise<void> => {
 // PATCH /users/me
 router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const { displayName, bio, status, socialLinks, customStatus, statusEmoji } = req.body;
 
-  const updates: Record<string, unknown> = {};
+  const parsed = patchUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue?.message ?? "Datos inválidos.";
+    res.status(400).json({ error: message });
+    return;
+  }
+
+  const { displayName, bio, status, socialLinks, customStatus, statusEmoji } = parsed.data;
+
+  const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (displayName !== undefined) updates.displayName = displayName;
   if (bio !== undefined) updates.bio = bio;
-  if (status !== undefined && ["online", "away", "dnd", "offline"].includes(status)) {
-    updates.status = status;
-  }
-  if (socialLinks !== undefined && Array.isArray(socialLinks)) {
-    updates.socialLinks = JSON.stringify(socialLinks);
-  }
+  if (status !== undefined) updates.status = status;
+  if (socialLinks !== undefined) updates.socialLinks = JSON.stringify(socialLinks);
+  if (customStatus !== undefined) updates.customStatus = customStatus;
+  if (statusEmoji !== undefined) updates.statusEmoji = statusEmoji;
 
-  // Raw SQL for custom_status and status_emoji (not in drizzle schema)
-  let rawUpdateNeeded = customStatus !== undefined || statusEmoji !== undefined;
-
-  if (Object.keys(updates).length === 0 && !rawUpdateNeeded) {
+  if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No hay cambios para aplicar" });
     return;
   }
@@ -99,26 +134,21 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
     .where(eq(usersTable.id, userId))
     .returning();
 
-  if (rawUpdateNeeded) {
-    const { pool } = await import("@workspace/db");
-    const client = await pool.connect();
-    try {
-      const setParts: string[] = [];
-      const vals: any[] = [];
-      if (customStatus !== undefined) { setParts.push(`custom_status=${vals.length + 1}`); vals.push(customStatus || null); }
-      if (statusEmoji !== undefined) { setParts.push(`status_emoji=${vals.length + 1}`); vals.push(statusEmoji || null); }
-      vals.push(userId);
-      await client.query(`UPDATE users SET ${setParts.join(', ')} WHERE id=${vals.length}`, vals);
-    } finally { client.release(); }
-  }
-
   // Broadcast status change via WebSocket
-  if (updates.status || rawUpdateNeeded) {
+  if (status !== undefined || customStatus !== undefined || statusEmoji !== undefined) {
     const { broadcastAll } = await import("../lib/websocket");
-    broadcastAll({ type: "user:status", data: { userId, status: updated.status, customStatus: customStatus ?? undefined, statusEmoji: statusEmoji ?? undefined } });
+    broadcastAll({
+      type: "user:status",
+      data: {
+        userId,
+        status: updated.status,
+        customStatus: updated.customStatus ?? null,
+        statusEmoji: updated.statusEmoji ?? null,
+      },
+    });
   }
 
-  res.json({ ...serializeUser(updated), customStatus: customStatus ?? undefined, statusEmoji: statusEmoji ?? undefined });
+  res.json(serializeUser(updated));
 });
 
 // POST /users/me/avatar
