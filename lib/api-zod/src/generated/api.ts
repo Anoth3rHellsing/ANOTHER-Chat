@@ -599,7 +599,6 @@ export const updateChannelBodyPositionMin = 0;
 
 export const UpdateChannelBody = zod.object({
   "name": zod.string().min(1).max(updateChannelBodyNameMax).optional(),
-  "channelType": zod.enum(['text', 'voice', 'media', 'calendar']).optional(),
   "restrictedRoles": zod.array(zod.number()).optional(),
   "visualConfig": zod.record(zod.unknown()).optional(),
   "categoryId": zod.number().nullish().describe('Category within the same server. Null = uncategorized.'),
@@ -627,6 +626,128 @@ export const DeleteChannelParams = zod.object({
 })
 
 export const DeleteChannelResponse = zod.void()
+
+
+/**
+ * @summary Reorder channels and optionally move them between categories
+ */
+export const ReorderChannelsParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+
+export const reorderChannelsBodyPositionMin = 0;
+
+
+
+
+export const ReorderChannelsBodyItem = zod.object({
+  "channelId": zod.number().min(1),
+  "position": zod.number().min(reorderChannelsBodyPositionMin),
+  "categoryId": zod.number().min(1).nullish().describe('Target category. Null = uncategorized. Omit to keep current.')
+})
+export const ReorderChannelsBody = zod.array(ReorderChannelsBodyItem)
+
+export const ReorderChannelsResponse = zod.void()
+
+
+/**
+ * @summary Create a channel category in a server
+ */
+export const CreateCategoryParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const createCategoryBodyNameMax = 100;
+
+
+
+export const CreateCategoryBody = zod.object({
+  "name": zod.string().min(1).max(createCategoryBodyNameMax)
+})
+
+export const CreateCategoryResponse = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List categories for a server ordered by position
+ */
+export const ListCategoriesParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+export const ListCategoriesResponseItem = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const ListCategoriesResponse = zod.array(ListCategoriesResponseItem)
+
+
+/**
+ * @summary Rename or reposition a category
+ */
+export const UpdateCategoryParams = zod.object({
+  "categoryId": zod.coerce.number()
+})
+
+export const updateCategoryBodyNameMax = 100;
+
+export const updateCategoryBodyPositionMin = 0;
+
+
+
+export const UpdateCategoryBody = zod.object({
+  "name": zod.string().min(1).max(updateCategoryBodyNameMax).optional(),
+  "position": zod.number().min(updateCategoryBodyPositionMin).optional()
+})
+
+export const UpdateCategoryResponse = zod.object({
+  "id": zod.number(),
+  "serverId": zod.number(),
+  "name": zod.string(),
+  "position": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a category (channels become uncategorized)
+ */
+export const DeleteCategoryParams = zod.object({
+  "categoryId": zod.coerce.number()
+})
+
+export const DeleteCategoryResponse = zod.void()
+
+
+/**
+ * @summary Reorder categories within a server
+ */
+export const ReorderCategoriesParams = zod.object({
+  "serverId": zod.coerce.number()
+})
+
+
+export const reorderCategoriesBodyPositionMin = 0;
+
+
+
+export const ReorderCategoriesBodyItem = zod.object({
+  "categoryId": zod.number().min(1),
+  "position": zod.number().min(reorderCategoriesBodyPositionMin)
+})
+export const ReorderCategoriesBody = zod.array(ReorderCategoriesBodyItem)
+
+export const ReorderCategoriesResponse = zod.void()
 
 
 /**

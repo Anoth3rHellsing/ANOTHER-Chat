@@ -24,6 +24,10 @@ import type {
   AdminUser,
   Attachment,
   AvatarUploadResult,
+  Category,
+  CategoryInput,
+  CategoryReorderItem,
+  CategoryUpdate,
   Channel,
   ChannelEvent,
   ChannelFile,
@@ -35,6 +39,7 @@ import type {
   ChannelFileUploadStatus,
   ChannelFileVerifyInput,
   ChannelInput,
+  ChannelReorderItem,
   ChannelUpdate,
   DirectMessage,
   DmConversation,
@@ -2191,7 +2196,7 @@ export const deleteChannel = async (channelId: number, options?: RequestInit): P
 
 
 
-export const getDeleteChannelMutationOptions = <TError = ErrorType<unknown>,
+export const getDeleteChannelMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChannel>>, TError,{channelId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteChannel>>, TError,{channelId: number}, TContext> => {
 
@@ -2220,12 +2225,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteChannelMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChannel>>>
 
-    export type DeleteChannelMutationError = ErrorType<unknown>
+    export type DeleteChannelMutationError = ErrorType<void>
 
     /**
  * @summary Delete a channel
  */
-export const useDeleteChannel = <TError = ErrorType<unknown>,
+export const useDeleteChannel = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChannel>>, TError,{channelId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteChannel>>,
@@ -2234,6 +2239,442 @@ export const useDeleteChannel = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteChannelMutationOptions(options));
+    }
+
+export const getReorderChannelsUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/channels/reorder`
+}
+
+/**
+ * @summary Reorder channels and optionally move them between categories
+ */
+export const reorderChannels = async (serverId: number,
+    channelReorderItem: ChannelReorderItem[], options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getReorderChannelsUrl(serverId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(channelReorderItem)
+  }
+);}
+
+
+
+
+
+export const getReorderChannelsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderChannels>>, TError,{serverId: number;data: BodyType<ChannelReorderItem[]>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderChannels>>, TError,{serverId: number;data: BodyType<ChannelReorderItem[]>}, TContext> => {
+
+const mutationKey = ['reorderChannels'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderChannels>>, {serverId: number;data: BodyType<ChannelReorderItem[]>}> = (props) => {
+          const {serverId,data} = props ?? {};
+
+          return  reorderChannels(serverId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderChannelsMutationResult = NonNullable<Awaited<ReturnType<typeof reorderChannels>>>
+    export type ReorderChannelsMutationBody = BodyType<ChannelReorderItem[]>
+    export type ReorderChannelsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reorder channels and optionally move them between categories
+ */
+export const useReorderChannels = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderChannels>>, TError,{serverId: number;data: BodyType<ChannelReorderItem[]>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderChannels>>,
+        TError,
+        {serverId: number;data: BodyType<ChannelReorderItem[]>},
+        TContext
+      > => {
+      return useMutation(getReorderChannelsMutationOptions(options));
+    }
+
+export const getCreateCategoryUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/categories`
+}
+
+/**
+ * @summary Create a channel category in a server
+ */
+export const createCategory = async (serverId: number,
+    categoryInput: CategoryInput, options?: RequestInit): Promise<Category> => {
+
+  return customFetch<Category>(getCreateCategoryUrl(serverId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(categoryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCategory>>, TError,{serverId: number;data: BodyType<CategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCategory>>, TError,{serverId: number;data: BodyType<CategoryInput>}, TContext> => {
+
+const mutationKey = ['createCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCategory>>, {serverId: number;data: BodyType<CategoryInput>}> = (props) => {
+          const {serverId,data} = props ?? {};
+
+          return  createCategory(serverId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof createCategory>>>
+    export type CreateCategoryMutationBody = BodyType<CategoryInput>
+    export type CreateCategoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a channel category in a server
+ */
+export const useCreateCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCategory>>, TError,{serverId: number;data: BodyType<CategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCategory>>,
+        TError,
+        {serverId: number;data: BodyType<CategoryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCategoryMutationOptions(options));
+    }
+
+export const getListCategoriesUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/categories`
+}
+
+/**
+ * @summary List categories for a server ordered by position
+ */
+export const listCategories = async (serverId: number, options?: RequestInit): Promise<Category[]> => {
+
+  return customFetch<Category[]>(getListCategoriesUrl(serverId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCategoriesQueryKey = (serverId: number,) => {
+    return [
+    `/api/servers/${serverId}/categories`
+    ] as const;
+    }
+
+
+export const getListCategoriesQueryOptions = <TData = Awaited<ReturnType<typeof listCategories>>, TError = ErrorType<unknown>>(serverId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCategoriesQueryKey(serverId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCategories>>> = ({ signal }) => listCategories(serverId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: serverId !== null && serverId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCategories>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCategoriesQueryResult = NonNullable<Awaited<ReturnType<typeof listCategories>>>
+export type ListCategoriesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List categories for a server ordered by position
+ */
+
+export function useListCategories<TData = Awaited<ReturnType<typeof listCategories>>, TError = ErrorType<unknown>>(
+ serverId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCategoriesQueryOptions(serverId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCategoryUrl = (categoryId: number,) => {
+
+
+
+
+  return `/api/categories/${categoryId}`
+}
+
+/**
+ * @summary Rename or reposition a category
+ */
+export const updateCategory = async (categoryId: number,
+    categoryUpdate: CategoryUpdate, options?: RequestInit): Promise<Category> => {
+
+  return customFetch<Category>(getUpdateCategoryUrl(categoryId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(categoryUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCategory>>, TError,{categoryId: number;data: BodyType<CategoryUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCategory>>, TError,{categoryId: number;data: BodyType<CategoryUpdate>}, TContext> => {
+
+const mutationKey = ['updateCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCategory>>, {categoryId: number;data: BodyType<CategoryUpdate>}> = (props) => {
+          const {categoryId,data} = props ?? {};
+
+          return  updateCategory(categoryId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof updateCategory>>>
+    export type UpdateCategoryMutationBody = BodyType<CategoryUpdate>
+    export type UpdateCategoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Rename or reposition a category
+ */
+export const useUpdateCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCategory>>, TError,{categoryId: number;data: BodyType<CategoryUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCategory>>,
+        TError,
+        {categoryId: number;data: BodyType<CategoryUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateCategoryMutationOptions(options));
+    }
+
+export const getDeleteCategoryUrl = (categoryId: number,) => {
+
+
+
+
+  return `/api/categories/${categoryId}`
+}
+
+/**
+ * @summary Delete a category (channels become uncategorized)
+ */
+export const deleteCategory = async (categoryId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCategoryUrl(categoryId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCategory>>, TError,{categoryId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCategory>>, TError,{categoryId: number}, TContext> => {
+
+const mutationKey = ['deleteCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCategory>>, {categoryId: number}> = (props) => {
+          const {categoryId} = props ?? {};
+
+          return  deleteCategory(categoryId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCategory>>>
+
+    export type DeleteCategoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a category (channels become uncategorized)
+ */
+export const useDeleteCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCategory>>, TError,{categoryId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCategory>>,
+        TError,
+        {categoryId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteCategoryMutationOptions(options));
+    }
+
+export const getReorderCategoriesUrl = (serverId: number,) => {
+
+
+
+
+  return `/api/servers/${serverId}/categories/reorder`
+}
+
+/**
+ * @summary Reorder categories within a server
+ */
+export const reorderCategories = async (serverId: number,
+    categoryReorderItem: CategoryReorderItem[], options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getReorderCategoriesUrl(serverId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(categoryReorderItem)
+  }
+);}
+
+
+
+
+
+export const getReorderCategoriesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderCategories>>, TError,{serverId: number;data: BodyType<CategoryReorderItem[]>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reorderCategories>>, TError,{serverId: number;data: BodyType<CategoryReorderItem[]>}, TContext> => {
+
+const mutationKey = ['reorderCategories'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reorderCategories>>, {serverId: number;data: BodyType<CategoryReorderItem[]>}> = (props) => {
+          const {serverId,data} = props ?? {};
+
+          return  reorderCategories(serverId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReorderCategoriesMutationResult = NonNullable<Awaited<ReturnType<typeof reorderCategories>>>
+    export type ReorderCategoriesMutationBody = BodyType<CategoryReorderItem[]>
+    export type ReorderCategoriesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reorder categories within a server
+ */
+export const useReorderCategories = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reorderCategories>>, TError,{serverId: number;data: BodyType<CategoryReorderItem[]>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reorderCategories>>,
+        TError,
+        {serverId: number;data: BodyType<CategoryReorderItem[]>},
+        TContext
+      > => {
+      return useMutation(getReorderCategoriesMutationOptions(options));
     }
 
 export const getListMessagesUrl = (channelId: number,

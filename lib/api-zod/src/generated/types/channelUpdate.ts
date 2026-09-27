@@ -5,7 +5,6 @@
  * A.N.O.T.H.E.R. Private API
  * OpenAPI spec version: 0.1.0
  */
-import type { ChannelUpdateChannelType } from './channelUpdateChannelType';
 import type { ChannelUpdateVisualConfig } from './channelUpdateVisualConfig';
 
 export interface ChannelUpdate {
@@ -14,7 +13,6 @@ export interface ChannelUpdate {
      * @maxLength 100
      */
   name?: string;
-  channelType?: ChannelUpdateChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelUpdateVisualConfig;
   /** Category within the same server. Null = uncategorized. */
