@@ -16,6 +16,7 @@ const suites = [
   ["private media and cache policy", "media-auth-isolated.mjs"],
   ["mocked VirusTotal consent and analysis", "virus-total-smoke-isolated.mjs"],
   ["stories and expiry", "stories-isolated.mjs"],
+  ["custom status and emoji", "custom-status-isolated.mjs"],
   ...(process.env.REGRESSION_EXTENDED === "1"
     ? [["extended file-library and mock scanner coverage", "file-channel-isolated.mjs"]]
     : []),

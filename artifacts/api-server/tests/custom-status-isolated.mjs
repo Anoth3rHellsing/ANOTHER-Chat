@@ -308,10 +308,11 @@ try {
 
   // 2. customStatus over 128 chars returns 400
   const longStatus = "a".repeat(129);
-  expectStatus(await member.request("/api/users/me", {
+  const longStatusError = expectStatus(await member.request("/api/users/me", {
     method: "PATCH",
     json: { customStatus: longStatus },
   }), 400, "customStatus exceeding 128 characters returns 400");
+  assert.equal(longStatusError.error, "El estado personalizado admite como máximo 128 caracteres.", "400 message is the Spanish rule message");
 
   // 3. statusEmoji over 20 chars returns 400 (not 500 from broken SQL)
   const longEmoji = "😀".repeat(21);
@@ -321,10 +322,11 @@ try {
   }), 400, "statusEmoji exceeding 20 characters returns 400 not 500");
 
   // 4. Invalid status value returns 400
-  expectStatus(await member.request("/api/users/me", {
+  const invalidStatusError = expectStatus(await member.request("/api/users/me", {
     method: "PATCH",
     json: { status: "invisible" },
   }), 400, "invalid status value returns 400");
+  assert.equal(invalidStatusError.error, "Estado no válido. Usa online, away, dnd u offline.", "invalid status message is in Spanish");
 
   // 5. Null values clear the fields
   const cleared = expectStatus(await member.request("/api/users/me", {
@@ -333,6 +335,20 @@ try {
   }), 200, "null customStatus and statusEmoji clears both fields");
   assert.equal(cleared.customStatus, null, "customStatus is null after clearing");
   assert.equal(cleared.statusEmoji, null, "statusEmoji is null after clearing");
+
+  // 5b. Empty or whitespace-only text is stored as null (the friends panel falls back to status on null)
+  const emptied = expectStatus(await member.request("/api/users/me", {
+    method: "PATCH",
+    json: { customStatus: "   ", statusEmoji: "" },
+  }), 200, "empty customStatus and statusEmoji are stored as null");
+  assert.equal(emptied.customStatus, null, "whitespace-only customStatus becomes null");
+  assert.equal(emptied.statusEmoji, null, "empty statusEmoji becomes null");
+  const emptiedRow = sql(
+    `SELECT coalesce(custom_status, '<null>'), coalesce(status_emoji, '<null>') FROM users WHERE id = ${memberAccount.id}`,
+    env,
+    true,
+  );
+  assert.equal(emptiedRow, "<null>|<null>", "database stores null, not an empty string");
 
   // 6. Response reflects what was saved, not just what was sent
   const roundTrip = expectStatus(await member.request("/api/users/me", {

@@ -7,18 +7,33 @@ import { z } from "zod/v4";
 import { db, usersTable } from "@workspace/db";
 import { requireAuth } from "../lib/auth";
 
+// Cadena vacía o solo espacios = sin valor: se guarda null, como hacía la versión anterior.
+const optionalTrimmedText = (max: number, message: string) =>
+  z.string({ error: "Debe ser un texto." })
+    .max(max, message)
+    .nullable()
+    .optional()
+    .transform(value => (typeof value === "string" ? (value.trim() || null) : value));
+
 const patchUserSchema = z.object({
-  displayName: z.string().min(1).max(64).optional(),
-  bio: z.string().max(500).optional(),
-  status: z.enum(["online", "away", "dnd", "offline"]).optional(),
+  displayName: z.string({ error: "El nombre visible debe ser un texto." })
+    .min(1, "El nombre visible no puede estar vacío.")
+    .max(64, "El nombre visible admite como máximo 64 caracteres.")
+    .optional(),
+  bio: z.string({ error: "La biografía debe ser un texto." })
+    .max(500, "La biografía admite como máximo 500 caracteres.")
+    .optional(),
+  status: z.enum(["online", "away", "dnd", "offline"], {
+    error: "Estado no válido. Usa online, away, dnd u offline.",
+  }).optional(),
   socialLinks: z.array(z.object({
-    platform: z.string(),
-    url: z.string(),
+    platform: z.string({ error: "Cada enlace necesita una plataforma." }),
+    url: z.string({ error: "Cada enlace necesita una dirección." }),
     label: z.string().optional(),
-  })).optional(),
-  customStatus: z.string().max(128).nullable().optional(),
-  statusEmoji: z.string().max(20).nullable().optional(),
-});
+  }), { error: "Los enlaces sociales deben ser una lista." }).optional(),
+  customStatus: optionalTrimmedText(128, "El estado personalizado admite como máximo 128 caracteres."),
+  statusEmoji: optionalTrimmedText(20, "El emoji de estado admite como máximo 20 caracteres."),
+}, { error: "El cuerpo de la petición debe ser un objeto." });
 
 const router: IRouter = Router();
 
@@ -93,7 +108,7 @@ router.patch("/users/me", requireAuth, async (req, res): Promise<void> => {
   const parsed = patchUserSchema.safeParse(req.body);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    const message = issue?.message ?? "Datos inválidos";
+    const message = issue?.message ?? "Datos inválidos.";
     res.status(400).json({ error: message });
     return;
   }
