@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getGetVoiceMembersQueryKey, getListChannelsQueryKey } from '@workspace/api-client-react';
+import { getGetVoiceMembersQueryKey, getListChannelsQueryKey, getListCategoriesQueryKey } from '@workspace/api-client-react';
 import {
   useRealtimeChannels,
   useRealtimeMessages,
@@ -178,6 +178,7 @@ export function useChatWebSocket(
         if (typeof payload.data?.serverId === 'number') {
           queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(payload.data.serverId) });
           queryClient.invalidateQueries({ queryKey: ['categories', payload.data.serverId] });
+          queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey(payload.data.serverId) });
         }
         break;
 

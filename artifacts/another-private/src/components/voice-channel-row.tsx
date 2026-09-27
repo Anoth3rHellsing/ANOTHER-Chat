@@ -7,9 +7,11 @@ interface VoiceChannelRowProps {
   isActive: boolean;
   isJoined: boolean; // current user is in this channel
   onClick: () => void;
+  /** Deja sitio a la derecha para el botón ⋮ de gestión. */
+  reserveMenuSpace?: boolean;
 }
 
-export function VoiceChannelRow({ channel, isActive, isJoined, onClick }: VoiceChannelRowProps) {
+export function VoiceChannelRow({ channel, isActive, isJoined, onClick, reserveMenuSpace = false }: VoiceChannelRowProps) {
   const { data: voiceMembers } = useGetVoiceMembers(channel.id, {
     query: { refetchInterval: 8000 } as any,
   });
@@ -22,7 +24,7 @@ export function VoiceChannelRow({ channel, isActive, isJoined, onClick }: VoiceC
     <div className="mb-0.5">
       <button
         onClick={onClick}
-        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${
+        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${reserveMenuSpace ? 'pr-9' : ''} ${
           isActive || isJoined
             ? 'bg-white/10 text-foreground font-medium'
             : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'

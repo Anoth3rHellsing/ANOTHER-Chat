@@ -596,7 +596,7 @@ export function ServerSettingsModal({
           {activeTab === 'categories' && (
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider mb-2">
-                Organiza los canales en categorías. Arrastra o usa los botones para reordenar.
+                Organiza los canales en categorías y usa los botones para reordenarlas. También puedes gestionarlas desde la barra lateral.
               </p>
               <CategoriesManager serverId={serverId} />
             </div>

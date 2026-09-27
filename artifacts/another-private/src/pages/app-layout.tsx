@@ -45,6 +45,7 @@ import { ServerSettingsModal } from '@/components/server-settings-modal';
 import { UserProfileCard } from '@/components/user-profile-card';
 import { VoiceChannelRow } from '@/components/voice-channel-row';
 import { CreateChannelModal } from '@/components/create-channel-modal';
+import { ChannelSidebar } from '@/components/channel-sidebar';
 import { CreateServerModal } from '@/components/create-server-modal';
 import { StoryBar } from '@/components/story-bar';
 import { ClipsView } from '@/components/clips-view';
@@ -315,6 +316,7 @@ export default function AppLayout() {
   const [showClips, setShowClips] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [createChannelCategoryId, setCreateChannelCategoryId] = useState<number | null>(null);
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [showMembers, setShowMembers] = useState(true);
@@ -409,7 +411,9 @@ export default function AppLayout() {
   useEffect(() => {
     if (channels && channels.length > 0 && activeServerId) {
       const validChannel = channels.find(c => c.id === activeChannelId);
-      if (!validChannel) setActiveChannelId(channels[0].id);
+      // Al entrar en un servidor (o si el canal abierto se borró) se aterriza en el primer canal de texto.
+      const landing = channels.find(c => ((c as any).channelType ?? 'text') === 'text') ?? channels[0];
+      if (!validChannel) setActiveChannelId(landing.id);
     } else if (channels && channels.length === 0) {
       setActiveChannelId(null);
     }
@@ -999,7 +1003,8 @@ export default function AppLayout() {
     currentMembership?.role === 'owner' ||
     currentMembership?.role === 'admin';
 
-  const canCreateChannel = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
+  // Igual que el servidor (E1): dueño, admin o cualquier rol con Gestionar canales.
+  const canManageChannels = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
 
   const groupedMembers = useMemo(() => {
     if (!members) return { online: [], offline: [] };
@@ -1280,6 +1285,13 @@ export default function AppLayout() {
                 </div>
               )}
               <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
+                <button
+                  className="md:hidden p-1 mr-1 text-muted-foreground hover:text-white rounded"
+                  onClick={() => setMobilePanelDepth(0)}
+                  aria-label="Volver a la lista de servidores"
+                >
+                  <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+                </button>
                 <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
                 {activeServer && canManageServer && (
                   <button
@@ -1297,92 +1309,43 @@ export default function AppLayout() {
             <StoryBar currentUserId={user.id} currentUser={user} />
 
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
-              <div className="flex items-center justify-between px-2 mb-1 group">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
-                {activeServer && canCreateChannel && (
-                  <button onClick={() => setIsCreateChannelOpen(true)} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              
-              {channels?.map(channel => {
-                const channelType = (channel as any).channelType ?? 'text';
-                if (channelType === 'voice') {
-                  return (
+              {activeServerId && (
+                <ChannelSidebar
+                  serverId={activeServerId}
+                  channels={channels ?? []}
+                  activeChannelId={activeChannelId}
+                  showClips={showClips}
+                  unreadCounts={unreadCounts}
+                  mentionCounts={notifications.mentionCounts}
+                  canManageChannels={canManageChannels}
+                  onSelectChannel={channel => {
+                    setActiveChannelId(channel.id);
+                    setShowClips(false);
+                    if (((channel as any).channelType ?? 'text') === 'calendar') setShowMembers(false);
+                    setMobilePanelDepth(2);
+                  }}
+                  onToggleClips={() => setShowClips(v => !v)}
+                  onCreateChannel={categoryId => {
+                    setCreateChannelCategoryId(categoryId);
+                    setIsCreateChannelOpen(true);
+                  }}
+                  renderVoiceChannel={(channel, { reserveMenuSpace }) => (
                     <VoiceChannelRow
-                      key={channel.id}
                       channel={channel}
+                      reserveMenuSpace={reserveMenuSpace}
                       isActive={activeChannelId === channel.id}
                       isJoined={webrtc.activeVoiceChannelId === channel.id}
                       onClick={() => {
                         setJoinedVoiceChannelName(channel.name);
-                        if (webrtc.activeVoiceChannelId === channel.id) {
-                          setActiveChannelId(channel.id);
-                        } else {
-                          setActiveChannelId(channel.id);
+                        setActiveChannelId(channel.id);
+                        if (webrtc.activeVoiceChannelId !== channel.id) {
                           const currentMembers: any[] = [];
                           webrtc.joinVoiceChannel(channel.id, currentMembers);
                         }
                       }}
                     />
-                  );
-                }
-                const ChannelIcon = CHANNEL_TYPE_ICON[channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
-                const vc = (channel as any).visualConfig ?? {};
-                const hasVisual = vc.kind && vc.value;
-                const channelUnread = unreadCounts.get(channel.id) ?? 0;
-                const mentions = notifications.mentionCounts.get(channel.id) ?? 0;
-                return (
-                  <button
-                    key={channel.id}
-                    onClick={() => {
-                      setActiveChannelId(channel.id);
-                      setShowClips(false);
-                      if (channelType === 'calendar') setShowMembers(false);
-                      setMobilePanelDepth(2);
-                    }}
-                    data-testid={`channel-item-${channel.id}`}
-                    aria-label={`${CHANNEL_TYPE_LABEL[channelType as keyof typeof CHANNEL_TYPE_LABEL] ?? 'Canal'}: ${channel.name}`}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : channelUnread || mentions ? 'bg-primary/5 text-foreground font-semibold hover:bg-primary/10' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
-                    style={hasVisual && vc.kind === 'gradient'
-                      ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
-                      : hasVisual && vc.kind === 'image'
-                      ? { backgroundImage: `url(${vc.value})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'white' }
-                      : {}
-                    }
-                  >
-                    {hasVisual && <div className="absolute inset-0 bg-black/30 rounded-md" />}
-                    <ChannelIcon className="w-4 h-4 opacity-60 flex-shrink-0 relative z-10" />
-                    <span className={`truncate relative z-10 ${channelUnread > 0 ? 'font-semibold text-foreground' : ''}`}>{channel.name}</span>
-                    <span className="ml-auto flex items-center gap-1 relative z-10">
-                      {(channel as any).restrictedRoles?.length > 0 && (
-                        <span className="text-[10px] text-primary/60 font-mono">🔒</span>
-                      )}
-                      {channelUnread > 0 && (
-                        <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                          {channelUnread > 99 ? '99+' : channelUnread}
-                        </span>
-                      )}
-                      {mentions > 0 && (
-                        <span className="min-w-[18px] h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                          {mentions > 99 ? '99+' : `@${mentions}`}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-
-              {/* Clips section */}
-              {activeServerId && (
-                <button
-                  onClick={() => setShowClips(v => !v)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors mt-2 ${showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
-                >
-                  <Play className="w-4 h-4 opacity-60 flex-shrink-0" />
-                  <span>Clips</span>
-                </button>
+                  )}
+                />
               )}
             </div>
 
@@ -1430,7 +1393,7 @@ export default function AppLayout() {
           <>
             {/* DM header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10 gap-3 flex-shrink-0">
-              <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded flex-shrink-0" onClick={() => setMobilePanelDepth(1)}>
+              <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded flex-shrink-0" onClick={() => setMobilePanelDepth(1)} aria-label="Volver a los mensajes directos">
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <div className="relative flex-shrink-0">
@@ -1681,8 +1644,8 @@ export default function AppLayout() {
             {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
               <div className="flex min-w-0 flex-1 items-center gap-2 text-foreground font-medium">
-                <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)}>
-                  <ChevronLeft className="w-5 h-5" />
+                <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)} aria-label="Volver a los canales">
+                  <ChevronLeft className="w-5 h-5" aria-hidden="true" />
                 </button>
                 <ActiveChannelIcon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                 <span className="truncate">{activeChannel.name}</span>
@@ -2468,6 +2431,7 @@ export default function AppLayout() {
         <CreateChannelModal
           isOpen={isCreateChannelOpen}
           serverId={activeServerId}
+          defaultCategoryId={createChannelCategoryId}
           onClose={() => setIsCreateChannelOpen(false)}
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(activeServerId) });
