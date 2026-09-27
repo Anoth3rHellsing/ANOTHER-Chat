@@ -564,16 +564,6 @@ export interface ChannelInput {
   position?: number;
 }
 
-export type ChannelUpdateChannelType = typeof ChannelUpdateChannelType[keyof typeof ChannelUpdateChannelType];
-
-
-export const ChannelUpdateChannelType = {
-  text: 'text',
-  voice: 'voice',
-  media: 'media',
-  calendar: 'calendar',
-} as const;
-
 export type ChannelUpdateVisualConfig = { [key: string]: unknown };
 
 export interface ChannelUpdate {
@@ -582,13 +572,57 @@ export interface ChannelUpdate {
      * @maxLength 100
      */
   name?: string;
-  channelType?: ChannelUpdateChannelType;
   restrictedRoles?: number[];
   visualConfig?: ChannelUpdateVisualConfig;
   /** Category within the same server. Null = uncategorized. */
   categoryId?: number | null;
   /** @minimum 0 */
   position?: number;
+}
+
+export interface ChannelReorderItem {
+  /** @minimum 1 */
+  channelId: number;
+  /** @minimum 0 */
+  position: number;
+  /**
+     * Target category. Null = uncategorized. Omit to keep current.
+     * @minimum 1
+     */
+  categoryId?: number | null;
+}
+
+export interface CategoryInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+}
+
+export interface CategoryUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name?: string;
+  /** @minimum 0 */
+  position?: number;
+}
+
+export interface CategoryReorderItem {
+  /** @minimum 1 */
+  categoryId: number;
+  /** @minimum 0 */
+  position: number;
+}
+
+export interface Category {
+  id: number;
+  serverId: number;
+  name: string;
+  position: number;
+  createdAt: string;
 }
 
 export interface EventInput {

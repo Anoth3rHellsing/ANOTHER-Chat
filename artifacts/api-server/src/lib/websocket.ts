@@ -3,7 +3,7 @@ import type { IncomingMessage } from "http";
 import type { Server as HttpServer } from "http";
 import type { SessionData } from "express-session";
 import { and, eq } from "drizzle-orm";
-import { db, channelsTable, usersTable } from "@workspace/db";
+import { db, channelsTable, usersTable, serverMembersTable } from "@workspace/db";
 import { canAccessChannel } from "./permissions";
 import { logger } from "./logger";
 import { randomUUID } from "crypto";
@@ -1340,6 +1340,82 @@ export function broadcastToUser(targetUserId: number, payload: object): void {
       client.send(data);
     }
   });
+}
+
+/**
+ * Send a payload to every connected member of a server.
+ * Queries server_members to get the list of userIds, then uses broadcastToUser for each.
+ * This avoids leaking restricted channel info: the event only says "channels changed",
+ * and each client re-fetches the list (which the server already filters by permissions).
+ */
+export async function broadcastToServerMembers(serverId: number, payload: object): Promise<void> {
+  try {
+    const members = await db
+      .select({ userId: serverMembersTable.userId })
+      .from(serverMembersTable)
+      .where(eq(serverMembersTable.serverId, serverId));
+    for (const member of members) {
+      broadcastToUser(member.userId, payload);
+    }
+  } catch (err) {
+    logger.error({ err, serverId }, "Failed to broadcast to server members");
+  }
+}
+
+/**
+ * Aviso de que la lista de canales o de categorías de un servidor cambió.
+ * No lleva nombres: cada cliente vuelve a pedir la lista, que el servidor filtra por permisos.
+ */
+export function notifyChannelsChanged(serverId: number): void {
+  void broadcastToServerMembers(serverId, { type: "channels:changed", data: { serverId } });
+}
+
+/**
+ * Evict all voice members from a channel that is being deleted.
+ * Sends voice:member_leave with reason "channel_deleted" to each member's connections,
+ * clears the channel from the in-memory voice map, and ends any watch session.
+ */
+export function evictVoiceChannel(channelId: number): void {
+  const members = voiceChannelMembersMap.get(channelId);
+  if (!members) return;
+
+  // Collect all user/connection pairs before mutating the map
+  const evictions: Array<{ userId: number; connectionIds: Set<string> }> = [];
+  for (const [userId, connectionIds] of members) {
+    if (connectionIds.size > 0) {
+      evictions.push({ userId, connectionIds: new Set(connectionIds) });
+    }
+  }
+
+  // Clear the entire channel from the voice map
+  voiceChannelMembersMap.delete(channelId);
+
+  // Clear any pending bind reservations for this channel
+  for (const [key, timer] of voiceBindReservationTimers) {
+    if (key.startsWith(`${channelId}:`)) {
+      clearTimeout(timer);
+      voiceBindReservationTimers.delete(key);
+    }
+  }
+
+  // End any active watch session for this voice channel
+  watchSessions.end("voice", channelId);
+
+  // Notify each evicted member on all their connections
+  if (!wss) return;
+  // Cada expulsado recibe su propio userId: el cliente sabe así que es él quien sale.
+  for (const { userId, connectionIds } of evictions) {
+    const event = JSON.stringify({
+      type: "voice:member_leave",
+      data: { channelId, userId, reason: "channel_deleted" },
+    });
+    for (const connectionId of connectionIds) {
+      const client = findOpenConnection(connectionId, userId);
+      if (client) {
+        client.send(event);
+      }
+    }
+  }
 }
 
 function extractSessionId(cookieHeader: string): string | null {

@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, and, lt, desc, inArray, isNull } from "drizzle-orm";
+import path from "path";
+import fs from "fs";
+import { eq, and, lt, desc, inArray, isNull, sql } from "drizzle-orm";
 import {
   db,
   channelsTable,
@@ -28,6 +30,7 @@ import { fetchFirstLinkPreview } from "../lib/link-preview";
 import { isMalformedGiphyMessage, parseGiphyMessage } from "../lib/giphy";
 import { groupReactions } from "../lib/reactions";
 import { removePrivateFile } from "../lib/channel-file-storage";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -36,6 +39,23 @@ function parsePositiveId(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
+
+const createChannelSchema = z.object({
+  name: z.string().trim().min(1, "El nombre del canal es obligatorio.").max(100, "El nombre del canal admite como máximo 100 caracteres."),
+  channelType: z.enum(["text", "voice", "media", "calendar"]).optional(),
+  restrictedRoles: z.array(z.number().int().positive()).optional(),
+  visualConfig: z.record(z.string(), z.unknown()).optional(),
+  categoryId: z.number().int().positive().nullable().optional(),
+  position: z.number().int().min(0).optional(),
+});
+
+const updateChannelSchema = z.object({
+  name: z.string().trim().min(1, "El nombre del canal es obligatorio.").max(100, "El nombre del canal admite como máximo 100 caracteres.").optional(),
+  restrictedRoles: z.array(z.number().int().positive()).optional(),
+  visualConfig: z.record(z.string(), z.unknown()).optional(),
+  categoryId: z.number().int().positive().nullable().optional(),
+  position: z.number().int().min(0).optional(),
+});
 
 /** Devuelve los ids que NO pertenecen a las categorías del servidor indicado. */
 async function foreignCategoryIds(categoryIds: number[], serverId: number): Promise<number[]> {
@@ -123,13 +143,23 @@ async function buildMessageResponse(
 // GET /servers/:serverId/channels
 router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const serverId = parseInt(Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId, 10);
+  const serverId = parsePositiveId(req.params.serverId);
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
 
-  const channels = await db
-    .select()
+  // Orden de la barra: primero los canales sin categoría, luego cada categoría según su
+  // posición, y dentro de cada grupo según la posición del canal.
+  const rows = await db
+    .select({ channel: channelsTable })
     .from(channelsTable)
+    .leftJoin(channelCategoriesTable, eq(channelCategoriesTable.id, channelsTable.categoryId))
     .where(eq(channelsTable.serverId, serverId))
-    .orderBy(channelsTable.categoryId, channelsTable.position, channelsTable.createdAt);
+    .orderBy(
+      sql`${channelCategoriesTable.position} asc nulls first`,
+      channelCategoriesTable.id,
+      channelsTable.position,
+      channelsTable.createdAt,
+    );
+  const channels = rows.map(row => row.channel);
 
   const accessible: typeof channels = [];
   for (const c of channels) {
@@ -144,15 +174,18 @@ router.get("/servers/:serverId/channels", requireAuth, async (req, res): Promise
 // POST /servers/:serverId/channels
 router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const serverId = parseInt(Array.isArray(req.params.serverId) ? req.params.serverId[0] : req.params.serverId, 10);
-  const { name, restrictedRoles, channelType, visualConfig, categoryId, position } = req.body;
+  const serverId = parsePositiveId(req.params.serverId);
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
 
-  if (!name) {
-    res.status(400).json({ error: "El nombre del canal es requerido" }); return;
+  const parsed = createChannelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    res.status(400).json({ error: issue?.message ?? "Datos inválidos." });
+    return;
   }
 
   const [server] = await db.select().from(serversTable).where(eq(serversTable.id, serverId));
-  if (!server) { res.status(404).json({ error: "Servidor no encontrado" }); return; }
+  if (!server) { res.status(404).json({ error: "Servidor no encontrado." }); return; }
 
   const perms = await getMemberPermissions(serverId, userId);
   const isAllowed =
@@ -161,35 +194,48 @@ router.post("/servers/:serverId/channels", requireAuth, async (req, res): Promis
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para crear canales" }); return;
+    res.status(403).json({ error: "No tienes permiso para crear canales." }); return;
   }
 
-  const restrictedRolesJson = JSON.stringify(
-    Array.isArray(restrictedRoles) ? restrictedRoles.map(Number) : []
-  );
-  const validType = ["text", "voice", "media", "calendar"].includes(channelType) ? channelType : "text";
-  const visualConfigJson = visualConfig ? JSON.stringify(visualConfig) : "{}";
-  const validCategoryId = typeof categoryId === "number" && Number.isSafeInteger(categoryId) && categoryId > 0 ? categoryId : null;
-  const validPosition = typeof position === "number" && Number.isSafeInteger(position) && position >= 0 ? position : 0;
-  if (validCategoryId !== null && (await foreignCategoryIds([validCategoryId], serverId)).length > 0) {
-    res.status(400).json({ error: "La categoría no pertenece a este servidor." }); return;
+  const { name, channelType, restrictedRoles, visualConfig, categoryId, position } = parsed.data;
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    res.status(400).json({ error: "El nombre del canal es obligatorio." }); return;
+  }
+
+  if (categoryId !== undefined && categoryId !== null) {
+    const foreign = await foreignCategoryIds([categoryId], serverId);
+    if (foreign.length > 0) {
+      res.status(400).json({ error: "La categoría no pertenece a este servidor." }); return;
+    }
   }
 
   const [channel] = await db
     .insert(channelsTable)
-    .values({ serverId, name, restrictedRoles: restrictedRolesJson, channelType: validType, visualConfig: visualConfigJson, categoryId: validCategoryId, position: validPosition })
+    .values({
+      serverId,
+      name: trimmedName,
+      restrictedRoles: JSON.stringify(restrictedRoles ?? []),
+      channelType: channelType ?? "text",
+      visualConfig: JSON.stringify(visualConfig ?? {}),
+      categoryId: categoryId ?? null,
+      position: position ?? 0,
+    })
     .returning();
 
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(serverId);
   res.status(201).json(serializeChannel(channel));
 });
 
 // PATCH /channels/:channelId
 router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
+  const channelId = parsePositiveId(req.params.channelId);
+  if (!channelId) { res.status(400).json({ error: "ID de canal no válido." }); return; }
 
   const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
-  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado." }); return; }
 
   const perms = await getMemberPermissions(channel.serverId, userId);
   const isAllowed =
@@ -198,32 +244,44 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para editar canales" }); return;
+    res.status(403).json({ error: "No tienes permiso para editar canales." }); return;
   }
 
-  const updates: Record<string, any> = {};
-  if (req.body.name) updates.name = req.body.name;
-  if (req.body.channelType && ["text", "voice", "media", "calendar"].includes(req.body.channelType)) {
-    updates.channelType = req.body.channelType;
+  const parsed = updateChannelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    res.status(400).json({ error: issue?.message ?? "Datos inválidos." });
+    return;
   }
-  if (req.body.restrictedRoles !== undefined) {
-    updates.restrictedRoles = JSON.stringify(
-      Array.isArray(req.body.restrictedRoles) ? req.body.restrictedRoles.map(Number) : []
-    );
+
+  const { name, restrictedRoles, visualConfig, categoryId, position } = parsed.data;
+
+  const updates: Partial<typeof channelsTable.$inferInsert> = {};
+  if (name !== undefined) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      res.status(400).json({ error: "El nombre del canal es obligatorio." }); return;
+    }
+    updates.name = trimmed;
   }
-  if (req.body.visualConfig !== undefined) {
-    updates.visualConfig = JSON.stringify(req.body.visualConfig ?? {});
+  if (restrictedRoles !== undefined) {
+    updates.restrictedRoles = JSON.stringify(restrictedRoles);
   }
-  if (req.body.categoryId !== undefined) {
-    updates.categoryId = typeof req.body.categoryId === "number" && Number.isSafeInteger(req.body.categoryId) && req.body.categoryId > 0
-      ? req.body.categoryId
-      : null;
-    if (updates.categoryId !== null && (await foreignCategoryIds([updates.categoryId], channel.serverId)).length > 0) {
+  if (visualConfig !== undefined) {
+    updates.visualConfig = JSON.stringify(visualConfig);
+  }
+  if (categoryId !== undefined) {
+    if (categoryId !== null && (await foreignCategoryIds([categoryId], channel.serverId)).length > 0) {
       res.status(400).json({ error: "La categoría no pertenece a este servidor." }); return;
     }
+    updates.categoryId = categoryId;
   }
-  if (req.body.position !== undefined && typeof req.body.position === "number" && Number.isSafeInteger(req.body.position) && req.body.position >= 0) {
-    updates.position = req.body.position;
+  if (position !== undefined) {
+    updates.position = position;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No hay cambios para aplicar." }); return;
   }
 
   const [updated] = await db
@@ -232,16 +290,19 @@ router.patch("/channels/:channelId", requireAuth, async (req, res): Promise<void
     .where(eq(channelsTable.id, channelId))
     .returning();
 
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(channel.serverId);
   res.json(serializeChannel(updated));
 });
 
 // DELETE /channels/:channelId
 router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
-  const channelId = parseInt(Array.isArray(req.params.channelId) ? req.params.channelId[0] : req.params.channelId, 10);
+  const channelId = parsePositiveId(req.params.channelId);
+  if (!channelId) { res.status(400).json({ error: "ID de canal no válido." }); return; }
 
   const [channel] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
-  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado." }); return; }
 
   const perms = await getMemberPermissions(channel.serverId, userId);
   const isAllowed =
@@ -250,28 +311,150 @@ router.delete("/channels/:channelId", requireAuth, async (req, res): Promise<voi
     hasPerm(perms, PERM.MANAGE_CHANNELS);
 
   if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para eliminar canales" }); return;
+    res.status(403).json({ error: "No tienes permiso para eliminar canales." }); return;
   }
 
-  const [privateFiles, uploadSessions] = await Promise.all([
+  // Recopilar archivos a borrar ANTES de la transacción (para no dejar huérfanos si falla)
+  const [privateFiles, uploadSessions, attachments] = await Promise.all([
     db.select({ storageKey: channelFilesTable.storageKey }).from(channelFilesTable).where(eq(channelFilesTable.channelId, channelId)),
     db.select({ storageKey: channelFileUploadsTable.storageKey }).from(channelFileUploadsTable).where(eq(channelFileUploadsTable.channelId, channelId)),
+    db.select({ url: messageAttachmentsTable.url }).from(messageAttachmentsTable).where(eq(messageAttachmentsTable.channelId, channelId)),
   ]);
-  for (const file of [...privateFiles, ...uploadSessions]) await removePrivateFile(file.storageKey);
 
-  await db.delete(messageAttachmentsTable).where(
-    inArray(messageAttachmentsTable.messageId,
-      db.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
-    )
-  );
-  await db.delete(messageReactionsTable).where(
-    inArray(messageReactionsTable.messageId,
-      db.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
-    )
-  );
-  await db.delete(messagesTable).where(eq(messagesTable.channelId, channelId));
-  await db.delete(channelsTable).where(eq(channelsTable.id, channelId));
+  // Transacción: borrar filas dependientes y el canal. La comprobación E3 va dentro y
+  // bloquea los canales de texto del servidor, para que dos borrados simultáneos de los
+  // dos últimos canales de texto no puedan pasar los dos.
+  const LAST_TEXT_CHANNEL = Symbol("last-text-channel");
+  try {
+    await db.transaction(async (tx) => {
+      if (channel.channelType === "text") {
+        const textChannels = await tx
+          .select({ id: channelsTable.id })
+          .from(channelsTable)
+          .where(and(eq(channelsTable.serverId, channel.serverId), eq(channelsTable.channelType, "text")))
+          .for("update");
+        if (textChannels.length <= 1) throw LAST_TEXT_CHANNEL;
+      }
+      await tx.delete(messageReactionsTable).where(
+        inArray(messageReactionsTable.messageId,
+          tx.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.channelId, channelId))
+        )
+      );
+      await tx.delete(messageAttachmentsTable).where(eq(messageAttachmentsTable.channelId, channelId));
+      await tx.delete(messagesTable).where(eq(messagesTable.channelId, channelId));
+      await tx.delete(channelsTable).where(eq(channelsTable.id, channelId));
+    });
+  } catch (error) {
+    if (error === LAST_TEXT_CHANNEL) {
+      res.status(409).json({ error: "No se puede eliminar el último canal de texto del servidor." });
+      return;
+    }
+    throw error;
+  }
 
+  // Borrar archivos del disco SOLO si la transacción confirmó
+  const uploadsDir = path.resolve(process.cwd(), "uploads");
+  for (const att of attachments) {
+    const filename = att.url.replace(/^\/api\/uploads\//, "");
+    if (filename && !filename.includes("/") && !filename.includes("..")) {
+      try {
+        await fs.promises.unlink(path.join(uploadsDir, filename));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          logger.warn({ err: error, channelId }, "No se pudo borrar un adjunto del canal eliminado");
+        }
+      }
+    }
+  }
+  for (const file of [...privateFiles, ...uploadSessions]) {
+    await removePrivateFile(file.storageKey);
+  }
+
+  // Expulsar miembros de voz si era canal de voz
+  if (channel.channelType === "voice") {
+    const { evictVoiceChannel } = await import("../lib/websocket");
+    evictVoiceChannel(channelId);
+  }
+
+  // Avisar a los miembros del servidor
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(channel.serverId);
+
+  res.sendStatus(204);
+});
+
+// PUT /servers/:serverId/channels/reorder
+const reorderChannelsSchema = z.array(z.object({
+  channelId: z.number().int().positive(),
+  position: z.number().int().min(0),
+  categoryId: z.number().int().positive().nullable().optional(),
+}));
+
+router.put("/servers/:serverId/channels/reorder", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.session.userId!;
+  const serverId = parsePositiveId(req.params.serverId);
+  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
+
+  const [server] = await db.select({ id: serversTable.id }).from(serversTable).where(eq(serversTable.id, serverId));
+  if (!server) { res.status(404).json({ error: "Servidor no encontrado." }); return; }
+
+  const perms = await getMemberPermissions(serverId, userId);
+  const isAllowed =
+    req.session.userRole === "admin" ||
+    perms === 0xffffffff ||
+    hasPerm(perms, PERM.MANAGE_CHANNELS);
+  if (!isAllowed) {
+    res.status(403).json({ error: "No tienes permiso para reordenar canales." }); return;
+  }
+
+  const parsed = reorderChannelsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    res.status(400).json({ error: issue?.message ?? "Formato de reordenamiento inválido." });
+    return;
+  }
+
+  // Pre-validate that all channelIds belong to this server
+  const submittedIds = parsed.data.map(item => item.channelId);
+  const existing = await db.select({ id: channelsTable.id })
+    .from(channelsTable)
+    .where(eq(channelsTable.serverId, serverId));
+  const validIds = new Set(existing.map(r => r.id));
+  const invalidIds = submittedIds.filter(id => !validIds.has(id));
+  if (invalidIds.length > 0) {
+    res.status(400).json({ error: `IDs de canal inválidos para este servidor: ${invalidIds.join(", ")}` });
+    return;
+  }
+
+  // Validate that any categoryId provided belongs to this server
+  const categoryIds = parsed.data
+    .map(item => item.categoryId)
+    .filter((id): id is number => id !== null && id !== undefined);
+  if (categoryIds.length > 0) {
+    const foreign = await foreignCategoryIds(categoryIds, serverId);
+    if (foreign.length > 0) {
+      res.status(400).json({ error: "Una o más categorías no pertenecen a este servidor." });
+      return;
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    for (const item of parsed.data) {
+      const updates: Partial<typeof channelsTable.$inferInsert> = { position: item.position };
+      if (item.categoryId !== undefined) {
+        updates.categoryId = item.categoryId;
+      }
+      await tx.update(channelsTable)
+        .set(updates)
+        .where(and(
+          eq(channelsTable.id, item.channelId),
+          eq(channelsTable.serverId, serverId),
+        ));
+    }
+  });
+
+  const { notifyChannelsChanged } = await import("../lib/websocket");
+  notifyChannelsChanged(serverId);
   res.sendStatus(204);
 });
 
@@ -672,51 +855,5 @@ router.delete(
     res.sendStatus(204);
   }
 );
-
-// PUT /servers/:serverId/channels/reorder
-router.put("/servers/:serverId/channels/reorder", requireAuth, async (req, res): Promise<void> => {
-  const serverId = parsePositiveId(req.params.serverId);
-  if (!serverId) { res.status(400).json({ error: "ID de servidor no válido." }); return; }
-
-  const userId = req.session.userId!;
-  const perms = await getMemberPermissions(serverId, userId);
-  const isAllowed =
-    req.session.userRole === "admin" ||
-    perms === 0xffffffff ||
-    hasPerm(perms, PERM.MANAGE_CHANNELS);
-  if (!isAllowed) {
-    res.status(403).json({ error: "No tienes permiso para reordenar canales." }); return;
-  }
-
-  const body = z.array(z.object({
-    channelId: z.number().int().positive(),
-    position: z.number().int().min(0),
-    categoryId: z.number().int().positive().nullable().optional(),
-  })).safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "Formato de reordenamiento inválido." }); return; }
-
-  const requestedCategories = body.data
-    .map((item) => item.categoryId)
-    .filter((id): id is number => typeof id === "number");
-  if ((await foreignCategoryIds(requestedCategories, serverId)).length > 0) {
-    res.status(400).json({ error: "Alguna categoría no pertenece a este servidor." }); return;
-  }
-
-  await db.transaction(async (tx) => {
-    for (const item of body.data) {
-      await tx.update(channelsTable)
-        .set({
-          position: item.position,
-          ...(item.categoryId !== undefined ? { categoryId: item.categoryId } : {}),
-        })
-        .where(and(
-          eq(channelsTable.id, item.channelId),
-          eq(channelsTable.serverId, serverId),
-        ));
-    }
-  });
-
-  res.sendStatus(204);
-});
 
 export default router;

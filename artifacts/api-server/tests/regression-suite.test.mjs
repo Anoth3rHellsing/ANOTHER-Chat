@@ -17,6 +17,7 @@ const suites = [
   ["mocked VirusTotal consent and analysis", "virus-total-smoke-isolated.mjs"],
   ["stories and expiry", "stories-isolated.mjs"],
   ["custom status and emoji", "custom-status-isolated.mjs"],
+  ["channel management d1", "channel-management-d1-isolated.mjs"],
   ...(process.env.REGRESSION_EXTENDED === "1"
     ? [["extended file-library and mock scanner coverage", "file-channel-isolated.mjs"]]
     : []),

@@ -206,6 +206,13 @@ export function useWebRTC(options: {
       case 'voice:member_leave': {
         const { userId, channelId, reason } = msg.data;
         if (channelId !== activeVoiceChannelIdRef.current) break;
+        if (reason === 'channel_deleted' && userId === currentUserId) {
+          // El canal de voz se borró estando dentro: salir limpiamente en vez de esperar a
+          // que falle el latido. La limpieza local ocurre antes de la petición, que dará 404.
+          setVoiceEventNotice({ id: Date.now(), text: 'Este canal de voz se eliminó.' });
+          void leaveVoiceRef.current?.().catch(() => undefined);
+          break;
+        }
         const name = voiceMembersRef.current.get(userId)?.displayName ?? `Usuario ${userId}`;
         setVoiceMembers(prev => prev.filter(m => m.userId !== userId));
         closePeerConnection(userId);

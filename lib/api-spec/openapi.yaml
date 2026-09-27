@@ -631,6 +631,136 @@ paths:
       responses:
         "204":
           description: Channel deleted
+        "409":
+          description: Cannot delete the last text channel in a server
+
+  /servers/{serverId}/channels/reorder:
+    put:
+      operationId: reorderChannels
+      tags: [channels]
+      summary: Reorder channels and optionally move them between categories
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ChannelReorderItem"
+      responses:
+        "204":
+          description: Channels reordered
+
+  /servers/{serverId}/categories:
+    post:
+      operationId: createCategory
+      tags: [categories]
+      summary: Create a channel category in a server
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+    get:
+      operationId: listCategories
+      tags: [categories]
+      summary: List categories for a server ordered by position
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Categories listed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+
+  /categories/{categoryId}:
+    patch:
+      operationId: updateCategory
+      tags: [categories]
+      summary: Rename or reposition a category
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryUpdate"
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+    delete:
+      operationId: deleteCategory
+      tags: [categories]
+      summary: Delete a category (channels become uncategorized)
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Category deleted
+
+  /servers/{serverId}/categories/reorder:
+    put:
+      operationId: reorderCategories
+      tags: [categories]
+      summary: Reorder categories within a server
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/CategoryReorderItem"
+      responses:
+        "204":
+          description: Categories reordered
 
   /channels/{channelId}/messages:
     get:
@@ -2462,9 +2592,6 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-        channelType:
-          type: string
-          enum: [text, voice, media, calendar]
         restrictedRoles:
           type: array
           items:
@@ -2478,6 +2605,69 @@ components:
         position:
           type: integer
           minimum: 0
+
+    ChannelReorderItem:
+      type: object
+      required: [channelId, position]
+      properties:
+        channelId:
+          type: integer
+          minimum: 1
+        position:
+          type: integer
+          minimum: 0
+        categoryId:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Target category. Null = uncategorized. Omit to keep current.
+
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        position:
+          type: integer
+          minimum: 0
+
+    CategoryReorderItem:
+      type: object
+      required: [categoryId, position]
+      properties:
+        categoryId:
+          type: integer
+          minimum: 1
+        position:
+          type: integer
+          minimum: 0
+
+    Category:
+      type: object
+      required: [id, serverId, name, position, createdAt]
+      properties:
+        id:
+          type: integer
+        serverId:
+          type: integer
+        name:
+          type: string
+        position:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
 
     EventInput:
       type: object
