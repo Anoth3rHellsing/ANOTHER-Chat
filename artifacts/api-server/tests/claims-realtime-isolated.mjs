@@ -747,6 +747,78 @@ try {
   }), 200, "moving a channel into its own server's category succeeds");
   assert.equal(moved.categoryId, categoryId);
   console.log("PASS categories honour MANAGE_CHANNELS with non-coinciding IDs and reject cross-server assignment");
+
+  // "Desconectado" is an invisible mode: automatic presence (WebSocket connect,
+  // login, idle and call updates) must never reveal or change it. A fresh
+  // account guarantees this is its first and only socket.
+  const ghost = account();
+  const ghostName = `claim_ghost_${suffix}`;
+  const ghostPassword = `Synthetic-${randomUUID()}!`;
+  const ghostInvite = expectStatus(await owner.request("/api/admin/invites", {
+    method: "POST", json: {},
+  }), 201, "create registration invite for invisible-mode account");
+  expectStatus(await ghost.request("/api/auth/register", {
+    method: "POST",
+    json: { username: ghostName, password: ghostPassword, displayName: "Synthetic ghost", inviteCode: ghostInvite.code },
+  }), 201, "register fresh non-admin invisible-mode account");
+  const ghostLogin = expectStatus(await ghost.request("/api/auth/login", {
+    method: "POST", json: { username: ghostName, password: ghostPassword },
+  }), 200, "log in invisible-mode account");
+  const ghostId = parseId(ghostLogin, "id", "invisible-mode account ID");
+  assert.equal(ghostLogin.role, "member", "invisible-mode account must not be an administrator");
+  assert.notEqual(ghostId, ownerId, "invisible-mode account must differ from the owner");
+  assert.notEqual(ghostId, memberId, "invisible-mode account must differ from the observer");
+  assert.equal(ghostLogin.invisible, false, "a new account starts visible");
+
+  const hidden = expectStatus(await ghost.request("/api/users/me", {
+    method: "PATCH", json: { status: "offline" },
+  }), 200, "choosing Desconectado enables invisible mode");
+  assert.equal(hidden.status, "offline");
+  assert.equal(hidden.invisible, true);
+
+  const ghostWs = await openSocket(ghost);
+  ghostWs.send(JSON.stringify({ type: "ping" }));
+  await waitFor(ghostWs, message => message.type === "pong", "pong for invisible-mode socket");
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const ghostMe = expectStatus(await ghost.request("/api/auth/me"), 200, "read own status while invisible and connected");
+  assert.equal(ghostMe.status, "offline", "connecting a WebSocket must not reveal an invisible user as online");
+  assert.equal(ghostMe.invisible, true);
+
+  for (const autoStatus of ["away", "dnd", "online"]) {
+    const ignored = expectStatus(await ghost.request("/api/users/me", {
+      method: "PATCH", json: { status: autoStatus, auto: true },
+    }), 200, `automatic ${autoStatus} is ignored in invisible mode`);
+    assert.equal(ignored.status, "offline", `automatic ${autoStatus} must not change an invisible user`);
+    assert.equal(ignored.invisible, true, `automatic ${autoStatus} must not leave invisible mode`);
+  }
+  expectStatus(await ghost.request("/api/users/me", {
+    method: "PATCH", json: { status: "away", auto: true, bio: "no" },
+  }), 400, "automatic updates cannot carry profile fields");
+
+  const seenByOthers = expectStatus(await member.request(`/api/users/${ghostId}`), 200, "another user reads the invisible profile");
+  assert.equal(seenByOthers.status, "offline", "others see an invisible user as offline");
+  assert.equal("invisible" in seenByOthers, false, "the invisible flag is never exposed to other users");
+
+  ghostWs.close();
+  await once(ghostWs, "close");
+  const relogin = expectStatus(await ghost.request("/api/auth/login", {
+    method: "POST", json: { username: ghostName, password: ghostPassword },
+  }), 200, "log in again while invisible");
+  assert.equal(relogin.status, "offline", "logging in must not reveal an invisible user");
+  const afterRelogin = expectStatus(await ghost.request("/api/auth/me"), 200, "read own status after logging in again");
+  assert.equal(afterRelogin.status, "offline");
+
+  // Leaving invisible mode by hand restores automatic presence.
+  const visible = expectStatus(await ghost.request("/api/users/me", {
+    method: "PATCH", json: { status: "online" },
+  }), 200, "choosing Conectado leaves invisible mode");
+  assert.equal(visible.invisible, false);
+  const autoAway = expectStatus(await ghost.request("/api/users/me", {
+    method: "PATCH", json: { status: "away", auto: true },
+  }), 200, "automatic away applies to a visible user");
+  assert.equal(autoAway.status, "away");
+  assert.equal(autoAway.invisible, false, "automatic updates never enter invisible mode");
+  console.log("PASS Desconectado is an invisible mode that automatic presence cannot reveal or change");
 } finally {
   await cleanup();
 }

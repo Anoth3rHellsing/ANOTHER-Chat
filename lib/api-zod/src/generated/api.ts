@@ -38,7 +38,8 @@ export const LoginResponse = zod.object({
   "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
   "url": zod.string(),
   "label": zod.string().optional()
-})).optional()
+})).optional(),
+  "invisible": zod.boolean().optional().describe('Solo en respuestas sobre el propio usuario (login, \/auth\/me, PATCH \/users\/me). true cuando eligió \"Desconectado\": se muestra desconectado a los demás y ningún cambio automático de presencia lo modifica. Nunca se envía sobre otros usuarios.')
 })
 
 
@@ -75,7 +76,8 @@ export const RegisterResponse = zod.object({
   "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
   "url": zod.string(),
   "label": zod.string().optional()
-})).optional()
+})).optional(),
+  "invisible": zod.boolean().optional().describe('Solo en respuestas sobre el propio usuario (login, \/auth\/me, PATCH \/users\/me). true cuando eligió \"Desconectado\": se muestra desconectado a los demás y ningún cambio automático de presencia lo modifica. Nunca se envía sobre otros usuarios.')
 })
 
 
@@ -102,7 +104,8 @@ export const GetCurrentUserResponse = zod.object({
   "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
   "url": zod.string(),
   "label": zod.string().optional()
-})).optional()
+})).optional(),
+  "invisible": zod.boolean().optional().describe('Solo en respuestas sobre el propio usuario (login, \/auth\/me, PATCH \/users\/me). true cuando eligió \"Desconectado\": se muestra desconectado a los demás y ningún cambio automático de presencia lo modifica. Nunca se envía sobre otros usuarios.')
 })
 
 
@@ -1778,7 +1781,8 @@ export const UpdateMyProfileBody = zod.object({
   "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
   "url": zod.string(),
   "label": zod.string().optional()
-})).optional()
+})).optional(),
+  "auto": zod.boolean().optional().describe('true cuando el cambio de estado lo hace la detección automática (inactividad o llamada), no el usuario. Solo admite `status`; se ignora si el usuario está en modo invisible y nunca cambia ese modo.')
 })
 
 export const UpdateMyProfileResponse = zod.object({
@@ -1795,7 +1799,8 @@ export const UpdateMyProfileResponse = zod.object({
   "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
   "url": zod.string(),
   "label": zod.string().optional()
-})).optional()
+})).optional(),
+  "invisible": zod.boolean().optional().describe('Solo en respuestas sobre el propio usuario (login, \/auth\/me, PATCH \/users\/me). true cuando eligió \"Desconectado\": se muestra desconectado a los demás y ningún cambio automático de presencia lo modifica. Nunca se envía sobre otros usuarios.')
 })
 
 

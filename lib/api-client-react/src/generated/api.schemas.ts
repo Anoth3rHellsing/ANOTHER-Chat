@@ -68,6 +68,8 @@ export interface User {
   role: UserRole;
   createdAt: string;
   socialLinks?: SocialLink[];
+  /** Solo en respuestas sobre el propio usuario (login, /auth/me, PATCH /users/me). true cuando eligió "Desconectado": se muestra desconectado a los demás y ningún cambio automático de presencia lo modifica. Nunca se envía sobre otros usuarios. */
+  invisible?: boolean;
 }
 
 export type UserProfileStatus = typeof UserProfileStatus[keyof typeof UserProfileStatus];
@@ -666,6 +668,8 @@ export interface ProfileUpdate {
   bio?: string;
   status?: ProfileUpdateStatus;
   socialLinks?: SocialLink[];
+  /** true cuando el cambio de estado lo hace la detección automática (inactividad o llamada), no el usuario. Solo admite `status`; se ignora si el usuario está en modo invisible y nunca cambia ese modo. */
+  auto?: boolean;
 }
 
 export type MemberRoleUpdateRole = typeof MemberRoleUpdateRole[keyof typeof MemberRoleUpdateRole];

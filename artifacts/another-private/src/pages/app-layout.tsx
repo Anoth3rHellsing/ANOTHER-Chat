@@ -465,7 +465,8 @@ export default function AppLayout() {
     csrfFetch('/api/users/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
+      // auto: el servidor lo ignora si el usuario está en modo invisible.
+      body: JSON.stringify({ status, auto: true }),
     }).catch(() => {});
   }, []);
 
@@ -473,7 +474,8 @@ export default function AppLayout() {
     currentStatus: (user?.status as any) ?? 'online',
     onStatusChange: updateStatusOnServer,
     inCall: isCallActive,
-    enabled: !!user,
+    // En modo invisible ("Desconectado") la detección automática no hace nada.
+    enabled: !!user && !user.invisible,
   });
 
   const soundboardPlayback = useSoundboardPlayback({

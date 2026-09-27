@@ -77,11 +77,14 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  // Update status to online
-  await db
-    .update(usersTable)
-    .set({ status: "online" })
-    .where(eq(usersTable.id, user.id));
+  // Al iniciar sesión se pasa a online, salvo en modo invisible ("Desconectado").
+  const loginStatus = user.invisible ? "offline" : "online";
+  if (!user.invisible) {
+    await db
+      .update(usersTable)
+      .set({ status: "online" })
+      .where(eq(usersTable.id, user.id));
+  }
 
   req.session.userId = user.id;
   req.session.userRole = user.role;
@@ -101,10 +104,11 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       bio: user.bio,
       avatarUrl: user.avatarUrl,
       bannerUrl: user.bannerUrl,
-      status: "online",
+      status: loginStatus,
       role: user.role,
       createdAt: user.createdAt,
       socialLinks: parseLinks(user.socialLinks),
+      invisible: user.invisible,
     });
   });
 });
@@ -206,6 +210,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       role: newUser.role,
       createdAt: newUser.createdAt,
       socialLinks: [],
+      invisible: false,
     });
   });
 });
@@ -257,6 +262,7 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
       role: user.role,
       createdAt: user.createdAt,
       socialLinks: parseLinks(user.socialLinks),
+      invisible: user.invisible,
     });
   });
 });

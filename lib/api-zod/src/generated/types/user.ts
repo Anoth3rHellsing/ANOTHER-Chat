@@ -23,4 +23,6 @@ export interface User {
   role: UserRole;
   createdAt: Date;
   socialLinks?: SocialLink[];
+  /** Solo en respuestas sobre el propio usuario (login, /auth/me, PATCH /users/me). true cuando eligió "Desconectado": se muestra desconectado a los demás y ningún cambio automático de presencia lo modifica. Nunca se envía sobre otros usuarios. */
+  invisible?: boolean;
 }

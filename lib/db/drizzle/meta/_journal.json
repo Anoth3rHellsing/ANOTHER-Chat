@@ -71,6 +71,13 @@
       "when": 1790461815581,
       "tag": "0009_lumpy_titania",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790483788639,
+      "tag": "0010_strange_white_queen",
+      "breakpoints": true
     }
   ]
 }
