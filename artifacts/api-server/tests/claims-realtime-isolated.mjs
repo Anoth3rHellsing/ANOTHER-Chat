@@ -18,6 +18,7 @@ const apiRoot = path.resolve(testDir, "..");
 const repoRoot = path.resolve(apiRoot, "../..");
 const databaseRoot = path.join(repoRoot, "lib/db");
 const apiRequire = createRequire(path.join(apiRoot, "package.json"));
+const dbRequire = createRequire(path.join(databaseRoot, "package.json"));
 const { build } = apiRequire("esbuild");
 const esbuildPluginPino = apiRequire("esbuild-plugin-pino");
 
@@ -295,6 +296,70 @@ try {
     throw new Error(`Fresh disposable database migrations failed (${migration.error?.message ?? `exit ${migration.status}`})\n${migration.stderr ?? ""}`);
   }
   console.log("PASS complete migration chain applied to fresh disposable PostgreSQL 16");
+  const { Client } = dbRequire("pg");
+  const schemaClient = new Client({ connectionString: databaseUrl });
+  await schemaClient.connect();
+  try {
+    const columns = await schemaClient.query(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          (table_name = 'users' AND column_name IN ('last_seen_at', 'invisible'))
+          OR (table_name = 'channels' AND column_name IN ('category_id', 'position'))
+          OR (table_name = 'channel_categories'
+              AND column_name IN ('id', 'server_id', 'name', 'position', 'created_at'))
+        )
+    `);
+    assert.equal(columns.rows.length, 9, "migration chain creates all expected feature columns");
+
+    const foreignKeys = await schemaClient.query(`
+      SELECT conname, confdeltype
+      FROM pg_constraint
+      WHERE contype = 'f'
+        AND conname IN (
+          'channel_categories_server_id_servers_id_fk',
+          'channels_category_id_channel_categories_id_fk'
+        )
+    `);
+    assert.deepEqual(
+      Object.fromEntries(foreignKeys.rows.map(row => [row.conname, row.confdeltype])),
+      {
+        channel_categories_server_id_servers_id_fk: "c",
+        channels_category_id_channel_categories_id_fk: "n",
+      },
+      "category server FK cascades and channel category FK sets null",
+    );
+
+    const indexes = await schemaClient.query(`
+      SELECT indexname
+      FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname IN (
+          'channel_categories_server_position_idx',
+          'channels_category_position_idx'
+        )
+      ORDER BY indexname
+    `);
+    assert.deepEqual(indexes.rows.map(row => row.indexname), [
+      "channel_categories_server_position_idx",
+      "channels_category_position_idx",
+    ], "migration chain creates both category ordering indexes");
+
+    const migrationTimes = await schemaClient.query(`
+      SELECT created_at
+      FROM drizzle.__drizzle_migrations
+      WHERE created_at IN (1790461815581, 1790483788639)
+      ORDER BY created_at
+    `);
+    assert.deepEqual(migrationTimes.rows.map(row => Number(row.created_at)), [
+      1790461815581,
+      1790483788639,
+    ], "fresh database records both generated migrations");
+  } finally {
+    await schemaClient.end();
+  }
+  console.log("PASS fresh migration schema has expected columns, foreign-key actions, indexes, and migration records");
 
   const bundle = await buildApiIntoTemp();
   const apiCwd = path.join(tempRoot, "api");

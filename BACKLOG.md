@@ -6,7 +6,8 @@ Este archivo recoge trabajo pendiente conocido de la auditoría técnica. Debe m
 
 - [ ] **Probar la voz entre dos redes físicas con micrófonos reales.** Hasta ahora solo se verificó con dos navegadores en la misma máquina y micrófonos sintéticos. Confirmar la conectividad entre redes y consultar el diagnóstico de voz para identificar la ruta seleccionada. Si necesita retransmisión, decidir entre un proveedor con credenciales o un reenvío de audio propio.
 - [ ] **Automatizar las pruebas de regresión.** El proyecto no tiene pruebas automatizadas: las baterías manuales de la auditoría se ejecutaron una vez y se descartaron. Convertirlas en pruebas repetibles evitará tener que verificar a mano todo el sistema tras cada cambio.
-- [ ] **Migrar los archivos a almacenamiento persistente de objetos.** Avatares, banners, adjuntos y clips se guardan en el disco local del servidor, que es efímero y no se comparte entre instancias en despliegue. Así pueden perderse al desplegar o escalar.
+- [ ] **Conectar los adaptadores de almacenamiento y migrar los archivos a almacenamiento persistente.** La capa de adaptadores ya existe, pero todavía no está conectada a ninguna ruta; los archivos siguen guardándose en el disco efímero del servidor y pueden perderse al desplegar o escalar.
+- [ ] **Confirmar con el propietario los permisos de subida del soundboard.** El cambio actual permite que cualquier miembro del servidor suba clips, en lugar de exigir permiso para administrar canales; mantenerlo pendiente hasta recibir su confirmación.
 
 ## Prioridad media
 
