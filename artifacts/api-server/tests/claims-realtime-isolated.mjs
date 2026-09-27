@@ -747,6 +747,42 @@ try {
   }), 200, "moving a channel into its own server's category succeeds");
   assert.equal(moved.categoryId, categoryId);
   console.log("PASS categories honour MANAGE_CHANNELS with non-coinciding IDs and reject cross-server assignment");
+
+  // Automatic presence from PR #1 is disabled until the presence redesign lands:
+  // opening or closing a WebSocket must never overwrite the status the user chose.
+  // A fresh account guarantees this is the user's first and only socket, which is
+  // exactly when PR #1 wrote "online" (on connect) and "offline" (on last close).
+  const presenceUser = account();
+  const presenceName = `claim_presence_${suffix}`;
+  const presencePassword = `Synthetic-${randomUUID()}!`;
+  const presenceInvite = expectStatus(await owner.request("/api/admin/invites", {
+    method: "POST", json: {},
+  }), 201, "create registration invite for presence account");
+  expectStatus(await presenceUser.request("/api/auth/register", {
+    method: "POST",
+    json: { username: presenceName, password: presencePassword, displayName: "Synthetic presence", inviteCode: presenceInvite.code },
+  }), 201, "register fresh non-admin presence account");
+  const presenceLogin = expectStatus(await presenceUser.request("/api/auth/login", {
+    method: "POST", json: { username: presenceName, password: presencePassword },
+  }), 200, "log in presence account");
+  const presenceUserId = parseId(presenceLogin, "id", "presence account ID");
+  assert.equal(presenceLogin.role, "member", "presence account must not be an administrator");
+  assert.notEqual(presenceUserId, ownerId, "presence account must differ from the owner");
+  expectStatus(await presenceUser.request("/api/users/me", {
+    method: "PATCH", json: { status: "dnd" },
+  }), 200, "presence account chooses do-not-disturb");
+  const presenceWs = await openSocket(presenceUser);
+  presenceWs.send(JSON.stringify({ type: "ping" }));
+  await waitFor(presenceWs, message => message.type === "pong", "pong after presence ping");
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const whileConnected = expectStatus(await presenceUser.request("/api/auth/me"), 200, "read own status while connected");
+  assert.equal(whileConnected.status, "dnd", "connecting a WebSocket must not reset the chosen status to online");
+  presenceWs.close();
+  await once(presenceWs, "close");
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const afterClose = expectStatus(await presenceUser.request("/api/auth/me"), 200, "read own status after disconnect");
+  assert.equal(afterClose.status, "dnd", "closing the last WebSocket must not overwrite the chosen status with offline");
+  console.log("PASS WebSocket connect and disconnect leave the user's chosen status untouched");
 } finally {
   await cleanup();
 }
