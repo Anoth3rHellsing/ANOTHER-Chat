@@ -29,11 +29,12 @@ export function useIdleDetection({
 
   const sendStatus = useCallback(
     (status: UserStatus) => {
+      if (!enabled) return;
       if (lastSentStatusRef.current === status) return;
       lastSentStatusRef.current = status;
       onStatusChange(status);
     },
-    [onStatusChange],
+    [enabled, onStatusChange],
   );
 
   const resetIdleTimer = useCallback(() => {

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "invisible" boolean DEFAULT false NOT NULL;

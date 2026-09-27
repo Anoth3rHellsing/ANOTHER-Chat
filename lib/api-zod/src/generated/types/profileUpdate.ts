@@ -18,4 +18,6 @@ export interface ProfileUpdate {
   bio?: string;
   status?: ProfileUpdateStatus;
   socialLinks?: SocialLink[];
+  /** true cuando el cambio de estado lo hace la detección automática (inactividad o llamada), no el usuario. Solo admite `status`; se ignora si el usuario está en modo invisible y nunca cambia ese modo. */
+  auto?: boolean;
 }

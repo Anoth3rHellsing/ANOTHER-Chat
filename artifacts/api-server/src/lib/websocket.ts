@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket, type RawData } from "ws";
 import type { IncomingMessage } from "http";
 import type { Server as HttpServer } from "http";
 import type { SessionData } from "express-session";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, channelsTable, usersTable } from "@workspace/db";
 import { canAccessChannel } from "./permissions";
 import { logger } from "./logger";
@@ -49,15 +49,22 @@ const LAST_SEEN_THROTTLE_MS = 60_000; // update at most once per minute
 async function updateUserPresence(userId: number, status: "online" | "offline"): Promise<void> {
   try {
     if (status === "offline") {
-      await db.update(usersTable)
+      const [row] = await db.update(usersTable)
         .set({ status: "offline", lastSeenAt: new Date() })
-        .where(eq(usersTable.id, userId));
+        .where(eq(usersTable.id, userId))
+        .returning({ invisible: usersTable.invisible });
+      // Un usuario invisible ya se mostraba desconectado: no hay nada que anunciar.
+      if (!row || row.invisible) return;
     } else {
-      await db.update(usersTable)
+      // Modo invisible ("Desconectado"): conectarse nunca lo pasa a online.
+      const [row] = await db.update(usersTable)
         .set({ status: "online" })
-        .where(eq(usersTable.id, userId));
+        .where(and(eq(usersTable.id, userId), eq(usersTable.invisible, false)))
+        .returning({ id: usersTable.id });
+      if (!row) return;
     }
-    broadcastAll({ type: "presence:update", data: { userId, status } });
+    // user:status es el evento que el cliente ya escucha para refrescar las listas de miembros.
+    broadcastAll({ type: "user:status", data: { userId, status } });
   } catch (err) {
     logger.error({ err, userId, status }, "Failed to update user presence");
   }
