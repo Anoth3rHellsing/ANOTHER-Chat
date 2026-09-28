@@ -348,6 +348,17 @@ Si cambias un comportamiento deliberadamente, actualizas su prueba **en el mismo
 
 Un fallo conocido se registra como tal (ver el caso de horario de verano en `replit.md`) con una forma de hacerlo estricto. Nunca se oculta.
 
+### Registrar la prueba
+Un escenario `*-isolated.mjs` nuevo **no se ejecuta** hasta que se añade a la lista de `regression-suite.test.mjs`. Compara el número total de comprobaciones antes y después del PR: si no sube, la prueba no se está ejecutando.
+
+### Pruebas de navegador
+Todo cambio de interfaz trae su prueba de Playwright en `scripts/e2e/`: a 1280 px, y a 390 px táctil (`isMobile`, `hasTouch`). Cómo ejecutarlas: [`docs/instrucciones/pruebas-de-navegador.md`](docs/instrucciones/pruebas-de-navegador.md).
+- Localiza por papel y nombre accesible o por `data-testid`, nunca por clases.
+- Para controles críticos no basta con que sean visibles: comprueba con `elementFromPoint` que **nada los tapa**.
+- Termina sin errores de JavaScript (`pageerror`) y sin desbordamiento horizontal.
+- Revisa las capturas a ojo. Una prueba en verde no garantiza que se vea bien.
+- También se valida por mutación: deshaz el arreglo, recompila y la prueba debe fallar.
+
 ### Qué no cubre la suite
 
 Navegador de extremo a extremo, renderizado, proveedores externos reales, datos de producción y negociación WebRTC completa. **Pasar la suite no demuestra que la interfaz funcione.** Si tocaste interfaz, dilo.
@@ -469,6 +480,12 @@ Cada regla de este archivo sale de un fallo real.
 | Detección de conexiones muertas inactiva | El plazo de pong se reiniciaba en cada ping | §8 |
 | Una prueba nueva no detectaba el fallo que cubría | Los identificadores volvían a coincidir | §11 |
 | Cambio de permisos del soundboard sin anunciar | Mezclado en un pull request de "estabilidad" | §3, §14 |
+| El PR #3 nunca llegó a `main` | Se apuntó a la rama de otro PR y se fusionó después de que esa rama ya estuviera en `main` | §3 |
+| Una prueba nueva nunca se ejecutaba | No estaba en la lista de la suite | §11 |
+| Los errores de validación salían en inglés | Zod sin mensajes propios | §10 |
+| Las pruebas de un PR solo usaban al administrador global | Se salta los permisos: no demostraban nada | §7.1, §11 |
+| En el móvil no se podía colgar desde el chat, y los paneles tapaban el botón | Controles críticos sin prueba en el móvil | §10, §11 |
+| Cualquier usuario podía unirse a cualquier servidor sin invitación | Ruta `/servers/:id/join` sin comprobaciones | §7.2 (Fase 0 del plan) |
 
 ---
 
@@ -477,5 +494,7 @@ Cada regla de este archivo sale de un fallo real.
 - Si un fallo nuevo revela una regla que faltaba, **añádela aquí** junto con su fila en el historial.
 - Si una regla queda obsoleta, se retira en un pull request propio que explique por qué.
 - `CLAUDE.md` importa este archivo y `replit.md` lo referencia. No dupliques reglas en esos archivos: enlázalas.
+- El plan de plataforma, los planes por tema y las instrucciones de trabajo viven en [`docs/`](docs/README.md).
+- Nunca apuntes un PR a la rama de otro PR. Si depende de uno sin fusionar, sale de su rama pero apunta a `main`, con la nota «Fusionar después del #N».
 - `.github/workflows/ci.yml` ejecuta en cada pull request los mismos pasos de §2. Si añades un paso obligatorio aquí, añádelo también al CI y a `.github/pull_request_template.md`.
 - Un CI en rojo **bloquea el merge**. No se desactiva ni se salta un paso para que pase: se arregla la causa.
