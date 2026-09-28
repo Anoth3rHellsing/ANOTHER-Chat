@@ -1,0 +1,78 @@
+// Llamada en el móvil: colgar y expandir siempre visibles y sin tapar.
+import { chromium } from "playwright";
+import { mkdirSync } from "node:fs";
+import assert from "node:assert/strict";
+const BASE = process.env.E2E_BASE ?? "http://127.0.0.1:58000";
+const SHOTS = `${process.env.E2E_DIR ?? "/tmp/another-e2e"}/shots`;
+mkdirSync(SHOTS, { recursive: true });
+const results = []; const ok = l => { results.push(l); console.log("PASS " + l); };
+const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, permissions: ["microphone", "camera"] });
+const page = await ctx.newPage(); const errors = []; page.on("pageerror", e => errors.push(e.message));
+const vis = (name) => page.getByRole("button", { name }).filter({ visible: true }).first();
+async function uncovered(locator, label) {
+  await locator.waitFor({ state: "visible", timeout: 6000 });
+  const covered = await locator.evaluate(el => {
+    const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !(top === el || el.contains(top));
+  });
+  assert.equal(covered, false, `${label} is covered by another element`);
+}
+await page.goto(BASE + "/");
+await page.getByPlaceholder("Nombre de usuario").fill("dueno"); await page.getByPlaceholder("••••••••").fill("Sintetica-12345!");
+await page.locator('button[type="submit"]').tap(); await page.waitForURL(/\/app/); await page.waitForTimeout(1500);
+if (await vis("Volver a los canales").isVisible().catch(() => false)) await vis("Volver a los canales").tap();
+await vis("Volver a la lista de servidores").tap();
+await page.locator('button[title="Pruebas"]').first().tap(); await page.waitForTimeout(800); await vis("Volver a los canales").tap();
+await vis(/voz-general-1/).tap(); await page.waitForTimeout(3000);
+const expand = vis("Expandir llamada"); if (await expand.isVisible().catch(() => false)) await expand.tap();
+await vis("Abrir soundboard").tap();
+await page.getByTestId("soundboard-panel").waitFor();
+await vis(/Controlar voz|Ajustar voz|Controles de participantes|Fuentes/).tap();
+await page.waitForTimeout(400);
+assert.equal(await page.getByTestId("soundboard-panel").count(), 0, "soundboard closes when participant controls open");
+ok("soundboard and participant controls never stack");
+await vis("Minimizar llamada").tap(); await page.waitForTimeout(500);
+assert.equal(await page.getByTestId("call-sources-panel").count(), 0);
+assert.equal(await page.getByTestId("soundboard-panel").count(), 0);
+ok("minimising the call closes its floating panels");
+await uncovered(vis(/^Colgar/), "hang up (channel list)");
+await uncovered(vis("Expandir llamada"), "expand (channel list)");
+ok("hang up and expand are visible and uncovered in the channel list");
+await vis("Abrir soundboard").tap(); await page.getByTestId("soundboard-panel").waitFor();
+await page.screenshot({ path: `${SHOTS}/call-01-soundboard-minimizada.png` });
+await uncovered(vis(/^Colgar/), "hang up with soundboard open");
+ok("opening the soundboard from the compact bar leaves hang up uncovered");
+for (const name of ["Abrir soundboard", "Expandir llamada"]) await uncovered(vis(name), `${name} with soundboard open`);
+ok("no call-bar control is covered while the soundboard is open");
+await page.getByTestId("button-close-soundboard").tap();
+await page.getByTestId("soundboard-panel").waitFor({ state: "detached", timeout: 5000 });
+if (await vis("Volver a los canales").isVisible().catch(() => false)) await vis("Volver a los canales").tap();
+await page.locator('[data-testid^="channel-item-"]').filter({ hasText: "general-texto-1" }).tap();
+await page.getByTestId("mobile-chat-call-bar").waitFor({ timeout: 5000 });
+await uncovered(page.getByTestId("mobile-chat-call-bar").getByRole("button", { name: /^Colgar/ }), "hang up (chat)");
+await uncovered(page.getByTestId("mobile-chat-call-bar").getByRole("button", { name: "Expandir llamada" }), "expand (chat)");
+await page.screenshot({ path: `${SHOTS}/call-02-chat-con-barra.png` });
+ok("in the chat view the call bar with hang up and expand is shown");
+await page.getByTestId("mobile-chat-call-bar").getByRole("button", { name: /^Colgar/ }).tap();
+await page.waitForTimeout(1200);
+assert.equal(await page.getByTestId("mobile-chat-call-bar").count(), 0);
+ok("hanging up from the chat view ends the call");
+// Lista de canales con una llamada nueva y el soundboard abierto
+await page.locator('[data-testid^="channel-row-"]').filter({ hasText: "voz-general-1" }).locator("button").first().tap().catch(async () => {
+  if (await vis("Volver a los canales").isVisible().catch(() => false)) await vis("Volver a los canales").tap();
+  await page.locator('[data-testid^="channel-row-"]').filter({ hasText: "voz-general-1" }).locator("button").first().tap();
+});
+await page.waitForTimeout(3000);
+if (await vis("Minimizar llamada").isVisible().catch(() => false)) await vis("Minimizar llamada").tap();
+if (await vis("Volver a los canales").isVisible().catch(() => false)) await vis("Volver a los canales").tap();
+await page.locator('[data-testid^="channel-row-"]').first().waitFor({ state: "visible" });
+await vis("Abrir soundboard").tap(); await page.getByTestId("soundboard-panel").waitFor();
+await page.waitForTimeout(400);
+await page.screenshot({ path: `${SHOTS}/call-03-lista-soundboard.png` });
+await uncovered(vis(/^Colgar/), "hang up in the channel list with soundboard open");
+await uncovered(vis("Expandir llamada"), "expand in the channel list with soundboard open");
+ok("in the channel list, hang up and expand stay uncovered with the soundboard open");
+await vis(/^Colgar/).tap();
+assert.deepEqual(errors, []); ok("no page errors");
+await browser.close(); console.log(`${results.length} checks passed`);
