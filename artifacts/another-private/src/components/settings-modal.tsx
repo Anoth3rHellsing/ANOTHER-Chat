@@ -188,7 +188,7 @@ export function SettingsModal({
               <div className="hidden md:block px-4 mb-4">
                 <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Ajustes</p>
               </div>
-              <nav className="flex md:flex-col overflow-x-auto md:overflow-visible flex-1 px-2 gap-1 md:gap-0 md:space-y-0.5">
+              <nav className="flex flex-wrap md:flex-nowrap md:flex-col md:overflow-visible flex-1 px-2 gap-1 md:gap-0 md:space-y-0.5">
                 {SECTIONS.map(section => {
                   const Icon = section.icon;
                   return (

@@ -163,7 +163,7 @@ export function ChannelEventsPanel({
       data-testid={isMainLayout ? 'channel-calendar-content' : 'channel-events-panel'}
       className={isMainLayout
         ? 'flex min-h-0 min-w-0 flex-1 flex-col bg-background'
-        : 'w-80 max-w-[85vw] absolute inset-y-0 right-0 z-20 md:static bg-card/95 md:bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0 shadow-2xl md:shadow-none'}
+        : 'w-full md:w-80 md:max-w-[85vw] absolute inset-y-0 right-0 z-20 md:static bg-[hsl(var(--background))] md:bg-card/30 border-l border-white/5 flex flex-col flex-shrink-0 shadow-2xl md:shadow-none'}
     >
       <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between flex-shrink-0 bg-card/30 backdrop-blur-sm">
         <div className="flex items-center gap-2 text-foreground font-medium">

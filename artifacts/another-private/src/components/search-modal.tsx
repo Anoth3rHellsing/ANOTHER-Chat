@@ -151,7 +151,7 @@ export function SearchModal({ isOpen, onClose, serverId, channelId, dmUserId, on
             </div>
           )}
           {!searched && !loading && (
-            <div className="py-8 text-center text-muted-foreground text-sm font-mono">
+            <div className="py-8 px-4 text-center text-muted-foreground text-sm">
               Escribe al menos 2 caracteres para buscar
             </div>
           )}

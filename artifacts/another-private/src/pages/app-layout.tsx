@@ -85,6 +85,8 @@ const CHANNEL_TYPE_ICON = {
   media: ImageIcon,
   calendar: Calendar,
 } as const;
+const MEMBER_ROLE_LABEL = { owner: 'Dueño', admin: 'Admin', member: 'Miembro' } as const;
+
 const CHANNEL_TYPE_LABEL = {
   text: 'Texto',
   voice: 'Voz',
@@ -322,6 +324,17 @@ export default function AppLayout() {
   const [showMembers, setShowMembers] = useState(true);
   const [mobileMembersOpen, setMobileMembersOpen] = useState(false);
   const [mobileMessageActions, setMobileMessageActions] = useState<string | null>(null);
+  // En el móvil, el menú de acciones de un mensaje se cierra al tocar fuera de él.
+  useEffect(() => {
+    if (!mobileMessageActions) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-message-actions]')) return;
+      setMobileMessageActions(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [mobileMessageActions]);
   const [showEvents, setShowEvents] = useState(false);
   useEffect(() => {
     setShowEvents(false);
@@ -1477,14 +1490,14 @@ export default function AppLayout() {
                           <span className="truncate">{msg.replyTo.contentPreview}</span>
                         </div>
                       )}
-                      <div className="relative flex items-start justify-between gap-2">
+                      <div className="relative flex items-start justify-between gap-2 min-h-11 md:min-h-0">
                         <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-normal min-w-0 pr-12 md:pr-0">
                           {msg.deletedAt
                             ? <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             : <GifMessage content={msg.content} />}
                         </div>
                         {!msg.deletedAt && isOwn && (
-                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                           <div data-message-actions className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
                              <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `dm:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `dm:${msg.id}` ? null : `dm:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
                              <div className={`${mobileMessageActions === `dm:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
@@ -1503,7 +1516,7 @@ export default function AppLayout() {
                           </div>
                         )}
                         {!msg.deletedAt && !isOwn && (
-                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                           <div data-message-actions className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
                              <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `dm:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `dm:${msg.id}` ? null : `dm:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
                              <div className={`${mobileMessageActions === `dm:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
@@ -1764,7 +1777,7 @@ export default function AppLayout() {
                         <ReplyQuote replyTo={msgAny.replyTo} onClick={() => scrollToMessage(msgAny.replyTo.id)} />
                       )}
                       
-                        <div className="relative flex items-start justify-between gap-2">
+                        <div className="relative flex items-start justify-between gap-2 min-h-11 md:min-h-0">
                         {editingMessageId === msg.id ? (
                           <form onSubmit={handleEditMessage} className="w-full relative">
                             <input 
@@ -1806,7 +1819,7 @@ export default function AppLayout() {
 
                         {/* Hover action bar */}
                         {!msg.deletedAt && editingMessageId !== msg.id && (
-                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `channel:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                           <div data-message-actions className={`absolute right-0 top-0 ${mobileMessageActions === `channel:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
                              <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `channel:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `channel:${msg.id}` ? null : `channel:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
                              <div className={`${mobileMessageActions === `channel:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             {/* React */}
@@ -2077,7 +2090,7 @@ export default function AppLayout() {
                       <div className="flex-1 min-w-0 text-left">
                         <p className="text-sm text-foreground truncate">{member.user.displayName}</p>
                         {member.role !== 'member' && (
-                          <p className="text-[10px] text-primary font-mono capitalize">{member.role}</p>
+                          <p className="text-[10px] text-primary font-mono">{MEMBER_ROLE_LABEL[member.role as keyof typeof MEMBER_ROLE_LABEL] ?? member.role}</p>
                         )}
                       </div>
                     </button>
