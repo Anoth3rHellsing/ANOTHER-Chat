@@ -1286,7 +1286,7 @@ export default function AppLayout() {
               )}
               <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
                 <button
-                  className="md:hidden p-1 mr-1 text-muted-foreground hover:text-white rounded"
+                  className="md:hidden -ml-2 mr-1 flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-white rounded"
                   onClick={() => setMobilePanelDepth(0)}
                   aria-label="Volver a la lista de servidores"
                 >
@@ -1296,8 +1296,9 @@ export default function AppLayout() {
                 {activeServer && canManageServer && (
                   <button
                     onClick={() => setIsServerSettingsOpen(true)}
-                    className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+                    className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0 [@media(hover:none)]:flex [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:items-center [@media(hover:none)]:justify-center"
                     title="Configuración del servidor"
+                    aria-label="Configuración del servidor"
                   >
                     <SlidersHorizontal className="w-4 h-4" />
                   </button>
@@ -1324,7 +1325,12 @@ export default function AppLayout() {
                     if (((channel as any).channelType ?? 'text') === 'calendar') setShowMembers(false);
                     setMobilePanelDepth(2);
                   }}
-                  onToggleClips={() => setShowClips(v => !v)}
+                  onToggleClips={() => {
+                    // En el móvil, abrir Clips tiene que llevar a su vista; antes solo se resaltaba.
+                    const opening = !showClips;
+                    setShowClips(opening);
+                    if (opening) setMobilePanelDepth(2);
+                  }}
                   onCreateChannel={categoryId => {
                     setCreateChannelCategoryId(categoryId);
                     setIsCreateChannelOpen(true);
@@ -1629,7 +1635,7 @@ export default function AppLayout() {
         {/* ── Server / channel chat pane ──────────────────────────────── */}
         {/* ── Clips view ──────────────────────────────────────────────── */}
         {activeView === 'servers' && showClips && activeServerId ? (
-          <ClipsView serverId={activeServerId} currentUserId={user.id} />
+          <ClipsView serverId={activeServerId} currentUserId={user.id} onBack={() => setMobilePanelDepth(1)} />
         ) : activeView === 'servers' && activeChannel ? (
           <>
             {/* Mute status banner */}

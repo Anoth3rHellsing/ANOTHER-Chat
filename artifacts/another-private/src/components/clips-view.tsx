@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Heart, MessageSquare, Trash2, X, Upload, Users as UsersIcon } from 'lucide-react';
+import { Play, Heart, MessageSquare, Trash2, X, Upload, Users as UsersIcon, ChevronLeft } from 'lucide-react';
 import { csrfFetch } from '@workspace/api-client-react';
 import { AvatarImage } from '@/components/avatar-image';
 
@@ -28,6 +28,8 @@ interface Comment {
 interface ClipsViewProps {
   serverId: number;
   currentUserId: number;
+  /** Vuelve a la lista de canales en el móvil. */
+  onBack?: () => void;
 }
 
 function getSameOriginClipMediaUrl(value: string | null | undefined, baseUrl: string): string | null {
@@ -52,7 +54,7 @@ function getSameOriginClipMediaUrl(value: string | null | undefined, baseUrl: st
   }
 }
 
-export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
+export function ClipsView({ serverId, currentUserId, onBack }: ClipsViewProps) {
   const [clips, setClips] = useState<Clip[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedClip, setSelectedClip] = useState<Clip | null>(null);
@@ -163,6 +165,16 @@ export function ClipsView({ serverId, currentUserId }: ClipsViewProps) {
       {/* Header */}
       <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10 flex-shrink-0">
         <div className="flex items-center gap-2 text-foreground font-medium">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Volver a los canales"
+              className="md:hidden -ml-2 flex h-11 w-11 items-center justify-center rounded text-muted-foreground hover:text-white"
+            >
+              <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+            </button>
+          )}
           <Play className="w-4 h-4 text-primary" />
           <span>Clips</span>
         </div>

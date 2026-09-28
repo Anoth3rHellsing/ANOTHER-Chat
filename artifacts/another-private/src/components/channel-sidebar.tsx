@@ -63,6 +63,8 @@ const CHANNEL_TYPE_LABEL = { text: 'Texto', voice: 'Voz', media: 'Media', calend
 const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-primary/60';
 /** Visible al pasar el ratón o con teclado; siempre visible en pantallas táctiles. */
 const REVEAL = 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100';
+/** Zona táctil de 44 px en pantallas sin ratón. */
+const TOUCH = '[@media(hover:none)]:flex [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:items-center [@media(hover:none)]:justify-center';
 
 type ChannelWithExtras = Channel & {
   channelType?: string;
@@ -379,7 +381,7 @@ export function ChannelSidebar({
                   type="button"
                   aria-label="Crear canal o categoría"
                   data-testid="sidebar-create-menu"
-                  className={`rounded p-1 text-muted-foreground hover:text-foreground ${REVEAL} ${FOCUS_RING}`}
+                  className={`rounded p-1 text-muted-foreground hover:text-foreground ${REVEAL} ${TOUCH} ${FOCUS_RING}`}
                 >
                   <Plus className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -408,7 +410,7 @@ export function ChannelSidebar({
               type="button"
               onClick={() => toggleCollapsed(category.id)}
               aria-expanded={!isCollapsed}
-              className={`flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground ${FOCUS_RING}`}
+              className={`flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-1 [@media(hover:none)]:min-h-11 text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground ${FOCUS_RING}`}
             >
               {isCollapsed
                 ? <ChevronRight className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
@@ -421,7 +423,7 @@ export function ChannelSidebar({
                   type="button"
                   onClick={() => onCreateChannel(category.id)}
                   aria-label={`Crear canal en ${category.name}`}
-                  className={`rounded p-1 text-muted-foreground hover:text-foreground ${REVEAL} ${FOCUS_RING}`}
+                  className={`rounded p-1 text-muted-foreground hover:text-foreground ${REVEAL} ${TOUCH} ${FOCUS_RING}`}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -431,7 +433,7 @@ export function ChannelSidebar({
                       type="button"
                       aria-label={`Opciones de la categoría ${category.name}`}
                       data-testid={`category-menu-${category.id}`}
-                      className={`rounded p-1 text-muted-foreground hover:text-foreground ${REVEAL} ${FOCUS_RING}`}
+                      className={`rounded p-1 text-muted-foreground hover:text-foreground ${REVEAL} ${TOUCH} ${FOCUS_RING}`}
                     >
                       <MoreVertical className="h-4 w-4" aria-hidden="true" />
                     </button>
