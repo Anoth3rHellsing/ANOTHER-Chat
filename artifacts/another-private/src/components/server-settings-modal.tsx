@@ -401,12 +401,12 @@ export function ServerSettingsModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/10 flex-shrink-0 overflow-x-auto">
+        <div className="flex flex-wrap md:flex-nowrap border-b border-white/10 flex-shrink-0 md:overflow-x-auto">
           {(Object.keys(TAB_LABELS) as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-sm font-mono uppercase tracking-wider transition-colors whitespace-nowrap flex-shrink-0 ${
+              className={`px-3 md:px-5 py-3 text-xs md:text-sm font-mono uppercase tracking-wider transition-colors whitespace-nowrap flex-shrink-0 ${
                 activeTab === tab
                   ? 'text-primary border-b-2 border-primary'
                   : 'text-muted-foreground hover:text-foreground'
@@ -440,7 +440,7 @@ export function ServerSettingsModal({
                       {Object.entries(PERM).map(([key, flag]) =>
                         hasPerm(role.permissions, flag) ? (
                           <span key={key} className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px]">
-                            {key.replace('_', ' ').toLowerCase()}
+                            {PERM_LABELS[flag]}
                           </span>
                         ) : null
                       )}
@@ -596,7 +596,7 @@ export function ServerSettingsModal({
           {activeTab === 'categories' && (
             <div className="space-y-4">
               <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider mb-2">
-                Organiza los canales en categorías. Arrastra o usa los botones para reordenar.
+                Organiza los canales en categorías y usa los botones para reordenarlas. También puedes gestionarlas desde la barra lateral.
               </p>
               <CategoriesManager serverId={serverId} />
             </div>

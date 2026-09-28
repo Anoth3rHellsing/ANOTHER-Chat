@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react';
 import { X, Hash, Volume2, Image as ImageIcon, CalendarDays, FolderOpen } from 'lucide-react';
 import { useCreateChannel, csrfFetch } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
+import { normalizeChannelName } from '@/lib/channel-name';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
   onClose: () => void;
   serverId: number;
   onCreated: (channel: any) => void;
+  /** Categoría preseleccionada al crear desde el + de una categoría. */
+  defaultCategoryId?: number | null;
 }
 
 interface Category {
@@ -49,7 +52,7 @@ const CHANNEL_TYPES = [
   },
 ] as const;
 
-export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: CreateChannelModalProps) {
+export function CreateChannelModal({ isOpen, onClose, serverId, onCreated, defaultCategoryId = null }: CreateChannelModalProps) {
   const [channelType, setChannelType] = useState<'text' | 'voice' | 'media' | 'calendar'>('text');
   const [name, setName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
@@ -66,14 +69,14 @@ export function CreateChannelModal({ isOpen, onClose, serverId, onCreated }: Cre
 
   useEffect(() => {
     if (isOpen) {
-      setCategoryId(null);
+      setCategoryId(defaultCategoryId);
       setSelectedRoles([]);
     }
-  }, [isOpen]);
+  }, [isOpen, defaultCategoryId]);
 
   if (!isOpen) return null;
 
-  const normalizedName = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+  const normalizedName = normalizeChannelName(name);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

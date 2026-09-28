@@ -45,6 +45,7 @@ import { ServerSettingsModal } from '@/components/server-settings-modal';
 import { UserProfileCard } from '@/components/user-profile-card';
 import { VoiceChannelRow } from '@/components/voice-channel-row';
 import { CreateChannelModal } from '@/components/create-channel-modal';
+import { ChannelSidebar } from '@/components/channel-sidebar';
 import { CreateServerModal } from '@/components/create-server-modal';
 import { StoryBar } from '@/components/story-bar';
 import { ClipsView } from '@/components/clips-view';
@@ -84,6 +85,8 @@ const CHANNEL_TYPE_ICON = {
   media: ImageIcon,
   calendar: Calendar,
 } as const;
+const MEMBER_ROLE_LABEL = { owner: 'Dueño', admin: 'Admin', member: 'Miembro' } as const;
+
 const CHANNEL_TYPE_LABEL = {
   text: 'Texto',
   voice: 'Voz',
@@ -315,11 +318,23 @@ export default function AppLayout() {
   const [showClips, setShowClips] = useState(false);
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false);
   const [isCreateChannelOpen, setIsCreateChannelOpen] = useState(false);
+  const [createChannelCategoryId, setCreateChannelCategoryId] = useState<number | null>(null);
   const [isJoinByCodeOpen, setIsJoinByCodeOpen] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [showMembers, setShowMembers] = useState(true);
   const [mobileMembersOpen, setMobileMembersOpen] = useState(false);
   const [mobileMessageActions, setMobileMessageActions] = useState<string | null>(null);
+  // En el móvil, el menú de acciones de un mensaje se cierra al tocar fuera de él.
+  useEffect(() => {
+    if (!mobileMessageActions) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest('[data-message-actions]')) return;
+      setMobileMessageActions(null);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [mobileMessageActions]);
   const [showEvents, setShowEvents] = useState(false);
   useEffect(() => {
     setShowEvents(false);
@@ -409,7 +424,9 @@ export default function AppLayout() {
   useEffect(() => {
     if (channels && channels.length > 0 && activeServerId) {
       const validChannel = channels.find(c => c.id === activeChannelId);
-      if (!validChannel) setActiveChannelId(channels[0].id);
+      // Al entrar en un servidor (o si el canal abierto se borró) se aterriza en el primer canal de texto.
+      const landing = channels.find(c => ((c as any).channelType ?? 'text') === 'text') ?? channels[0];
+      if (!validChannel) setActiveChannelId(landing.id);
     } else if (channels && channels.length === 0) {
       setActiveChannelId(null);
     }
@@ -970,11 +987,11 @@ export default function AppLayout() {
       onToggleMute={webrtc.toggleMute}
       onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
       onExpand={() => setIsCallMinimized(false)}
-      onOpenSoundboard={() => setIsSoundboardOpen(open => !open)}
+      onOpenSoundboard={() => { setShowCallSources(false); setIsSoundboardOpen(open => !open); }}
       onOpenWatch={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => !open); }}
       isWatching={isWatchVisible}
       hasWatchInvitation={!!watch.session && !watch.isWatching}
-      onOpenSources={() => setShowCallSources(open => !open)}
+      onOpenSources={() => { setIsSoundboardOpen(false); setShowCallSources(open => !open); }}
       isSourcesOpen={showCallSources}
     />
   ) : null;
@@ -999,7 +1016,8 @@ export default function AppLayout() {
     currentMembership?.role === 'owner' ||
     currentMembership?.role === 'admin';
 
-  const canCreateChannel = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
+  // Igual que el servidor (E1): dueño, admin o cualquier rol con Gestionar canales.
+  const canManageChannels = canManageServer || hasPerm(myPermissions, PERM.MANAGE_CHANNELS);
 
   const groupedMembers = useMemo(() => {
     if (!members) return { online: [], offline: [] };
@@ -1280,12 +1298,20 @@ export default function AppLayout() {
                 </div>
               )}
               <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card">
+                <button
+                  className="md:hidden -ml-2 mr-1 flex h-11 w-11 items-center justify-center text-muted-foreground hover:text-white rounded"
+                  onClick={() => setMobilePanelDepth(0)}
+                  aria-label="Volver a la lista de servidores"
+                >
+                  <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+                </button>
                 <h2 className="font-bold text-foreground truncate flex-1">{activeServer?.name || 'A.N.O.T.H.E.R.'}</h2>
                 {activeServer && canManageServer && (
                   <button
                     onClick={() => setIsServerSettingsOpen(true)}
-                    className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0"
+                    className="p-1.5 text-muted-foreground hover:text-white rounded-md hover:bg-white/10 transition-colors flex-shrink-0 [@media(hover:none)]:flex [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:items-center [@media(hover:none)]:justify-center"
                     title="Configuración del servidor"
+                    aria-label="Configuración del servidor"
                   >
                     <SlidersHorizontal className="w-4 h-4" />
                   </button>
@@ -1297,92 +1323,48 @@ export default function AppLayout() {
             <StoryBar currentUserId={user.id} currentUser={user} />
 
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
-              <div className="flex items-center justify-between px-2 mb-1 group">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Canales</p>
-                {activeServer && canCreateChannel && (
-                  <button onClick={() => setIsCreateChannelOpen(true)} className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Plus className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-              
-              {channels?.map(channel => {
-                const channelType = (channel as any).channelType ?? 'text';
-                if (channelType === 'voice') {
-                  return (
+              {activeServerId && (
+                <ChannelSidebar
+                  serverId={activeServerId}
+                  channels={channels ?? []}
+                  activeChannelId={activeChannelId}
+                  showClips={showClips}
+                  unreadCounts={unreadCounts}
+                  mentionCounts={notifications.mentionCounts}
+                  canManageChannels={canManageChannels}
+                  onSelectChannel={channel => {
+                    setActiveChannelId(channel.id);
+                    setShowClips(false);
+                    if (((channel as any).channelType ?? 'text') === 'calendar') setShowMembers(false);
+                    setMobilePanelDepth(2);
+                  }}
+                  onToggleClips={() => {
+                    // En el móvil, abrir Clips tiene que llevar a su vista; antes solo se resaltaba.
+                    const opening = !showClips;
+                    setShowClips(opening);
+                    if (opening) setMobilePanelDepth(2);
+                  }}
+                  onCreateChannel={categoryId => {
+                    setCreateChannelCategoryId(categoryId);
+                    setIsCreateChannelOpen(true);
+                  }}
+                  renderVoiceChannel={(channel, { reserveMenuSpace }) => (
                     <VoiceChannelRow
-                      key={channel.id}
                       channel={channel}
+                      reserveMenuSpace={reserveMenuSpace}
                       isActive={activeChannelId === channel.id}
                       isJoined={webrtc.activeVoiceChannelId === channel.id}
                       onClick={() => {
                         setJoinedVoiceChannelName(channel.name);
-                        if (webrtc.activeVoiceChannelId === channel.id) {
-                          setActiveChannelId(channel.id);
-                        } else {
-                          setActiveChannelId(channel.id);
+                        setActiveChannelId(channel.id);
+                        if (webrtc.activeVoiceChannelId !== channel.id) {
                           const currentMembers: any[] = [];
                           webrtc.joinVoiceChannel(channel.id, currentMembers);
                         }
                       }}
                     />
-                  );
-                }
-                const ChannelIcon = CHANNEL_TYPE_ICON[channelType as keyof typeof CHANNEL_TYPE_ICON] ?? Hash;
-                const vc = (channel as any).visualConfig ?? {};
-                const hasVisual = vc.kind && vc.value;
-                const channelUnread = unreadCounts.get(channel.id) ?? 0;
-                const mentions = notifications.mentionCounts.get(channel.id) ?? 0;
-                return (
-                  <button
-                    key={channel.id}
-                    onClick={() => {
-                      setActiveChannelId(channel.id);
-                      setShowClips(false);
-                      if (channelType === 'calendar') setShowMembers(false);
-                      setMobilePanelDepth(2);
-                    }}
-                    data-testid={`channel-item-${channel.id}`}
-                    aria-label={`${CHANNEL_TYPE_LABEL[channelType as keyof typeof CHANNEL_TYPE_LABEL] ?? 'Canal'}: ${channel.name}`}
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors relative overflow-hidden ${activeChannelId === channel.id && !showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : channelUnread || mentions ? 'bg-primary/5 text-foreground font-semibold hover:bg-primary/10' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
-                    style={hasVisual && vc.kind === 'gradient'
-                      ? { background: `linear-gradient(90deg, ${vc.value.split(',')[0]}, ${vc.value.split(',')[1] ?? vc.value.split(',')[0]})`, color: 'white' }
-                      : hasVisual && vc.kind === 'image'
-                      ? { backgroundImage: `url(${vc.value})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'white' }
-                      : {}
-                    }
-                  >
-                    {hasVisual && <div className="absolute inset-0 bg-black/30 rounded-md" />}
-                    <ChannelIcon className="w-4 h-4 opacity-60 flex-shrink-0 relative z-10" />
-                    <span className={`truncate relative z-10 ${channelUnread > 0 ? 'font-semibold text-foreground' : ''}`}>{channel.name}</span>
-                    <span className="ml-auto flex items-center gap-1 relative z-10">
-                      {(channel as any).restrictedRoles?.length > 0 && (
-                        <span className="text-[10px] text-primary/60 font-mono">🔒</span>
-                      )}
-                      {channelUnread > 0 && (
-                        <span className="min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                          {channelUnread > 99 ? '99+' : channelUnread}
-                        </span>
-                      )}
-                      {mentions > 0 && (
-                        <span className="min-w-[18px] h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                          {mentions > 99 ? '99+' : `@${mentions}`}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-
-              {/* Clips section */}
-              {activeServerId && (
-                <button
-                  onClick={() => setShowClips(v => !v)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors mt-2 ${showClips ? 'bg-primary/15 text-foreground font-medium glow-effect' : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'}`}
-                >
-                  <Play className="w-4 h-4 opacity-60 flex-shrink-0" />
-                  <span>Clips</span>
-                </button>
+                  )}
+                />
               )}
             </div>
 
@@ -1418,6 +1400,10 @@ export default function AppLayout() {
 
       {/* 3. CHAT / DM AREA */}
       <div className={`${mobilePanelDepth >= 2 ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-background min-w-0 relative`}>
+        {/* En el móvil, colgar y volver a la llamada tienen que estar visibles también en el chat (AGENTS.md §10). */}
+        {isCallActive && isCallMinimized && (
+          <div className="md:hidden flex-shrink-0" data-testid="mobile-chat-call-bar">{callStatusBar}</div>
+        )}
         {/* ── Friends panel ─────────────────────────────────────────────── */}
         {activeView === 'dms' && dmSubView === 'friends' && (
           <FriendsPanel
@@ -1430,7 +1416,7 @@ export default function AppLayout() {
           <>
             {/* DM header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card/30 backdrop-blur-sm z-10 gap-3 flex-shrink-0">
-              <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded flex-shrink-0" onClick={() => setMobilePanelDepth(1)}>
+              <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded flex-shrink-0" onClick={() => setMobilePanelDepth(1)} aria-label="Volver a los mensajes directos">
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <div className="relative flex-shrink-0">
@@ -1504,14 +1490,14 @@ export default function AppLayout() {
                           <span className="truncate">{msg.replyTo.contentPreview}</span>
                         </div>
                       )}
-                      <div className="relative flex items-start justify-between gap-2">
+                      <div className="relative flex items-start justify-between gap-2 min-h-11 md:min-h-0">
                         <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-normal min-w-0 pr-12 md:pr-0">
                           {msg.deletedAt
                             ? <span className="text-muted-foreground italic font-mono">[mensaje eliminado]</span>
                             : <GifMessage content={msg.content} />}
                         </div>
                         {!msg.deletedAt && isOwn && (
-                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                           <div data-message-actions className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
                              <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `dm:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `dm:${msg.id}` ? null : `dm:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
                              <div className={`${mobileMessageActions === `dm:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
@@ -1530,7 +1516,7 @@ export default function AppLayout() {
                           </div>
                         )}
                         {!msg.deletedAt && !isOwn && (
-                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                           <div data-message-actions className={`absolute right-0 top-0 ${mobileMessageActions === `dm:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
                              <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `dm:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `dm:${msg.id}` ? null : `dm:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
                              <div className={`${mobileMessageActions === `dm:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             <QuickReactionButtons onSelect={emoji => handleDmReact(msg.id, emoji)} />
@@ -1666,7 +1652,7 @@ export default function AppLayout() {
         {/* ── Server / channel chat pane ──────────────────────────────── */}
         {/* ── Clips view ──────────────────────────────────────────────── */}
         {activeView === 'servers' && showClips && activeServerId ? (
-          <ClipsView serverId={activeServerId} currentUserId={user.id} />
+          <ClipsView serverId={activeServerId} currentUserId={user.id} onBack={() => setMobilePanelDepth(1)} />
         ) : activeView === 'servers' && activeChannel ? (
           <>
             {/* Mute status banner */}
@@ -1681,8 +1667,8 @@ export default function AppLayout() {
             {/* Channel header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 justify-between bg-card/30 backdrop-blur-sm z-10">
               <div className="flex min-w-0 flex-1 items-center gap-2 text-foreground font-medium">
-                <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)}>
-                  <ChevronLeft className="w-5 h-5" />
+                <button className="md:hidden p-1 -ml-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(1)} aria-label="Volver a los canales">
+                  <ChevronLeft className="w-5 h-5" aria-hidden="true" />
                 </button>
                 <ActiveChannelIcon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                 <span className="truncate">{activeChannel.name}</span>
@@ -1791,7 +1777,7 @@ export default function AppLayout() {
                         <ReplyQuote replyTo={msgAny.replyTo} onClick={() => scrollToMessage(msgAny.replyTo.id)} />
                       )}
                       
-                        <div className="relative flex items-start justify-between gap-2">
+                        <div className="relative flex items-start justify-between gap-2 min-h-11 md:min-h-0">
                         {editingMessageId === msg.id ? (
                           <form onSubmit={handleEditMessage} className="w-full relative">
                             <input 
@@ -1833,7 +1819,7 @@ export default function AppLayout() {
 
                         {/* Hover action bar */}
                         {!msg.deletedAt && editingMessageId !== msg.id && (
-                           <div className={`absolute right-0 top-0 ${mobileMessageActions === `channel:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
+                           <div data-message-actions className={`absolute right-0 top-0 ${mobileMessageActions === `channel:${msg.id}` ? 'z-30' : 'z-20'} md:static md:z-auto md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity`}>
                              <button type="button" aria-label="Más acciones del mensaje" aria-expanded={mobileMessageActions === `channel:${msg.id}`} onClick={() => setMobileMessageActions(mobileMessageActions === `channel:${msg.id}` ? null : `channel:${msg.id}`)} className="flex h-11 w-11 items-center justify-center text-muted-foreground bg-card border border-border rounded-md md:hidden"><MoreVertical className="w-4 h-4" /></button>
                              <div className={`${mobileMessageActions === `channel:${msg.id}` ? 'flex' : 'hidden'} md:flex absolute right-0 top-11 md:static items-center flex-wrap justify-end max-w-[calc(100vw-2rem)] md:max-w-none md:flex-nowrap [&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-0 md:[&_button]:min-w-0 bg-card border border-border rounded-md flex-shrink-0`}>
                             {/* React */}
@@ -2104,7 +2090,7 @@ export default function AppLayout() {
                       <div className="flex-1 min-w-0 text-left">
                         <p className="text-sm text-foreground truncate">{member.user.displayName}</p>
                         {member.role !== 'member' && (
-                          <p className="text-[10px] text-primary font-mono capitalize">{member.role}</p>
+                          <p className="text-[10px] text-primary font-mono">{MEMBER_ROLE_LABEL[member.role as keyof typeof MEMBER_ROLE_LABEL] ?? member.role}</p>
                         )}
                       </div>
                     </button>
@@ -2231,7 +2217,7 @@ export default function AppLayout() {
       {/* Remains mounted independently of the visual call overlay. */}
       <RemoteAudioStreams tracks={webrtc.remoteAudioTracks} preferences={callSourcePreferences} />
       {isCallActive && showCallSources && (
-        <div className="fixed bottom-20 right-4 z-[70] max-h-[min(70dvh,620px)] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl">
+        <div className="fixed inset-x-2 top-24 z-[70] max-h-[50dvh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl md:inset-x-auto md:top-auto md:bottom-20 md:right-4 md:max-h-[min(70dvh,620px)] md:w-[min(360px,calc(100vw-2rem))]" data-testid="call-sources-panel">
           <CallSourceControls
             participants={sourceParticipants}
             onAudioChange={changeSourceLevel}
@@ -2320,7 +2306,7 @@ export default function AppLayout() {
           {/* Control bar */}
           <CallExpandedControls
             isSourcesOpen={showCallSources}
-            onToggleSources={() => setShowCallSources(open => !open)}
+            onToggleSources={() => { setIsSoundboardOpen(false); setShowCallSources(open => !open); }}
             isMuted={webrtc.isMuted}
             onToggleMute={webrtc.toggleMute}
             isCameraOn={webrtc.isCameraOn}
@@ -2330,7 +2316,7 @@ export default function AppLayout() {
             onToggleScreenShare={webrtc.toggleScreenShare}
             screenShareNotice={webrtc.screenShareNotice}
             isSoundboardOpen={isSoundboardOpen}
-            onToggleSoundboard={() => setIsSoundboardOpen(open => !open)}
+            onToggleSoundboard={() => { setShowCallSources(false); setIsSoundboardOpen(open => !open); }}
             isWatching={isWatchVisible}
             hasWatchInvitation={!!watch.session && !watch.isWatching}
             onToggleWatch={() => {
@@ -2338,7 +2324,12 @@ export default function AppLayout() {
               setIsWatchOpen(open => !open);
             }}
             onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
-            onMinimize={() => setIsCallMinimized(true)}
+            onMinimize={() => {
+              // Los paneles flotantes no sobreviven al minimizar: tapaban la barra y el botón de colgar.
+              setIsSoundboardOpen(false);
+              setShowCallSources(false);
+              setIsCallMinimized(true);
+            }}
           />
         </div>
       )}
@@ -2393,7 +2384,7 @@ export default function AppLayout() {
       )}
 
       {isCallActive && (
-        <div className={`fixed bottom-24 z-50 ${isWatchVisible ? 'left-4' : 'right-4'}`}>
+        <div className={`fixed inset-x-2 top-24 z-[60] md:inset-x-auto md:top-auto md:bottom-24 md:z-50 ${isWatchVisible ? 'md:left-4' : 'md:right-4'}`}>
           <SoundboardPanel
             isOpen={isSoundboardOpen}
             onClose={() => setIsSoundboardOpen(false)}
@@ -2468,6 +2459,7 @@ export default function AppLayout() {
         <CreateChannelModal
           isOpen={isCreateChannelOpen}
           serverId={activeServerId}
+          defaultCategoryId={createChannelCategoryId}
           onClose={() => setIsCreateChannelOpen(false)}
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: getListChannelsQueryKey(activeServerId) });
