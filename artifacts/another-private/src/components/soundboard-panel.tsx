@@ -198,7 +198,7 @@ export function SoundboardPanel({
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="absolute bottom-[calc(100%+16px)] right-0 sm:right-4 w-80 sm:w-96 bg-card/95 backdrop-blur-xl border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col z-50 max-h-[500px]"
+          data-testid="soundboard-panel" className="relative w-full max-h-[50dvh] md:absolute md:bottom-[calc(100%+16px)] md:right-4 md:w-96 md:max-h-[500px] bg-card/95 backdrop-blur-xl border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col z-50"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/30">
             <h3 className="font-bold text-foreground flex items-center gap-2">
@@ -207,7 +207,7 @@ export function SoundboardPanel({
             </h3>
             <button
               onClick={onClose}
-              className="p-1 text-muted-foreground hover:text-white rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+              className="p-1 text-muted-foreground hover:text-white rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary [@media(hover:none)]:flex [@media(hover:none)]:h-11 [@media(hover:none)]:w-11 [@media(hover:none)]:items-center [@media(hover:none)]:justify-center"
               data-testid="button-close-soundboard"
               aria-label="Cerrar Soundboard"
             >

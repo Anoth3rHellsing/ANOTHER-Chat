@@ -974,11 +974,11 @@ export default function AppLayout() {
       onToggleMute={webrtc.toggleMute}
       onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
       onExpand={() => setIsCallMinimized(false)}
-      onOpenSoundboard={() => setIsSoundboardOpen(open => !open)}
+      onOpenSoundboard={() => { setShowCallSources(false); setIsSoundboardOpen(open => !open); }}
       onOpenWatch={() => { setIsSoundboardOpen(false); setIsWatchOpen(open => !open); }}
       isWatching={isWatchVisible}
       hasWatchInvitation={!!watch.session && !watch.isWatching}
-      onOpenSources={() => setShowCallSources(open => !open)}
+      onOpenSources={() => { setIsSoundboardOpen(false); setShowCallSources(open => !open); }}
       isSourcesOpen={showCallSources}
     />
   ) : null;
@@ -1387,6 +1387,10 @@ export default function AppLayout() {
 
       {/* 3. CHAT / DM AREA */}
       <div className={`${mobilePanelDepth >= 2 ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-background min-w-0 relative`}>
+        {/* En el móvil, colgar y volver a la llamada tienen que estar visibles también en el chat (AGENTS.md §10). */}
+        {isCallActive && isCallMinimized && (
+          <div className="md:hidden flex-shrink-0" data-testid="mobile-chat-call-bar">{callStatusBar}</div>
+        )}
         {/* ── Friends panel ─────────────────────────────────────────────── */}
         {activeView === 'dms' && dmSubView === 'friends' && (
           <FriendsPanel
@@ -2200,7 +2204,7 @@ export default function AppLayout() {
       {/* Remains mounted independently of the visual call overlay. */}
       <RemoteAudioStreams tracks={webrtc.remoteAudioTracks} preferences={callSourcePreferences} />
       {isCallActive && showCallSources && (
-        <div className="fixed bottom-20 right-4 z-[70] max-h-[min(70dvh,620px)] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl">
+        <div className="fixed inset-x-2 top-24 z-[70] max-h-[50dvh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl md:inset-x-auto md:top-auto md:bottom-20 md:right-4 md:max-h-[min(70dvh,620px)] md:w-[min(360px,calc(100vw-2rem))]" data-testid="call-sources-panel">
           <CallSourceControls
             participants={sourceParticipants}
             onAudioChange={changeSourceLevel}
@@ -2289,7 +2293,7 @@ export default function AppLayout() {
           {/* Control bar */}
           <CallExpandedControls
             isSourcesOpen={showCallSources}
-            onToggleSources={() => setShowCallSources(open => !open)}
+            onToggleSources={() => { setIsSoundboardOpen(false); setShowCallSources(open => !open); }}
             isMuted={webrtc.isMuted}
             onToggleMute={webrtc.toggleMute}
             isCameraOn={webrtc.isCameraOn}
@@ -2299,7 +2303,7 @@ export default function AppLayout() {
             onToggleScreenShare={webrtc.toggleScreenShare}
             screenShareNotice={webrtc.screenShareNotice}
             isSoundboardOpen={isSoundboardOpen}
-            onToggleSoundboard={() => setIsSoundboardOpen(open => !open)}
+            onToggleSoundboard={() => { setShowCallSources(false); setIsSoundboardOpen(open => !open); }}
             isWatching={isWatchVisible}
             hasWatchInvitation={!!watch.session && !watch.isWatching}
             onToggleWatch={() => {
@@ -2307,7 +2311,12 @@ export default function AppLayout() {
               setIsWatchOpen(open => !open);
             }}
             onHangUp={() => webrtc.isInVoiceChannel ? webrtc.leaveVoiceChannel() : webrtc.endCall()}
-            onMinimize={() => setIsCallMinimized(true)}
+            onMinimize={() => {
+              // Los paneles flotantes no sobreviven al minimizar: tapaban la barra y el botón de colgar.
+              setIsSoundboardOpen(false);
+              setShowCallSources(false);
+              setIsCallMinimized(true);
+            }}
           />
         </div>
       )}
@@ -2362,7 +2371,7 @@ export default function AppLayout() {
       )}
 
       {isCallActive && (
-        <div className={`fixed bottom-24 z-50 ${isWatchVisible ? 'left-4' : 'right-4'}`}>
+        <div className={`fixed inset-x-2 top-24 z-[60] md:inset-x-auto md:top-auto md:bottom-24 md:z-50 ${isWatchVisible ? 'md:left-4' : 'md:right-4'}`}>
           <SoundboardPanel
             isOpen={isSoundboardOpen}
             onClose={() => setIsSoundboardOpen(false)}
