@@ -1,0 +1,27 @@
+# Dependencias y builds: se regeneran dentro de la imagen
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.local
+
+# Contenido real de usuarios: NUNCA dentro de la imagen (AGENTS.md §7.7).
+# En el contenedor viven en el volumen /data.
+uploads
+private-channel-files
+artifacts/api-server/uploads
+artifacts/api-server/private-channel-files
+
+# Secretos y configuración local
+.env
+.env.*
+.replit
+.replitignore
+
+# Sin uso en tiempo de ejecución
+.git
+.github
+.agents
+attached_assets
+screenshots
+docs
+artifacts/mockup-sandbox
