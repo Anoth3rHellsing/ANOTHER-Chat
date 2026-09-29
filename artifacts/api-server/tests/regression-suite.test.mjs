@@ -18,6 +18,7 @@ const suites = [
   ["stories and expiry", "stories-isolated.mjs"],
   ["custom status and emoji", "custom-status-isolated.mjs"],
   ["channel management d1", "channel-management-d1-isolated.mjs"],
+  ["compiled frontend served by the API", "frontend-static-isolated.mjs"],
   ...(process.env.REGRESSION_EXTENDED === "1"
     ? [["extended file-library and mock scanner coverage", "file-channel-isolated.mjs"]]
     : []),

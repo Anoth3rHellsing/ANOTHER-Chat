@@ -16,6 +16,7 @@ import { authorizeUploadedMedia } from "./middleware/authorize-uploaded-media";
 import { SESSION_MAX_AGE_MS } from "./lib/csrf";
 import { SESSION_SECRET } from "./lib/session-config";
 import { authorizeStoryMedia } from "./routes/stories";
+import { mountFrontend, resolveFrontendDir } from "./middleware/serve-frontend";
 
 const PgSession = ConnectPgSimple(session);
 
@@ -59,6 +60,13 @@ const sessionStore = new PgSession({
 
 const app: Express = express();
 app.set("trust proxy", 1);
+
+// Solo en despliegues de un contenedor (FRONTEND_DIST_DIR definido). En Replit no se monta.
+const frontendDir = resolveFrontendDir();
+if (frontendDir) {
+  mountFrontend(app, frontendDir);
+  logger.info({ frontendDir }, "Serving compiled frontend");
+}
 
 app.use(
   pinoHttp({
