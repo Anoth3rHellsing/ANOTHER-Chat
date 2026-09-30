@@ -30,6 +30,7 @@ import { fetchFirstLinkPreview } from "../lib/link-preview";
 import { isMalformedGiphyMessage, parseGiphyMessage } from "../lib/giphy";
 import { groupReactions } from "../lib/reactions";
 import { removePrivateFile } from "../lib/channel-file-storage";
+import { blockedTermMessage, findBlockedTerm } from "../lib/word-filter";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -621,6 +622,11 @@ router.post("/channels/:channelId/messages", requireAuth, async (req, res): Prom
   }
 
   const safeContent = content?.trim() ?? "";
+  const blockedTerm = await findBlockedTerm(channelCheck.serverId, safeContent);
+  if (blockedTerm) {
+    res.status(400).json({ error: blockedTermMessage(blockedTerm) });
+    return;
+  }
   const { encrypted, iv } = encryptMessage(safeContent || " "); // encrypt a space if no text content
 
   // Validate replyToId
@@ -771,6 +777,11 @@ router.patch(
     }
     if (msg.userId !== userId && req.session.userRole !== "admin") {
       res.status(403).json({ error: "No puedes editar este mensaje" }); return;
+    }
+
+    const blockedTerm = await findBlockedTerm(channelCheck.serverId, content);
+    if (blockedTerm) {
+      res.status(400).json({ error: blockedTermMessage(blockedTerm) }); return;
     }
 
     const { encrypted, iv } = encryptMessage(content);

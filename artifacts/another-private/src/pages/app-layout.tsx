@@ -53,6 +53,7 @@ import { getEffectivePermissions, hasPerm, PERM } from '@/lib/permissions';
 import { ChannelEventsEntry, ChannelEventsPanel, EventMessageCard, useEventRealtime } from '@/components/channel-events';
 import { ChannelFilesPanel } from '@/components/channel-files-panel';
 import { useToast } from '@/hooks/use-toast';
+import { apiErrorMessage } from '@/components/channel-management-dialogs';
 import { 
   Hash, Settings, LogOut, Plus, Shield, ShieldAlert,
   Send, MoreVertical, Edit2, Trash2, Users as UsersIcon, X, SlidersHorizontal,
@@ -793,7 +794,11 @@ export default function AppLayout() {
             setPendingAttachmentIds([]);
           }
           sendTypingStop();
-        }
+        },
+        // Filtros de palabras, silencio, falta de acceso: se muestra el motivo real.
+        onError: (error) => {
+          toast({ title: 'No se pudo enviar el mensaje', description: apiErrorMessage(error), variant: 'destructive' });
+        },
       }
     );
   };
@@ -807,7 +812,12 @@ export default function AppLayout() {
     if (!editInput.trim() || !editingMessageId || !activeChannelId) return;
     editMessage.mutate(
       { channelId: activeChannelId, messageId: editingMessageId, data: { content: editInput.trim() } },
-      { onSuccess: () => { setEditingMessageId(null); setEditInput(''); } }
+      {
+        onSuccess: () => { setEditingMessageId(null); setEditInput(''); },
+        onError: (error) => {
+          toast({ title: 'No se pudo editar el mensaje', description: apiErrorMessage(error), variant: 'destructive' });
+        },
+      }
     );
   };
 
