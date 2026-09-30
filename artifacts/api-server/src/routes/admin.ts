@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count } from "drizzle-orm";
+import { eq, count, sql } from "drizzle-orm";
 import crypto from "crypto";
 import {
   db,
@@ -10,6 +10,7 @@ import {
   serverMembersTable,
 } from "@workspace/db";
 import { requireAdmin } from "../lib/auth";
+import { disconnectUser, WS_CLOSE_ACCOUNT_BANNED } from "../lib/websocket";
 
 const router: IRouter = Router();
 
@@ -106,12 +107,20 @@ router.post("/admin/users/:userId/kick", requireAdmin, async (req, res): Promise
 // POST /admin/users/:userId/ban
 router.post("/admin/users/:userId/ban", requireAdmin, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
-  const targetId = parseInt(raw, 10);
+  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+    res.status(400).json({ error: "Identificador de usuario inválido" });
+    return;
+  }
+  const targetId = Number(raw);
 
-  await db.update(usersTable).set({ banned: true, status: "offline" }).where(eq(usersTable.id, targetId));
-
-  // Remove from all servers
-  await db.delete(serverMembersTable).where(eq(serverMembersTable.userId, targetId));
+  await db.transaction(async (tx) => {
+    await tx.update(usersTable).set({ banned: true, status: "offline" }).where(eq(usersTable.id, targetId));
+    // Remove from all servers
+    await tx.delete(serverMembersTable).where(eq(serverMembersTable.userId, targetId));
+    // Cierra todas sus sesiones: sin esto seguía usando la app hasta salir.
+    await tx.execute(sql`DELETE FROM "sessions" WHERE "sess"->>'userId' = ${String(targetId)}`);
+  });
+  disconnectUser(targetId, WS_CLOSE_ACCOUNT_BANNED, "Cuenta baneada");
 
   res.sendStatus(204);
 });

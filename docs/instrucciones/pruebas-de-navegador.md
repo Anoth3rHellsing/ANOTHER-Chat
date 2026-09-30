@@ -18,6 +18,7 @@ node scripts/e2e/ui.mjs                # barra de canales: 2 cuentas, escritorio
 bash scripts/e2e/restart.sh && node scripts/e2e/call.mjs   # llamada en el móvil
 bash scripts/e2e/restart.sh && node scripts/e2e/chat.mjs   # chat y textos en el móvil
 bash scripts/e2e/restart.sh && node scripts/e2e/audit.mjs  # recorrido de 36 pantallas (capturas + medidas)
+bash scripts/e2e/restart.sh && node scripts/e2e/ban.mjs    # baneo global: el baneado sale al instante con el aviso
 ```
 `ui.mjs`, `call.mjs` y `chat.mjs` prueban lo que añaden los PR #8, #9 y #10: hasta que estén en `main`, compila una rama que los contenga y apunta a ella con `E2E_REPO=/ruta/a/esa/copia`.
 

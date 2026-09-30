@@ -257,7 +257,7 @@ export async function startIsolatedApi(prefix) {
 
 /**
  * Registers the first account (global admin) and non-admin members joined
- * through admin invites. Returns { admin, members: [{ client, user }] }.
+ * through admin invites. Returns { admin, adminUser, members: [{ client, user, password }] }.
  */
 export async function registerAdminAndMembers(base, prefix, count) {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
@@ -272,17 +272,18 @@ export async function registerAdminAndMembers(base, prefix, count) {
   for (let index = 0; index < count; index += 1) {
     const invite = expectStatus(await admin.request("/api/admin/invites", { method: "POST", json: {} }), 201, "create an invite");
     const client = account(base);
+    const password = `Disposable-${randomUUID()}!`;
     const user = expectStatus(await client.request("/api/auth/register", {
       method: "POST",
       json: {
         username: `${prefix}_m${index}_${suffix}`,
-        password: `Disposable-${randomUUID()}!`,
+        password,
         displayName: `Miembro ${index}`,
         inviteCode: invite.code,
       },
     }), 201, `register non-admin member ${index}`);
     assert.equal(user.role, "member");
-    members.push({ client, user });
+    members.push({ client, user, password });
   }
   return { admin, adminUser, members };
 }

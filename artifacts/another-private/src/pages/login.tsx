@@ -26,6 +26,10 @@ export default function Login() {
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // El servidor cerró la sesión por un baneo (providers/realtime-transport.tsx).
+  const [bannedNotice] = useState(
+    () => new URLSearchParams(window.location.search).get('cuenta') === 'baneada',
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +62,11 @@ export default function Login() {
         </div>
 
         <div className="bg-card/50 backdrop-blur-xl border border-white/5 p-8 rounded-2xl shadow-2xl">
+          {bannedNotice && (
+            <p role="alert" className="mb-6 rounded-lg border border-destructive bg-destructive/20 px-4 py-3 text-sm text-foreground">
+              Tu cuenta ha sido baneada. Se cerraron todas tus sesiones.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Identificación</label>

@@ -21,6 +21,7 @@ const suites = [
   ["compiled frontend served by the API", "frontend-static-isolated.mjs"],
   ["server join requires an invite", "server-join-isolated.mjs"],
   ["search respects channel access", "search-access-isolated.mjs"],
+  ["global ban ends sessions and sockets", "global-ban-isolated.mjs"],
   ...(process.env.REGRESSION_EXTENDED === "1"
     ? [["extended file-library and mock scanner coverage", "file-channel-isolated.mjs"]]
     : []),

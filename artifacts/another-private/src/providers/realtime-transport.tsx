@@ -28,6 +28,8 @@ const RealtimeTransportContext = createContext<RealtimeTransport | null>(null);
 
 const INITIAL_RECONNECT_DELAY_MS = 500;
 const MAX_RECONNECT_DELAY_MS = 30_000;
+/** Mismo valor que WS_CLOSE_ACCOUNT_BANNED en el servidor (lib/websocket.ts). */
+const WS_CLOSE_ACCOUNT_BANNED = 4003;
 const RECONNECT_JITTER_MS = 500;
 const INITIAL_AUTH_RETRY_DELAY_MS = 50;
 const MAX_AUTH_RETRY_DELAY_MS = 1_000;
@@ -289,7 +291,7 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
         socket.close();
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         stopPing();
         if (socketRef.current === socket) socketRef.current = null;
         applicationReadyRef.current = false;
@@ -300,6 +302,13 @@ export function RealtimeTransportProvider({ children }: { children: ReactNode })
           authRetryTimerRef.current = null;
         }
         if (!mountedRef.current || intentionalCloseRef.current) return;
+
+        // El servidor cierra con este código al banear la cuenta: no se reconecta.
+        if (event.code === WS_CLOSE_ACCOUNT_BANNED) {
+          intentionalCloseRef.current = true;
+          window.location.assign(`${import.meta.env.BASE_URL}?cuenta=baneada`);
+          return;
+        }
 
         const delay = Math.min(
           INITIAL_RECONNECT_DELAY_MS * 2 ** reconnectAttemptRef.current
