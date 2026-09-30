@@ -178,47 +178,6 @@ export const DeleteServerResponse = zod.void()
 
 
 /**
- * @summary Join a server
- */
-export const JoinServerParams = zod.object({
-  "serverId": zod.coerce.number()
-})
-
-export const JoinServerResponse = zod.object({
-  "id": zod.number(),
-  "serverId": zod.number(),
-  "userId": zod.number(),
-  "role": zod.enum(['owner', 'admin', 'member']),
-  "roles": zod.array(zod.object({
-  "id": zod.number(),
-  "serverId": zod.number(),
-  "name": zod.string(),
-  "color": zod.string(),
-  "permissions": zod.number().describe('Bitmask: 1=manage_channels, 2=kick_members, 4=ban_members, 8=manage_messages'),
-  "position": zod.number(),
-  "createdAt": zod.coerce.date()
-})),
-  "joinedAt": zod.coerce.date(),
-  "user": zod.object({
-  "id": zod.number(),
-  "username": zod.string(),
-  "displayName": zod.string(),
-  "bio": zod.string().nullish(),
-  "avatarUrl": zod.string().nullish(),
-  "bannerUrl": zod.string().nullish(),
-  "status": zod.enum(['online', 'away', 'dnd', 'offline']),
-  "role": zod.enum(['admin', 'member']),
-  "createdAt": zod.coerce.date(),
-  "socialLinks": zod.array(zod.object({
-  "platform": zod.enum(['instagram', 'twitter', 'youtube', 'twitch', 'github', 'custom']),
-  "url": zod.string(),
-  "label": zod.string().optional()
-})).optional()
-})
-})
-
-
-/**
  * @summary Leave a server
  */
 export const LeaveServerParams = zod.object({

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { csrfFetch } from '@workspace/api-client-react';
 import { 
-  useGetCurrentUser, useListServers, useJoinServer,
+  useGetCurrentUser, useListServers,
   useGetServerMembers, useListChannels,
   useListMessages, useSendMessage, useEditMessage, useDeleteMessage,
   useToggleReaction,

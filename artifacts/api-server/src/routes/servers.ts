@@ -231,34 +231,9 @@ router.delete("/servers/:serverId", requireAuth, async (req, res): Promise<void>
   res.sendStatus(204);
 });
 
-// POST /servers/:serverId/join
-router.post("/servers/:serverId/join", requireAuth, async (req, res): Promise<void> => {
-  const userId = req.session.userId!;
-  const serverId = parseServerId(req.params.serverId);
-
-  const [server] = await db.select().from(serversTable).where(eq(serversTable.id, serverId));
-  if (!server) { res.status(404).json({ error: "Servidor no encontrado" }); return; }
-
-  const [existing] = await db
-    .select()
-    .from(serverMembersTable)
-    .where(and(eq(serverMembersTable.serverId, serverId), eq(serverMembersTable.userId, userId)));
-
-  if (existing) {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-    const roles = await getMemberCustomRoles(existing.id);
-    res.json(await serializeMember(existing, user, roles));
-    return;
-  }
-
-  const [member] = await db
-    .insert(serverMembersTable)
-    .values({ serverId, userId, role: "member" })
-    .returning();
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  res.json(await serializeMember(member, user, []));
-});
+// No existe POST /servers/:serverId/join: la única forma de entrar a un
+// servidor es una invitación válida (POST /servers/join-by-invite). El
+// servidor General añade a cada usuario al registrarse (lib/general-server.ts).
 
 // POST /servers/:serverId/leave
 router.post("/servers/:serverId/leave", requireAuth, async (req, res): Promise<void> => {
