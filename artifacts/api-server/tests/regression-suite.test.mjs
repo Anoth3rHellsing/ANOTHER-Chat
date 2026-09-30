@@ -20,6 +20,7 @@ const suites = [
   ["channel management d1", "channel-management-d1-isolated.mjs"],
   ["compiled frontend served by the API", "frontend-static-isolated.mjs"],
   ["server join requires an invite", "server-join-isolated.mjs"],
+  ["search respects channel access", "search-access-isolated.mjs"],
   ...(process.env.REGRESSION_EXTENDED === "1"
     ? [["extended file-library and mock scanner coverage", "file-channel-isolated.mjs"]]
     : []),
