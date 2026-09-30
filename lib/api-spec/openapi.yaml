@@ -184,25 +184,6 @@ paths:
         "403":
           description: Forbidden
 
-  /servers/{serverId}/join:
-    post:
-      operationId: joinServer
-      tags: [servers]
-      summary: Join a server
-      parameters:
-        - name: serverId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Joined server
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ServerMember"
-
   /servers/{serverId}/leave:
     post:
       operationId: leaveServer
