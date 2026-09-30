@@ -1342,6 +1342,23 @@ export function broadcastToUser(targetUserId: number, payload: object): void {
   });
 }
 
+/** Código de cierre que el cliente interpreta como «cuenta baneada». */
+export const WS_CLOSE_ACCOUNT_BANNED = 4003;
+
+/** Cierra todas las conexiones de un usuario (baneo global). Devuelve cuántas cerró. */
+export function disconnectUser(targetUserId: number, code: number, reason: string): number {
+  if (!wss) return 0;
+  let closed = 0;
+  wss.clients.forEach((ws) => {
+    const client = ws as AuthedWebSocket;
+    if (client.userId === targetUserId && client.readyState === WebSocket.OPEN) {
+      client.close(code, reason);
+      closed += 1;
+    }
+  });
+  return closed;
+}
+
 /**
  * Send a payload to every connected member of a server.
  * Queries server_members to get the list of userIds, then uses broadcastToUser for each.
@@ -1459,10 +1476,16 @@ function resolveWebSocketIdentity(
           resolve(null);
           return;
         }
-        resolve({
-          userId: session.userId,
-          userRole: (session as any).userRole as string | undefined,
-        });
+        const userId = session.userId;
+        // Una cuenta baneada no abre sockets aunque le quede una sesión.
+        db.select({ banned: usersTable.banned })
+          .from(usersTable)
+          .where(eq(usersTable.id, userId))
+          .then(([row]) => {
+            resolve(row && !row.banned
+              ? { userId, userRole: (session as any).userRole as string | undefined }
+              : null);
+          }, reject);
       },
     );
   });
