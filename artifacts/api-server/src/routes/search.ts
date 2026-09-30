@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../lib/auth";
 import { decryptChannelMessage, decryptDirectMessage } from "../lib/message-crypto";
+import { canAccessChannel } from "../lib/permissions";
 
 const router: IRouter = Router();
 
@@ -17,13 +18,14 @@ router.get("/channels/:channelId/search", requireAuth, async (req, res): Promise
     const q = (req.query.q as string ?? "").trim().toLowerCase();
     if (!q || q.length < 2) { res.json([]); return; }
 
-    // Check user has access to this channel's server
-    const chanRes = await rawQuery(`SELECT server_id FROM channels WHERE id=$1`, [channelId]);
+    // Mismo criterio que leer el canal: pertenencia y roles restringidos.
+    const chanRes = await rawQuery(`SELECT server_id, restricted_roles FROM channels WHERE id=$1`, [channelId]);
     if (!chanRes.rows[0]) { res.status(404).json({ error: "Canal no encontrado" }); return; }
-    const serverId = chanRes.rows[0].server_id;
-
-    const memberCheck = await rawQuery(`SELECT 1 FROM server_members WHERE server_id=$1 AND user_id=$2`, [serverId, userId]);
-    if (!memberCheck.rows.length) { res.status(403).json({ error: "Sin acceso" }); return; }
+    const channel = { serverId: chanRes.rows[0].server_id, restrictedRoles: chanRes.rows[0].restricted_roles };
+    if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
+      res.status(403).json({ error: "Sin acceso" });
+      return;
+    }
 
     // Fetch messages (limit to last 2000 for performance)
     const msgs = await rawQuery(`
@@ -72,7 +74,16 @@ router.get("/servers/:serverId/search", requireAuth, async (req, res): Promise<v
     const memberCheck = await rawQuery(`SELECT 1 FROM server_members WHERE server_id=$1 AND user_id=$2`, [serverId, userId]);
     if (!memberCheck.rows.length) { res.status(403).json({ error: "Sin acceso" }); return; }
 
-    // Fetch last 3000 messages from all accessible channels
+    // Solo los canales que este usuario puede leer; se filtra antes de descifrar.
+    const channelRows = await rawQuery(`SELECT id, server_id, restricted_roles FROM channels WHERE server_id=$1`, [serverId]);
+    const accessibleChannelIds: number[] = [];
+    for (const row of channelRows.rows) {
+      const channel = { serverId: row.server_id, restrictedRoles: row.restricted_roles };
+      if (await canAccessChannel(channel, userId, req.session.userRole)) accessibleChannelIds.push(row.id);
+    }
+    if (accessibleChannelIds.length === 0) { res.json([]); return; }
+
+    // Últimos 3000 mensajes de esos canales
     const msgs = await rawQuery(`
       SELECT m.id, m.channel_id, m.user_id, m.content_encrypted, m.iv, m.created_at, m.edited_at,
              c.name AS channel_name,
@@ -80,10 +91,10 @@ router.get("/servers/:serverId/search", requireAuth, async (req, res): Promise<v
       FROM messages m
       JOIN channels c ON c.id = m.channel_id
       JOIN users u ON u.id = m.user_id
-      WHERE c.server_id=$1 AND m.deleted_at IS NULL
+      WHERE c.server_id=$1 AND c.id = ANY($2::int[]) AND m.deleted_at IS NULL
       ORDER BY m.created_at DESC
       LIMIT 3000
-    `, [serverId]);
+    `, [serverId, accessibleChannelIds]);
 
     const decryptedRows = await Promise.all(msgs.rows.map(async r => {
       try {
