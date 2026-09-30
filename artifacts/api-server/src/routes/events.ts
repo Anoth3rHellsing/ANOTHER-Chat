@@ -227,11 +227,11 @@ router.get("/events/upcoming/mine", requireAuth, async (req, res): Promise<void>
 router.get("/channels/:channelId/events", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const channelId = parseId(req.params.channelId);
-  if (!channelId) { res.status(400).json({ error: "Invalid channel id" }); return; }
+  if (!channelId) { res.status(400).json({ error: "Identificador de canal inválido" }); return; }
   const channel = await loadChannel(channelId);
-  if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
-    res.status(403).json({ error: "You do not have access to this channel" }); return;
+    res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
   const events = await db.select().from(channelEventsTable)
     .where(eq(channelEventsTable.channelId, channelId))
@@ -243,11 +243,11 @@ router.get("/channels/:channelId/events", requireAuth, async (req, res): Promise
 router.post("/channels/:channelId/events", requireAuth, async (req, res): Promise<void> => {
   const userId = req.session.userId!;
   const channelId = parseId(req.params.channelId);
-  if (!channelId) { res.status(400).json({ error: "Invalid channel id" }); return; }
+  if (!channelId) { res.status(400).json({ error: "Identificador de canal inválido" }); return; }
   const channel = await loadChannel(channelId);
-  if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
-    res.status(403).json({ error: "You do not have access to this channel" }); return;
+    res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
 
   const body = req.body ?? {};
@@ -255,19 +255,19 @@ router.post("/channels/:channelId/events", requireAuth, async (req, res): Promis
   const description = body.description == null ? null : body.description;
   const startsAt = parseIsoInstant(body.startsAt);
   const endsAt = body.endsAt == null ? null : parseIsoInstant(body.endsAt);
-  if (!title || title.length > 120) { res.status(400).json({ error: "Title must be 1 to 120 characters" }); return; }
+  if (!title || title.length > 120) { res.status(400).json({ error: "El título debe tener entre 1 y 120 caracteres" }); return; }
   if (description !== null && (typeof description !== "string" || description.length > 2000)) {
-    res.status(400).json({ error: "Description must be at most 2000 characters" }); return;
+    res.status(400).json({ error: "La descripción no puede superar los 2000 caracteres" }); return;
   }
   if (!startsAt || !validFutureCreateStart(startsAt)) {
-    res.status(400).json({ error: "startsAt must be an explicit ISO date-time in the future and within three years" }); return;
+    res.status(400).json({ error: "La fecha de inicio debe ser una fecha y hora completas, futura y dentro de los próximos tres años" }); return;
   }
-  if (body.endsAt != null && !endsAt) { res.status(400).json({ error: "endsAt must be an explicit ISO date-time" }); return; }
+  if (body.endsAt != null && !endsAt) { res.status(400).json({ error: "La fecha de fin debe ser una fecha y hora completas" }); return; }
   if (!validEnd(startsAt, endsAt)) {
-    res.status(400).json({ error: "endsAt must be after startsAt and no more than seven days later" }); return;
+    res.status(400).json({ error: "El fin debe ser posterior al inicio y como máximo siete días después" }); return;
   }
   if (!isValidTimeZone(body.originalTimeZone)) {
-    res.status(400).json({ error: "originalTimeZone must be a valid IANA time zone" }); return;
+    res.status(400).json({ error: "La zona horaria no es válida" }); return;
   }
 
   const [author] = channel.channelType === "calendar"
@@ -339,14 +339,14 @@ router.get("/channels/:channelId/events/:eventId", requireAuth, async (req, res)
   const userId = req.session.userId!;
   const channelId = parseId(req.params.channelId);
   const eventId = parseId(req.params.eventId);
-  if (!channelId || !eventId) { res.status(400).json({ error: "Invalid channel or event id" }); return; }
+  if (!channelId || !eventId) { res.status(400).json({ error: "Identificador de canal o de evento inválido" }); return; }
   const channel = await loadChannel(channelId);
-  if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
-    res.status(403).json({ error: "You do not have access to this channel" }); return;
+    res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
   const event = await loadEvent(channelId, eventId);
-  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!event) { res.status(404).json({ error: "Evento no encontrado" }); return; }
   res.json(await serializeEvent(event, userId));
 });
 
@@ -355,16 +355,16 @@ router.patch("/channels/:channelId/events/:eventId", requireAuth, async (req, re
   const userId = req.session.userId!;
   const channelId = parseId(req.params.channelId);
   const eventId = parseId(req.params.eventId);
-  if (!channelId || !eventId) { res.status(400).json({ error: "Invalid channel or event id" }); return; }
+  if (!channelId || !eventId) { res.status(400).json({ error: "Identificador de canal o de evento inválido" }); return; }
   const channel = await loadChannel(channelId);
-  if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
-    res.status(403).json({ error: "You do not have access to this channel" }); return;
+    res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
 
   const body = req.body ?? {};
   if (Object.keys(body).length === 0) {
-    res.status(400).json({ error: "At least one event field must be provided" }); return;
+    res.status(400).json({ error: "Indica al menos un campo del evento para modificar" }); return;
   }
   const result = await db.transaction(async tx => {
     const [event] = await tx.select().from(channelEventsTable)
@@ -437,19 +437,19 @@ router.patch("/channels/:channelId/events/:eventId", requireAuth, async (req, re
   });
 
   if ("error" in result) {
-    if (result.error === "not_found") { res.status(404).json({ error: "Event not found" }); return; }
-    if (result.error === "forbidden") { res.status(403).json({ error: "You cannot manage this event" }); return; }
-    if (result.error === "canceled") { res.status(409).json({ error: "Canceled events cannot be edited" }); return; }
+    if (result.error === "not_found") { res.status(404).json({ error: "Evento no encontrado" }); return; }
+    if (result.error === "forbidden") { res.status(403).json({ error: "No puedes gestionar este evento" }); return; }
+    if (result.error === "canceled") { res.status(409).json({ error: "Un evento cancelado no se puede editar" }); return; }
     const errors: Record<string, string> = {
-      title: "Title must be 1 to 120 characters",
-      description: "Description must be at most 2000 characters",
-      startsAt: "startsAt must be an explicit ISO date-time",
-      startRange: "startsAt must be in the future and within three years",
-      endsAt: "endsAt must be an explicit ISO date-time",
-      timeZone: "originalTimeZone must be a valid IANA time zone",
-      duration: "endsAt must be after startsAt and no more than seven days later",
+      title: "El título debe tener entre 1 y 120 caracteres",
+      description: "La descripción no puede superar los 2000 caracteres",
+      startsAt: "La fecha de inicio debe ser una fecha y hora completas",
+      startRange: "La fecha de inicio debe ser futura y dentro de los próximos tres años",
+      endsAt: "La fecha de fin debe ser una fecha y hora completas",
+      timeZone: "La zona horaria no es válida",
+      duration: "El fin debe ser posterior al inicio y como máximo siete días después",
     };
-    res.status(400).json({ error: errors[String(result.error)] ?? "Invalid event" });
+    res.status(400).json({ error: errors[String(result.error)] ?? "Evento inválido" });
     return;
   }
 
@@ -465,11 +465,11 @@ router.delete("/channels/:channelId/events/:eventId", requireAuth, async (req, r
   const userId = req.session.userId!;
   const channelId = parseId(req.params.channelId);
   const eventId = parseId(req.params.eventId);
-  if (!channelId || !eventId) { res.status(400).json({ error: "Invalid channel or event id" }); return; }
+  if (!channelId || !eventId) { res.status(400).json({ error: "Identificador de canal o de evento inválido" }); return; }
   const channel = await loadChannel(channelId);
-  if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
-    res.status(403).json({ error: "You do not have access to this channel" }); return;
+    res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
 
   const result = await db.transaction(async tx => {
@@ -490,9 +490,9 @@ router.delete("/channels/:channelId/events/:eventId", requireAuth, async (req, r
     return { event: updated, priorResponses };
   });
   if ("error" in result) {
-    if (result.error === "not_found") { res.status(404).json({ error: "Event not found" }); return; }
-    if (result.error === "forbidden") { res.status(403).json({ error: "You cannot manage this event" }); return; }
-    res.status(409).json({ error: "Event is already canceled" });
+    if (result.error === "not_found") { res.status(404).json({ error: "Evento no encontrado" }); return; }
+    if (result.error === "forbidden") { res.status(403).json({ error: "No puedes gestionar este evento" }); return; }
+    res.status(409).json({ error: "El evento ya está cancelado" });
     return;
   }
   await notifyAttendees(channel, result.event, userId, result.priorResponses, "event:attendee_cancelled");
@@ -505,15 +505,15 @@ router.put("/channels/:channelId/events/:eventId/response", requireAuth, async (
   const userId = req.session.userId!;
   const channelId = parseId(req.params.channelId);
   const eventId = parseId(req.params.eventId);
-  if (!channelId || !eventId) { res.status(400).json({ error: "Invalid channel or event id" }); return; }
+  if (!channelId || !eventId) { res.status(400).json({ error: "Identificador de canal o de evento inválido" }); return; }
   const channel = await loadChannel(channelId);
-  if (!channel) { res.status(404).json({ error: "Channel not found" }); return; }
+  if (!channel) { res.status(404).json({ error: "Canal no encontrado" }); return; }
   if (!(await canAccessChannel(channel, userId, req.session.userRole))) {
-    res.status(403).json({ error: "You do not have access to this channel" }); return;
+    res.status(403).json({ error: "No tienes acceso a este canal" }); return;
   }
   const status = req.body?.status;
   if (status !== "yes" && status !== "no" && status !== "maybe") {
-    res.status(400).json({ error: "status must be yes, no, or maybe" }); return;
+    res.status(400).json({ error: "La respuesta debe ser sí, no o quizás" }); return;
   }
 
   const event = await db.transaction(async tx => {
@@ -536,8 +536,8 @@ router.put("/channels/:channelId/events/:eventId/response", requireAuth, async (
     return locked;
   });
   if ("error" in event) {
-    if (event.error === "not_found") { res.status(404).json({ error: "Event not found" }); return; }
-    res.status(409).json({ error: event.error === "past" ? "Past events cannot receive responses" : "Canceled events cannot receive responses" });
+    if (event.error === "not_found") { res.status(404).json({ error: "Evento no encontrado" }); return; }
+    res.status(409).json({ error: event.error === "past" ? "Un evento pasado no admite respuestas" : "Un evento cancelado no admite respuestas" });
     return;
   }
   broadcastEvent("event:rsvp_updated", event, channel.serverId);
