@@ -11,5 +11,6 @@
 | [`instrucciones/verificacion.md`](instrucciones/verificacion.md) | Cómo verificar un PR desde cero, incluidas las mutaciones |
 | [`instrucciones/pruebas-de-navegador.md`](instrucciones/pruebas-de-navegador.md) | Cómo ejecutar y escribir pruebas con Playwright |
 | [`instrucciones/corregir-prompts.md`](instrucciones/corregir-prompts.md) | Cómo escribir prompts para agentes de código |
+| [`instrucciones/rotar-clave-cifrado.md`](instrucciones/rotar-clave-cifrado.md) | Rotar `MESSAGE_ENCRYPTION_KEY` y volver a cifrar el historial sin perderlo |
 | [`despliegue/coolify.md`](despliegue/coolify.md) | Desplegar en un servidor propio con Coolify: imagen Docker, variables, volumen y migración desde Replit |
 | [`../BACKLOG.md`](../BACKLOG.md) | Trabajo pendiente conocido (absorbido por el plan de plataforma) |
