@@ -20,7 +20,7 @@ Este archivo recoge trabajo pendiente conocido de la auditoría técnica. Debe m
 
 - [ ] **Dividir el componente principal de la interfaz.** Un archivo de más de mil líneas concentra servidores, canales, mensajes directos, voz, llamadas, modales y subidas; separarlo facilitará su revisión y mantenimiento.
 - [ ] **Reducir los tipos sin comprobación en el frontend.** Se usan ampliamente incluso con datos que ya tienen tipos generados; aprovechar esos tipos ayudaría a detectar errores antes de ejecutar la aplicación.
-- [ ] **Liberar las referencias de vistas previas de adjuntos.** Se crean referencias a objetos en memoria que nunca se revocan, lo que puede producir una fuga de memoria.
+- [x] **Liberar las referencias de vistas previas de adjuntos.** Se crean referencias a objetos en memoria que nunca se revocan, lo que puede producir una fuga de memoria.
 - [ ] **Paginar de verdad el historial de mensajes.** Sin paginación real, los historiales extensos pueden cargar demasiados datos y degradar la experiencia.
 - [ ] **Evaluar el rediseño con AeroGlass.** Su especificación es portable, pero está pensada para otra tecnología y la versión web está incrustada en una demostración sin variables reutilizables. Extraerla y reconstruir componentes reutilizables; decidir antes si se migra toda la identidad oscura actual hacia la estética clara del sistema o solo componentes concretos.
 - [ ] **Mantener la llamada de voz durante cortes breves de red.** Requiere renegociación coordinada entre cliente y servidor para que la llamada se recupere sin obligar a iniciarla de nuevo.

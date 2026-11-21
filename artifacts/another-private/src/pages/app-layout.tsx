@@ -75,6 +75,7 @@ import { GifMessage } from '@/components/gif-message';
 import { parseGiphyMessage, serializeGiphyMessage } from '@/lib/giphy';
 import { sameOriginUploadUrl } from '@/lib/media-url';
 import { AvatarImage } from '@/components/avatar-image';
+import { PendingImagePreview, pendingFileKey } from '@/components/pending-image-preview';
 import { ReactionIndicators } from '@/components/reaction-indicators';
 import { updateChannelReactions, updateDmReactions, type MessageReaction } from '@/lib/reactions';
 import { format } from 'date-fns';
@@ -1197,7 +1198,7 @@ export default function AppLayout() {
           <>
             {/* DM header */}
             <div className="h-12 border-b border-white/5 flex items-center px-4 bg-card flex-shrink-0">
-              <button className="md:hidden p-1 mr-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(0)}>
+              <button className="md:hidden p-1 mr-1 text-muted-foreground hover:text-white rounded" onClick={() => setMobilePanelDepth(0)} aria-label="Volver a la lista de servidores">
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <MessageSquare className="w-4 h-4 text-primary mr-2" />
@@ -1951,11 +1952,10 @@ export default function AppLayout() {
               {pendingFiles.length > 0 && (
                 <div className={`flex flex-wrap gap-2 bg-secondary border border-white/10 px-4 py-3 border-b-0 ${replyingTo ? '' : 'rounded-t-xl'}`}>
                   {pendingFiles.map((file, idx) => (
-                    <div key={idx} className="relative group/file">
+                    <div key={pendingFileKey(file)} className="relative group/file">
                       {file.type.startsWith('image/') ? (
-                        <img
-                          src={URL.createObjectURL(file)}
-                          alt={file.name}
+                        <PendingImagePreview
+                          file={file}
                           className="w-16 h-16 rounded-lg object-cover border border-white/10"
                         />
                       ) : (
@@ -1966,6 +1966,7 @@ export default function AppLayout() {
                       )}
                       <button
                         onClick={() => removePendingFile(idx)}
+                        aria-label={`Quitar ${file.name}`}
                         className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover/file:opacity-100 transition-opacity"
                       >
                         <X className="w-2.5 h-2.5 text-white" />
@@ -2006,6 +2007,7 @@ export default function AppLayout() {
                   ref={fileInputRef}
                   accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip"
                   multiple
+                  data-testid="channel-file-input"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
