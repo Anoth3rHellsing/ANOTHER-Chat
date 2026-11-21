@@ -20,6 +20,7 @@ bash scripts/e2e/restart.sh && node scripts/e2e/chat.mjs   # chat y textos en el
 bash scripts/e2e/restart.sh && node scripts/e2e/audit.mjs  # recorrido de 36 pantallas (capturas + medidas)
 bash scripts/e2e/restart.sh && node scripts/e2e/ban.mjs    # baneo global: el baneado sale al instante con el aviso
 bash scripts/e2e/restart.sh && node scripts/e2e/filters.mjs # filtros de palabras: motivo real y texto conservado
+bash scripts/e2e/restart.sh && node scripts/e2e/previews.mjs # vistas previas de adjuntos: referencias blob: liberadas
 ```
 `ui.mjs`, `call.mjs` y `chat.mjs` prueban lo que añaden los PR #8, #9 y #10: hasta que estén en `main`, compila una rama que los contenga y apunta a ella con `E2E_REPO=/ruta/a/esa/copia`.
 
