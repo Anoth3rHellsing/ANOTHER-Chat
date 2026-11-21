@@ -25,6 +25,7 @@ const suites = [
   ["session secret required in production", "session-secret-isolated.mjs"],
   ["event API errors in Spanish", "events-spanish-errors-isolated.mjs"],
   ["word filters block messages", "word-filters-isolated.mjs"],
+  ["message key rotation tool", "recifrar-mensajes-isolated.mjs"],
   ...(process.env.REGRESSION_EXTENDED === "1"
     ? [["extended file-library and mock scanner coverage", "file-channel-isolated.mjs"]]
     : []),

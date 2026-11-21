@@ -65,6 +65,7 @@ Private channel library file bytes are stored in `private-channel-files/`, outsi
 - `artifacts/api-server/src/routes/` — Express route handlers (auth, servers, channels, users, admin)
 - `artifacts/api-server/src/lib/crypto.ts` — versioned AES-256-GCM encryption and legacy AES-256-CBC decryption for messages
 - `pnpm --filter @workspace/api-server run migrate-message-encryption` — manually convert legacy channel, direct, and DM-group messages to GCM in batches; safe to rerun
+- `pnpm --filter @workspace/api-server run recifrar-mensajes [--aplicar]` — re-encrypt every message from `OLD_MESSAGE_ENCRYPTION_KEY` to `MESSAGE_ENCRYPTION_KEY` (dry run by default); see `docs/instrucciones/rotar-clave-cifrado.md`
 - `artifacts/api-server/src/lib/websocket.ts` — WebSocket server (real-time messaging, typing indicators, status)
 - `artifacts/api-server/src/lib/auth.ts` — requireAuth and requireAdmin middleware
 - `artifacts/another-private/src/` — React frontend (login, register, main app layout, admin panel)

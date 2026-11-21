@@ -18,6 +18,7 @@ async function buildAll() {
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/scripts/migrate-message-encryption.ts"),
+      path.resolve(artifactDir, "src/scripts/recifrar-mensajes.ts"),
     ],
     platform: "node",
     bundle: true,
