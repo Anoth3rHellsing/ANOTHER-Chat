@@ -165,7 +165,7 @@ export function expectStatus(response, expected, label) {
 
 /**
  * Starts PostgreSQL, applies every migration and launches the API.
- * Returns { base, sql, stop, logs }. Always call stop() in a finally block.
+ * Returns { base, sql, databaseUrl, stop, logs }. Always call stop() in a finally block.
  */
 export async function startIsolatedApi(prefix) {
   assert.ok(os.tmpdir() === "/tmp", `isolated scenarios require /tmp, got ${os.tmpdir()}`);
@@ -248,7 +248,7 @@ export async function startIsolatedApi(prefix) {
     }
     assert.ok(ready, "isolated API responds unauthenticated after readiness polling");
     console.log("PASS isolated API runs with its own database, uploads directory and sessions");
-    return { base, sql, stop, logs: () => logs };
+    return { base, sql, databaseUrl, stop, logs: () => logs };
   } catch (error) {
     await stop();
     throw error;
